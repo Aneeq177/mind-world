@@ -1,0 +1,9 @@
+sentence-transformers 
+umap-learn
+pandas
+numpy
+streamlit
+fastapi
+unicorn
+scikit-learn 
+python-dotenv

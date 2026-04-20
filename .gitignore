@@ -1,0 +1,13 @@
+# Your personal data — never push this
+chats_parsed.csv
+chats_positioned.json
+conversations.json
+
+# Environment and secrets
+.env
+venv/
+__pycache__/
+*.pyc
+
+# Cache
+cache/
