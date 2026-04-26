@@ -1,9 +1,11 @@
-sentence-transformers 
+sentence-transformers
 umap-learn
 pandas
 numpy
 streamlit
-fastapi
-unicorn
-scikit-learn 
+scikit-learn
 python-dotenv
+plotly
+anthropic
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.5.1+cpu
