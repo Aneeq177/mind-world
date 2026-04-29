@@ -35,7 +35,10 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 @st.cache_data
-def load_data():
+def load_data(demo_mode=False):
+    if demo_mode:
+        with open('demo_chats.json', 'r', encoding='utf-8') as f:
+            return json.load(f)
     with open('chats_positioned.json', 'r', encoding='utf-8') as f:
         return json.load(f)
 
@@ -45,8 +48,34 @@ def load_full_texts():
     df = pd.read_csv('chats_parsed.csv')
     return {row['uuid']: str(row['full_text']) for _, row in df.iterrows()}
 
-chats = load_data()
-full_texts = load_full_texts()
+@st.cache_data
+def load_demo_texts():
+    demo_texts = {}
+    try:
+        with open('demo_chats.json', 'r', encoding='utf-8') as f:
+            demo_chats = json.load(f)
+        for c in demo_chats:
+            demo_texts[c['id']] = c['preview'] * 5
+    except:
+        pass
+    return demo_texts
+
+# ── Demo mode toggle ─────────────────────────────────────────────────────
+demo_col1, demo_col2 = st.columns([6, 1])
+with demo_col2:
+    DEMO_MODE = st.toggle(
+        "🎬 Demo Mode",
+        value=False,
+        help="Switch to demo data for recording/sharing"
+    )
+
+if DEMO_MODE:
+    chats = load_data(demo_mode=True)
+    full_texts = load_demo_texts()
+    st.success("🎬 Demo mode ON — safe to record and share", icon="✅")
+else:
+    chats = load_data(demo_mode=False)
+    full_texts = load_full_texts()
 
 def get_region_and_color(chat):
     title = chat['title'].lower()
@@ -67,10 +96,21 @@ def get_region_and_color(chat):
         return "Creative & Writing", "#DA70D6"
 
 for chat in chats:
-    region, color = get_region_and_color(chat)
-    chat['region'] = region
-    chat['color'] = color
+    if not DEMO_MODE:
+        region, color = get_region_and_color(chat)
+        chat['region'] = region
+        chat['color'] = color
     chat['size'] = max(8, min(25, chat['num_messages'] // 4 + 6))
+
+REGION_EMOJI = (
+    {"Academic Writing": "🔴", "Business & Economics": "🟡",
+     "Software Engineering": "🔵", "Machine Learning & AI": "🟢",
+     "Data Science": "🟠", "Research & Communication": "🟣"}
+    if DEMO_MODE else
+    {"Transfer Applications": "🔴", "Economics & History": "🟡",
+     "Coding & C++": "🔵", "AI & Career": "🟢",
+     "Research & Science": "🟠", "Creative & Writing": "🟣"}
+)
 
 # ── Session state for selections ─────────────────────────────────────────
 if 'selected_ids' not in st.session_state:
@@ -139,9 +179,7 @@ with blend_col:
         for sid in selected:
             if sid in chat_lookup:
                 c = chat_lookup[sid]
-                emoji = {"Transfer Applications": "🔴", "Economics & History": "🟡",
-                         "Coding & C++": "🔵", "AI & Career": "🟢",
-                         "Research & Science": "🟠", "Creative & Writing": "🟣"}.get(c['region'], "⚪")
+                emoji = REGION_EMOJI.get(c['region'], "⚪")
                 st.markdown(f"{emoji} **{c['title'][:45]}**")
                 st.markdown(f"<p style='color:#666;font-size:0.75rem'>{c['region']} · {c['num_messages']} msgs</p>", unsafe_allow_html=True)
 
@@ -287,24 +325,35 @@ MY QUESTION: {user_message}"""
         """, unsafe_allow_html=True)
 
 with map_col:
-    region_filter = st.selectbox(
-        "🔍 Filter by region",
-        ["All Regions", "Transfer Applications", "Economics & History",
-         "Coding & C++", "AI & Career", "Research & Science", "Creative & Writing"]
-    )
+    if DEMO_MODE:
+        region_options = ["All Regions", "Academic Writing", "Business & Economics",
+                          "Software Engineering", "Machine Learning & AI",
+                          "Data Science", "Research & Communication"]
+        region_centers = {
+            "Academic Writing":         (180, 850, "#FF4444"),
+            "Business & Economics":     (450, 240, "#FFD700"),
+            "Software Engineering":     (870, 200, "#00BFFF"),
+            "Machine Learning & AI":    (720, 600, "#00FF88"),
+            "Data Science":             (250, 570, "#FF8C00"),
+            "Research & Communication": (560, 650, "#DA70D6"),
+        }
+    else:
+        region_options = ["All Regions", "Transfer Applications", "Economics & History",
+                          "Coding & C++", "AI & Career", "Research & Science", "Creative & Writing"]
+        region_centers = {
+            "Transfer Applications": (180, 850, "#FF4444"),
+            "Economics & History":   (450, 240, "#FFD700"),
+            "Coding & C++":          (870, 200, "#00BFFF"),
+            "AI & Career":           (720, 600, "#00FF88"),
+            "Research & Science":    (250, 570, "#FF8C00"),
+            "Creative & Writing":    (560, 650, "#DA70D6"),
+        }
+
+    region_filter = st.selectbox("🔍 Filter by region", region_options)
 
     filtered = chats if region_filter == "All Regions" else [c for c in chats if c['region'] == region_filter]
 
     fig = go.Figure()
-
-    region_centers = {
-        "Transfer Applications": (180, 850, "#FF4444"),
-        "Economics & History":   (450, 240, "#FFD700"),
-        "Coding & C++":          (870, 200, "#00BFFF"),
-        "AI & Career":           (720, 600, "#00FF88"),
-        "Research & Science":    (250, 570, "#FF8C00"),
-        "Creative & Writing":    (560, 650, "#DA70D6"),
-    }
 
     if region_filter == "All Regions":
         for name, (cx, cy, col) in region_centers.items():
@@ -545,9 +594,7 @@ with map_col:
         if new_this_month:
             st.markdown(f"**🆕 New in {month_labels[selected_month_idx]}:**")
             for c in new_this_month:
-                emoji = {"Transfer Applications": "🔴", "Economics & History": "🟡",
-                         "Coding & C++": "🔵", "AI & Career": "🟢",
-                         "Research & Science": "🟠", "Creative & Writing": "🟣"}.get(c['region'], "⚪")
+                emoji = REGION_EMOJI.get(c['region'], "⚪")
                 st.markdown(f"{emoji} **{c['title']}** — {c['num_messages']} messages")
         else:
             st.markdown(f"*No new conversations in {month_labels[selected_month_idx]}*")
@@ -565,9 +612,7 @@ with list_col:
 
     for d in display[:20]:
         is_sel = d['id'] in st.session_state.selected_ids
-        emoji = {"Transfer Applications": "🔴", "Economics & History": "🟡",
-                 "Coding & C++": "🔵", "AI & Career": "🟢",
-                 "Research & Science": "🟠", "Creative & Writing": "🟣"}.get(d['region'], "⚪")
+        emoji = REGION_EMOJI.get(d['region'], "⚪")
         prefix = "⭐ " if is_sel else ""
         with st.expander(f"{prefix}{emoji} {d['title'][:35]}"):
             st.markdown(f"**{d['num_messages']} msgs** · {d['created_at'][:10]}")

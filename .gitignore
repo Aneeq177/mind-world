@@ -6,6 +6,7 @@ conversations.json
 # Environment and secrets
 .env
 venv/
+venv_public/
 __pycache__/
 *.pyc
 

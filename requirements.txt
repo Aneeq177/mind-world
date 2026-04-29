@@ -2,7 +2,7 @@ sentence-transformers
 umap-learn
 pandas
 numpy
-streamlit
+streamlit>=1.34.0
 scikit-learn
 python-dotenv
 plotly

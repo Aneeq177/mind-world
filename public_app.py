@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import json
 import pandas as pd
 import numpy as np
@@ -19,7 +20,7 @@ st.set_page_config(
 )
 
 # ── Hide Streamlit chrome ─────────────────────────────────────────────────
-st.html("""
+st.markdown("""
 <style>
     #MainMenu {visibility: hidden;}
     header {visibility: hidden;}
@@ -35,17 +36,38 @@ st.html("""
         background-color: #0a0a0f;
     }
 </style>
-""")
+""", unsafe_allow_html=True)
 
 # ── Session state ─────────────────────────────────────────────────────────
 if 'chats' not in st.session_state:
     st.session_state.chats = None
+# Read persisted blend count from URL param (populated by localStorage JS)
+_bc_param = st.query_params.get('_bc', '0')
+try:
+    _persisted_blend_count = int(_bc_param)
+except:
+    _persisted_blend_count = 0
+
 if 'blend_count' not in st.session_state:
-    st.session_state.blend_count = 0
+    st.session_state.blend_count = _persisted_blend_count
 if 'user_api_key' not in st.session_state:
     st.session_state.user_api_key = None
 if 'selected_ids' not in st.session_state:
     st.session_state.selected_ids = []
+
+components.html("""
+<script>
+(function() {
+    var count = parseInt(localStorage.getItem('mindworld_blend_count') || '0');
+    var url = new URL(window.parent.location.href);
+    if (url.searchParams.get('_bc') !== String(count)) {
+        url.searchParams.set('_bc', String(count));
+        window.parent.history.replaceState({}, '', url);
+        window.parent.location.reload();
+    }
+})();
+</script>
+""", height=0)
 
 FREE_BLEND_LIMIT = 2
 
@@ -447,6 +469,15 @@ Be specific. Use the person's actual words where possible."""
                     # Increment blend count only if using free quota
                     if not st.session_state.user_api_key:
                         st.session_state.blend_count += 1
+                        new_count = st.session_state.blend_count
+                        components.html(f"""
+                        <script>
+                        localStorage.setItem('mindworld_blend_count', '{new_count}');
+                        var url = new URL(window.parent.location.href);
+                        url.searchParams.set('_bc', '{new_count}');
+                        window.parent.history.replaceState({{}}, '', url);
+                        </script>
+                        """, height=0)
 
                     context_block = ""
                     for s in smart_summaries:
