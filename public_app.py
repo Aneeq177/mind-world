@@ -180,7 +180,7 @@ def get_region_and_color(chat):
 def show_landing():
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        st.html("""
+        st.markdown("""
 <div style='text-align:center; padding:40px 0 20px 0'>
     <div style='font-size:4rem; margin-bottom:16px'>🌍</div>
     <h1 style='color:white; font-size:2.2rem; margin-bottom:8px; font-weight:700'>
@@ -191,10 +191,10 @@ def show_landing():
         Similar topics cluster together. Watch your thinking take shape.
     </p>
 </div>
-""")
+""", unsafe_allow_html=True)
 
         # Feature cards
-        st.html("""
+        st.markdown("""
 <div style='background:#111827; border:1px solid #222; border-radius:16px;
             padding:24px; margin-bottom:24px'>
 
@@ -226,10 +226,10 @@ def show_landing():
     </div>
 
 </div>
-""")
+""", unsafe_allow_html=True)
 
         # Export instructions
-        st.html("""
+        st.markdown("""
 <div style='background:#0d1117; border:1px solid #30363d; border-radius:12px;
             padding:18px; margin-bottom:20px'>
     <div style='color:#58a6ff; font-weight:600; margin-bottom:10px; font-size:0.88rem'>
@@ -243,7 +243,7 @@ def show_landing():
         5. Upload <span style='color:white'>conversations.json</span> below
     </div>
 </div>
-""")
+""", unsafe_allow_html=True)
 
         # File uploader
         uploaded = st.file_uploader(
@@ -282,11 +282,11 @@ def show_landing():
                     st.code(traceback.format_exc())
                     st.info("Make sure you're uploading conversations.json from your Claude export ZIP.")
 
-        st.html("""
+        st.markdown("""
 <p style='text-align:center; color:#444; font-size:0.8rem; margin-top:12px'>
     🔒 Your data stays in your session only. Nothing is stored or shared.
 </p>
-""")
+""", unsafe_allow_html=True)
 
 # ── Main map ──────────────────────────────────────────────────────────────
 def show_map():
@@ -295,7 +295,7 @@ def show_map():
     # Header
     _total_msgs = sum(c['num_messages'] for c in chats)
     _total_chars_k = sum(c['char_count'] for c in chats) // 1000
-    st.html(f"""
+    st.markdown(f"""
     <div style='display:flex; align-items:center; justify-content:space-between;
          padding:8px 4px; border-bottom:1px solid #222; margin-bottom:8px'>
         <div>
@@ -319,7 +319,7 @@ def show_map():
             </div>
         </div>
     </div>
-    """)
+    """, unsafe_allow_html=True)
 
     # Reset button
     if st.button("← Upload different file", key="reset"):
@@ -339,11 +339,11 @@ def show_map():
         has_user_key = bool(st.session_state.user_api_key)
 
         if blends_remaining > 0:
-            st.html(f"<p style='color:#00FF88;font-size:0.85rem'>✓ {blends_remaining} free blend{'s' if blends_remaining > 1 else ''} remaining</p>")
+            st.markdown(f"<p style='color:#00FF88;font-size:0.85rem'>✓ {blends_remaining} free blend{'s' if blends_remaining > 1 else ''} remaining</p>", unsafe_allow_html=True)
         elif has_user_key:
-            st.html("<p style='color:#00FF88;font-size:0.85rem'>✓ Using your API key</p>")
+            st.markdown("<p style='color:#00FF88;font-size:0.85rem'>✓ Using your API key</p>", unsafe_allow_html=True)
         else:
-            st.html("<p style='color:#FF4444;font-size:0.85rem'>Free blends used — add your API key below</p>")
+            st.markdown("<p style='color:#FF4444;font-size:0.85rem'>Free blends used — add your API key below</p>", unsafe_allow_html=True)
 
         chat_lookup = {c['id']: c for c in chats}
         all_titles = {c['id']: c['title'] for c in chats}
@@ -384,7 +384,7 @@ def show_map():
             if blends_remaining <= 0 and not has_user_key:
                 st.markdown("---")
                 st.markdown("**You've used your 2 free blends.**")
-                st.html("<p style='color:#888;font-size:0.8rem'>Add your Anthropic API key to continue. Get one free at console.anthropic.com</p>")
+                st.markdown("<p style='color:#888;font-size:0.8rem'>Add your Anthropic API key to continue. Get one free at console.anthropic.com</p>", unsafe_allow_html=True)
                 user_key = st.text_input(
                     "Your Anthropic API key:",
                     type="password",
@@ -501,14 +501,14 @@ MY QUESTION: {user_message}"""
                     encoded = urllib.parse.quote(full_message)
                     claude_url = f"https://claude.ai/new?q={encoded}"
 
-                    st.html(f"""
+                    st.markdown(f"""
                     <a href="{claude_url}" target="_blank" style="
                         display:block; background:#7c3aed; color:white;
                         text-align:center; padding:12px; border-radius:8px;
                         text-decoration:none; font-weight:bold; margin-top:8px;">
                         ✨ Open Blended Chat →
                     </a>
-                    """)
+                    """, unsafe_allow_html=True)
 
                     new_remaining = FREE_BLEND_LIMIT - st.session_state.blend_count
                     if not has_user_key and new_remaining > 0:
