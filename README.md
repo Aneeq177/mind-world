@@ -1,3 +1,14 @@
+---
+title: Mind World
+emoji: 🌍
+colorFrom: purple
+colorTo: blue
+sdk: streamlit
+sdk_version: 1.31.0
+app_file: public_app.py
+pinned: false
+---
+
 # Mind World
 
 A visual map of your Claude conversation history. Conversations are embedded using sentence transformers, reduced to 2D with UMAP, and displayed as an interactive star map grouped by topic region.

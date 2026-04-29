@@ -12,3 +12,6 @@ __pycache__/
 
 # Cache
 cache/
+
+# Old Hugging Face direct-push repo — now handled by sync_to_hf.yml
+mind-world/
