@@ -151,6 +151,7 @@ def embed_and_position(df):
         })
     return result
 
+@st.cache_data
 def get_region_and_color(chat):
     title = chat['title'].lower()
     preview = chat.get('preview', '').lower()
@@ -176,6 +177,71 @@ def get_region_and_color(chat):
     else:
         return "Creative & Other", "#DA70D6"
 
+# ── Caching helpers ───────────────────────────────────────────────────────
+_fragment = getattr(st, 'fragment', lambda f: f)
+
+@st.cache_data
+def _build_map_figure(chats, region_filter, selected_ids):
+    filtered = chats if region_filter == "All Regions" else \
+        [c for c in chats if c['region'] == region_filter]
+
+    fig = go.Figure()
+    regions_seen = {}
+    for chat in filtered:
+        r = chat['region']
+        is_selected = chat['id'] in selected_ids
+        if r not in regions_seen:
+            regions_seen[r] = {
+                "x": [], "y": [], "text": [],
+                "size": [], "color": [], "symbol": []
+            }
+        regions_seen[r]["x"].append(chat['x'])
+        regions_seen[r]["y"].append(1000 - chat['y'])
+        regions_seen[r]["size"].append(chat['size'] + (6 if is_selected else 0))
+        regions_seen[r]["color"].append("white" if is_selected else chat['color'])
+        regions_seen[r]["symbol"].append("star" if is_selected else "circle")
+        hover = (
+            f"<b>{chat['title']}</b><br>"
+            f"Region: {chat['region']}<br>"
+            f"Messages: {chat['num_messages']}<br>"
+            f"Date: {chat['created_at'][:10]}<br>"
+            f"{'⭐ Selected for blend' if is_selected else ''}"
+            f"<br><i>{chat['preview'][:120]}...</i>"
+        )
+        regions_seen[r]["text"].append(hover)
+
+    for region_name, data in regions_seen.items():
+        fig.add_trace(go.Scatter(
+            x=data["x"], y=data["y"],
+            mode="markers",
+            name=region_name,
+            marker=dict(
+                size=data["size"],
+                color=data["color"],
+                symbol=data["symbol"],
+                opacity=0.9,
+                line=dict(width=1.5, color="rgba(255,255,255,0.3)")
+            ),
+            hovertemplate="%{text}<extra></extra>",
+            text=data["text"]
+        ))
+
+    fig.update_layout(
+        paper_bgcolor="#0a0a0f",
+        plot_bgcolor="#0a0a0f",
+        xaxis=dict(range=[0, 1000], showgrid=True, gridcolor="#1a1a2e",
+                   zeroline=False, showticklabels=False),
+        yaxis=dict(range=[0, 1000], showgrid=True, gridcolor="#1a1a2e",
+                   zeroline=False, showticklabels=False),
+        height=580,
+        margin=dict(l=0, r=0, t=10, b=0),
+        legend=dict(bgcolor="#111", bordercolor="#333",
+                    font=dict(color="#aaa", size=10), x=0.01, y=0.99),
+        hoverlabel=dict(bgcolor="#1a1a2e", font_size=12,
+                        font_family="monospace")
+    )
+    return fig, filtered
+
 # ── Landing page ──────────────────────────────────────────────────────────
 def show_landing():
     col1, col2, col3 = st.columns([1, 2, 1])
@@ -192,7 +258,7 @@ def show_landing():
         Similar topics cluster together. Watch your thinking take shape.
     </p>
 </div>
-""", height=220)
+""", height=280)
 
         # Feature cards
         components.html("""
@@ -287,6 +353,201 @@ def show_landing():
 
         st.caption("🔒 Your data stays in your session only. Nothing is stored or shared.")
 
+@_fragment
+def _blend_panel(chats):
+    st.markdown("### 🔀 Context Blender")
+
+    blends_remaining = FREE_BLEND_LIMIT - st.session_state.blend_count
+    has_user_key = bool(st.session_state.user_api_key)
+
+    if blends_remaining > 0:
+        st.success(f"✓ {blends_remaining} free blend{'s' if blends_remaining > 1 else ''} remaining")
+    elif has_user_key:
+        st.success("✓ Using your API key")
+    else:
+        st.error("Free blends used — add your API key below")
+
+    chat_lookup = {c['id']: c for c in chats}
+    all_titles = {c['id']: c['title'] for c in chats}
+
+    selected = st.multiselect(
+        "Add conversations to blend:",
+        options=list(all_titles.keys()),
+        format_func=lambda x: all_titles[x][:45],
+        default=st.session_state.selected_ids,
+        max_selections=4,
+        key="blend_selector"
+    )
+    st.session_state.selected_ids = selected
+
+    if selected:
+        st.markdown(f"**{len(selected)} selected**")
+        for sid in selected:
+            if sid in chat_lookup:
+                c = chat_lookup[sid]
+                emoji = {"Applications & Writing": "🔴",
+                         "Academics & History": "🟡",
+                         "Coding & Technical": "🔵",
+                         "AI & Career": "🟢",
+                         "Research & Science": "🟠",
+                         "Creative & Other": "🟣"}.get(c['region'], "⚪")
+                st.markdown(f"{emoji} **{c['title'][:40]}**")
+
+        st.markdown("---")
+
+        custom_prompt = st.text_area(
+            "Your question:",
+            placeholder="What would you like to explore across these conversations?",
+            height=80,
+            key="blend_prompt"
+        )
+
+        # API key input if free blends used
+        if blends_remaining <= 0 and not has_user_key:
+            st.markdown("---")
+            st.markdown("**You've used your 2 free blends.**")
+            st.caption("Add your Anthropic API key to continue. Get one free at console.anthropic.com")
+            user_key = st.text_input(
+                "Your Anthropic API key:",
+                type="password",
+                placeholder="sk-ant-..."
+            )
+            if st.button("Save API Key", use_container_width=True):
+                if user_key.startswith("sk-ant-"):
+                    st.session_state.user_api_key = user_key
+                    st.success("API key saved!")
+                    st.rerun()
+                else:
+                    st.error("That doesn't look like a valid Anthropic API key")
+
+        # Show blend button if allowed
+        can_blend = blends_remaining > 0 or has_user_key
+
+        if can_blend:
+            if st.button("🔀 Blend & Open in Claude",
+                         type="primary",
+                         use_container_width=True):
+
+                api_key = st.session_state.user_api_key or os.getenv("ANTHROPIC_API_KEY")
+
+                with st.spinner("Extracting intelligence from conversations..."):
+                    import anthropic
+                    client = anthropic.Anthropic(api_key=api_key)
+                    smart_summaries = []
+
+                    for sid in selected:
+                        if sid not in chat_lookup:
+                            continue
+                        c = chat_lookup[sid]
+                        raw_text = c.get('full_text', '')
+
+                        lines = raw_text.split('\n')
+                        human_lines = []
+                        capture = False
+                        for line in lines:
+                            if line.strip().startswith('[human]'):
+                                capture = True
+                                human_lines.append(line.replace('[human]', '').strip())
+                            elif line.strip().startswith('[assistant]'):
+                                capture = False
+                            elif capture and line.strip():
+                                human_lines.append(line.strip())
+
+                        human_text = '\n'.join(human_lines)[:4000]
+
+                        extraction_prompt = f"""Extract key intelligence from this conversation for use as context.
+
+Conversation: "{c['title']}"
+Date: {c['created_at'][:10]} | Messages: {c['num_messages']}
+
+Human messages:
+{human_text}
+
+Summarize in this format:
+
+CORE TOPIC: (one sentence)
+
+KEY GOALS: (bullet points — what was the person trying to achieve?)
+
+IMPORTANT OUTPUTS: (what was decided, written, or built?)
+
+OPEN THREADS: (unresolved questions or ideas)
+
+RELEVANT CONTEXT: (background facts about the person that emerged)
+
+Be specific. Use the person's actual words where possible."""
+
+                        response = client.messages.create(
+                            model="claude-haiku-4-5-20251001",
+                            max_tokens=500,
+                            messages=[{"role": "user", "content": extraction_prompt}]
+                        )
+                        smart_summaries.append({
+                            "title": c['title'],
+                            "date": c['created_at'][:10],
+                            "summary": response.content[0].text
+                        })
+
+                # Increment blend count only if using free quota
+                if not st.session_state.user_api_key:
+                    st.session_state.blend_count += 1
+                    new_count = st.session_state.blend_count
+                    components.html(f"""
+                    <script>
+                    localStorage.setItem('mindworld_blend_count', '{new_count}');
+                    var url = new URL(window.parent.location.href);
+                    url.searchParams.set('_bc', '{new_count}');
+                    window.parent.history.replaceState({{}}, '', url);
+                    </script>
+                    """, height=0)
+
+                context_block = ""
+                for s in smart_summaries:
+                    context_block += f"""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PAST CONVERSATION: {s['title']}
+Date: {s['date']}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{s['summary']}
+
+"""
+                user_message = custom_prompt.strip() if custom_prompt.strip() else \
+                    "Based on these past conversations, what connections, patterns, or next steps do you see?"
+
+                full_message = f"""I'm sharing context from {len(selected)} past conversations.
+
+{context_block}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MY QUESTION: {user_message}"""
+
+                encoded = urllib.parse.quote(full_message)
+                claude_url = f"https://claude.ai/new?q={encoded}"
+
+                components.html(f"""
+<style>body{{margin:0;padding:4px 0;background:#0a0a0f}}</style>
+<a href="{claude_url}" target="_blank" style="
+    display:block; background:#7c3aed; color:white;
+    text-align:center; padding:12px; border-radius:8px;
+    text-decoration:none; font-weight:bold;">
+    ✨ Open Blended Chat →
+</a>
+""", height=52)
+
+                new_remaining = FREE_BLEND_LIMIT - st.session_state.blend_count
+                if not has_user_key and new_remaining > 0:
+                    st.info(f"{new_remaining} free blend{'s' if new_remaining > 1 else ''} remaining")
+                elif not has_user_key and new_remaining <= 0:
+                    st.warning("That was your last free blend. Add your API key above to continue.")
+
+                for s in smart_summaries:
+                    with st.expander(f"📋 {s['title'][:35]}"):
+                        st.text(s['summary'])
+        else:
+            st.button("🔀 Blend & Open in Claude",
+                      disabled=True,
+                      use_container_width=True,
+                      help="Add your API key above to continue blending")
+
 # ── Main map ──────────────────────────────────────────────────────────────
 def show_map():
     chats = st.session_state.chats
@@ -333,198 +594,7 @@ def show_map():
 
     # ── Blend panel ───────────────────────────────────────────────────────
     with blend_col:
-        st.markdown("### 🔀 Context Blender")
-
-        blends_remaining = FREE_BLEND_LIMIT - st.session_state.blend_count
-        has_user_key = bool(st.session_state.user_api_key)
-
-        if blends_remaining > 0:
-            st.success(f"✓ {blends_remaining} free blend{'s' if blends_remaining > 1 else ''} remaining")
-        elif has_user_key:
-            st.success("✓ Using your API key")
-        else:
-            st.error("Free blends used — add your API key below")
-
-        chat_lookup = {c['id']: c for c in chats}
-        all_titles = {c['id']: c['title'] for c in chats}
-
-        selected = st.multiselect(
-            "Add conversations to blend:",
-            options=list(all_titles.keys()),
-            format_func=lambda x: all_titles[x][:45],
-            default=st.session_state.selected_ids,
-            max_selections=4,
-            key="blend_selector"
-        )
-        st.session_state.selected_ids = selected
-
-        if selected:
-            st.markdown(f"**{len(selected)} selected**")
-            for sid in selected:
-                if sid in chat_lookup:
-                    c = chat_lookup[sid]
-                    emoji = {"Applications & Writing": "🔴",
-                             "Academics & History": "🟡",
-                             "Coding & Technical": "🔵",
-                             "AI & Career": "🟢",
-                             "Research & Science": "🟠",
-                             "Creative & Other": "🟣"}.get(c['region'], "⚪")
-                    st.markdown(f"{emoji} **{c['title'][:40]}**")
-
-            st.markdown("---")
-
-            custom_prompt = st.text_area(
-                "Your question:",
-                placeholder="What would you like to explore across these conversations?",
-                height=80,
-                key="blend_prompt"
-            )
-
-            # API key input if free blends used
-            if blends_remaining <= 0 and not has_user_key:
-                st.markdown("---")
-                st.markdown("**You've used your 2 free blends.**")
-                st.caption("Add your Anthropic API key to continue. Get one free at console.anthropic.com")
-                user_key = st.text_input(
-                    "Your Anthropic API key:",
-                    type="password",
-                    placeholder="sk-ant-..."
-                )
-                if st.button("Save API Key", use_container_width=True):
-                    if user_key.startswith("sk-ant-"):
-                        st.session_state.user_api_key = user_key
-                        st.success("API key saved!")
-                        st.rerun()
-                    else:
-                        st.error("That doesn't look like a valid Anthropic API key")
-
-            # Show blend button if allowed
-            can_blend = blends_remaining > 0 or has_user_key
-
-            if can_blend:
-                if st.button("🔀 Blend & Open in Claude",
-                             type="primary",
-                             use_container_width=True):
-
-                    api_key = st.session_state.user_api_key or os.getenv("ANTHROPIC_API_KEY")
-
-                    with st.spinner("Extracting intelligence from conversations..."):
-                        import anthropic
-                        client = anthropic.Anthropic(api_key=api_key)
-                        smart_summaries = []
-
-                        for sid in selected:
-                            if sid not in chat_lookup:
-                                continue
-                            c = chat_lookup[sid]
-                            raw_text = c.get('full_text', '')
-
-                            lines = raw_text.split('\n')
-                            human_lines = []
-                            capture = False
-                            for line in lines:
-                                if line.strip().startswith('[human]'):
-                                    capture = True
-                                    human_lines.append(line.replace('[human]', '').strip())
-                                elif line.strip().startswith('[assistant]'):
-                                    capture = False
-                                elif capture and line.strip():
-                                    human_lines.append(line.strip())
-
-                            human_text = '\n'.join(human_lines)[:4000]
-
-                            extraction_prompt = f"""Extract key intelligence from this conversation for use as context.
-
-Conversation: "{c['title']}"
-Date: {c['created_at'][:10]} | Messages: {c['num_messages']}
-
-Human messages:
-{human_text}
-
-Summarize in this format:
-
-CORE TOPIC: (one sentence)
-
-KEY GOALS: (bullet points — what was the person trying to achieve?)
-
-IMPORTANT OUTPUTS: (what was decided, written, or built?)
-
-OPEN THREADS: (unresolved questions or ideas)
-
-RELEVANT CONTEXT: (background facts about the person that emerged)
-
-Be specific. Use the person's actual words where possible."""
-
-                            response = client.messages.create(
-                                model="claude-haiku-4-5-20251001",
-                                max_tokens=500,
-                                messages=[{"role": "user", "content": extraction_prompt}]
-                            )
-                            smart_summaries.append({
-                                "title": c['title'],
-                                "date": c['created_at'][:10],
-                                "summary": response.content[0].text
-                            })
-
-                    # Increment blend count only if using free quota
-                    if not st.session_state.user_api_key:
-                        st.session_state.blend_count += 1
-                        new_count = st.session_state.blend_count
-                        components.html(f"""
-                        <script>
-                        localStorage.setItem('mindworld_blend_count', '{new_count}');
-                        var url = new URL(window.parent.location.href);
-                        url.searchParams.set('_bc', '{new_count}');
-                        window.parent.history.replaceState({{}}, '', url);
-                        </script>
-                        """, height=0)
-
-                    context_block = ""
-                    for s in smart_summaries:
-                        context_block += f"""
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PAST CONVERSATION: {s['title']}
-Date: {s['date']}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-{s['summary']}
-
-"""
-                    user_message = custom_prompt.strip() if custom_prompt.strip() else \
-                        "Based on these past conversations, what connections, patterns, or next steps do you see?"
-
-                    full_message = f"""I'm sharing context from {len(selected)} past conversations.
-
-{context_block}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-MY QUESTION: {user_message}"""
-
-                    encoded = urllib.parse.quote(full_message)
-                    claude_url = f"https://claude.ai/new?q={encoded}"
-
-                    components.html(f"""
-<style>body{{margin:0;padding:4px 0;background:#0a0a0f}}</style>
-<a href="{claude_url}" target="_blank" style="
-    display:block; background:#7c3aed; color:white;
-    text-align:center; padding:12px; border-radius:8px;
-    text-decoration:none; font-weight:bold;">
-    ✨ Open Blended Chat →
-</a>
-""", height=52)
-
-                    new_remaining = FREE_BLEND_LIMIT - st.session_state.blend_count
-                    if not has_user_key and new_remaining > 0:
-                        st.info(f"{new_remaining} free blend{'s' if new_remaining > 1 else ''} remaining")
-                    elif not has_user_key and new_remaining <= 0:
-                        st.warning("That was your last free blend. Add your API key above to continue.")
-
-                    for s in smart_summaries:
-                        with st.expander(f"📋 {s['title'][:35]}"):
-                            st.text(s['summary'])
-            else:
-                st.button("🔀 Blend & Open in Claude",
-                          disabled=True,
-                          use_container_width=True,
-                          help="Add your API key above to continue blending")
+        _blend_panel(chats)
 
     # ── Map ───────────────────────────────────────────────────────────────
     with map_col:
@@ -535,64 +605,8 @@ MY QUESTION: {user_message}"""
              "Research & Science", "Creative & Other"]
         )
 
-        filtered = chats if region_filter == "All Regions" else \
-            [c for c in chats if c['region'] == region_filter]
-
-        fig = go.Figure()
-
-        regions_seen = {}
-        for chat in filtered:
-            r = chat['region']
-            is_selected = chat['id'] in st.session_state.selected_ids
-            if r not in regions_seen:
-                regions_seen[r] = {
-                    "x": [], "y": [], "text": [],
-                    "size": [], "color": [], "symbol": []
-                }
-            regions_seen[r]["x"].append(chat['x'])
-            regions_seen[r]["y"].append(1000 - chat['y'])
-            regions_seen[r]["size"].append(chat['size'] + (6 if is_selected else 0))
-            regions_seen[r]["color"].append("white" if is_selected else chat['color'])
-            regions_seen[r]["symbol"].append("star" if is_selected else "circle")
-            hover = (
-                f"<b>{chat['title']}</b><br>"
-                f"Region: {chat['region']}<br>"
-                f"Messages: {chat['num_messages']}<br>"
-                f"Date: {chat['created_at'][:10]}<br>"
-                f"{'⭐ Selected for blend' if is_selected else ''}"
-                f"<br><i>{chat['preview'][:120]}...</i>"
-            )
-            regions_seen[r]["text"].append(hover)
-
-        for region_name, data in regions_seen.items():
-            fig.add_trace(go.Scatter(
-                x=data["x"], y=data["y"],
-                mode="markers",
-                name=region_name,
-                marker=dict(
-                    size=data["size"],
-                    color=data["color"],
-                    symbol=data["symbol"],
-                    opacity=0.9,
-                    line=dict(width=1.5, color="rgba(255,255,255,0.3)")
-                ),
-                hovertemplate="%{text}<extra></extra>",
-                text=data["text"]
-            ))
-
-        fig.update_layout(
-            paper_bgcolor="#0a0a0f",
-            plot_bgcolor="#0a0a0f",
-            xaxis=dict(range=[0, 1000], showgrid=True, gridcolor="#1a1a2e",
-                       zeroline=False, showticklabels=False),
-            yaxis=dict(range=[0, 1000], showgrid=True, gridcolor="#1a1a2e",
-                       zeroline=False, showticklabels=False),
-            height=580,
-            margin=dict(l=0, r=0, t=10, b=0),
-            legend=dict(bgcolor="#111", bordercolor="#333",
-                        font=dict(color="#aaa", size=10), x=0.01, y=0.99),
-            hoverlabel=dict(bgcolor="#1a1a2e", font_size=12,
-                            font_family="monospace")
+        fig, filtered = _build_map_figure(
+            tuple(chats), region_filter, tuple(st.session_state.selected_ids)
         )
 
         st.plotly_chart(fig, use_container_width=True)
