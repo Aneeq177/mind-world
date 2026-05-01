@@ -212,55 +212,41 @@ def embed_and_position(df):
 
 @st.cache_data
 def get_region_and_color(chat):
-    source = chat.get('source', 'claude')
     title = chat.get('title', '').lower()
     preview = chat.get('preview', '').lower()
     content = title + ' ' + preview
-
-    if source == 'chatgpt':
-        base_colors = {
-            "Applications & Writing": "#10B981",
-            "Academics & History":    "#34D399",
-            "Coding & Technical":     "#6EE7B7",
-            "AI & Career":            "#A7F3D0",
-            "Research & Science":     "#059669",
-            "Creative & Other":       "#047857",
-        }
-    else:
-        base_colors = {
-            "Applications & Writing": "#FF4444",
-            "Academics & History":    "#FFD700",
-            "Coding & Technical":     "#00BFFF",
-            "AI & Career":            "#00FF88",
-            "Research & Science":     "#FF8C00",
-            "Creative & Other":       "#DA70D6",
-        }
 
     if any(w in content for w in ['essay', 'transfer', 'stanford', 'harvard',
                                    'uc ', 'rice', 'scholarship', 'admission',
                                    'personal statement', 'application']):
         region = "Applications & Writing"
+        color = "#FF4444"
     elif any(w in content for w in ['economic', 'gdp', 'fiscal', 'aggregate',
                                      'federalism', 'constitution', 'congress',
                                      'slavery', 'civil rights', 'history',
                                      'political', 'government']):
         region = "Academics & History"
+        color = "#FFD700"
     elif any(w in content for w in ['c++', 'java', 'python', 'code', 'debug',
                                      'function', 'algorithm', 'programming',
                                      'compile', 'syntax']):
         region = "Coding & Technical"
+        color = "#00BFFF"
     elif any(w in content for w in ['ai', 'agent', 'crew', 'career', 'internship',
                                      'job', 'resume', 'tech', 'mvp', 'startup',
                                      'machine learning', 'neural', 'model', 'llm']):
         region = "AI & Career"
+        color = "#00FF88"
     elif any(w in content for w in ['research', 'physics', 'data', 'analysis',
                                      'science', 'experiment', 'study', 'paper',
                                      'methodology']):
         region = "Research & Science"
+        color = "#FF8C00"
     else:
         region = "Creative & Other"
+        color = "#DA70D6"
 
-    return region, base_colors[region]
+    return region, color
 
 # ── Caching helpers ───────────────────────────────────────────────────────
 _fragment = getattr(st, 'fragment', lambda f: f)
@@ -289,7 +275,8 @@ def _build_map_figure(chats, region_filter, source_filter, selected_ids):
         regions_seen[r]["y"].append(1000 - chat['y'])
         regions_seen[r]["size"].append(chat['size'] + (6 if is_selected else 0))
         regions_seen[r]["color"].append("white" if is_selected else chat['color'])
-        regions_seen[r]["symbol"].append("star" if is_selected else "circle")
+        base_symbol = "circle" if chat.get('source', 'claude') == 'claude' else "diamond"
+        regions_seen[r]["symbol"].append("star" if is_selected else base_symbol)
         source_emoji = "🟣" if chat.get('source') == 'claude' else "🟢"
         hover = (
             f"<b>{chat['title']}</b><br>"
@@ -794,8 +781,12 @@ def show_map():
         )
 
         st.plotly_chart(fig, use_container_width=True)
-        st.caption(f"Showing {len(filtered)} of {len(chats)} conversations · "
-                   f"Hover for details · Stars = selected for blending")
+        st.caption(
+            f"Showing {len(filtered)} of {len(chats)} conversations · "
+            f"● Circle = Claude · ◆ Diamond = ChatGPT · "
+            f"Color = topic · Star = selected for blending · "
+            f"Scroll to zoom · Drag to pan"
+        )
 
         # ── Time slider ───────────────────────────────────────────────────
         st.markdown("---")
@@ -874,7 +865,7 @@ def show_map():
                 if r not in regions_time:
                     regions_time[r] = {
                         "x": [], "y": [], "text": [],
-                        "size": [], "color": [], "opacity": []
+                        "size": [], "color": [], "opacity": [], "symbol": []
                     }
                 regions_time[r]["x"].append(chat['x'])
                 regions_time[r]["y"].append(1000 - chat['y'])
@@ -882,6 +873,9 @@ def show_map():
                     chat['size'] + (6 if is_new else 0))
                 regions_time[r]["color"].append(chat['color'])
                 regions_time[r]["opacity"].append(1.0 if is_new else 0.3)
+                regions_time[r]["symbol"].append(
+                    "circle" if chat.get('source', 'claude') == 'claude' else "diamond"
+                )
                 label = "🆕 NEW" if is_new else ""
                 regions_time[r]["text"].append(
                     f"<b>{chat['title']}</b> {label}<br>"
@@ -897,6 +891,7 @@ def show_map():
                     marker=dict(
                         size=data["size"],
                         color=data["color"],
+                        symbol=data["symbol"],
                         opacity=data["opacity"],
                         line=dict(width=1, color="rgba(255,255,255,0.2)")
                     ),
