@@ -647,7 +647,7 @@ def _blend_panel(chats):
         can_blend = blends_remaining > 0 or has_user_key
 
         if can_blend:
-            if st.button("🔀 Blend & Open in Claude",
+            if st.button("🔀 Blend Conversations",
                          type="primary",
                          use_container_width=True):
 
