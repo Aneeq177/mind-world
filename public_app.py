@@ -748,8 +748,9 @@ MY QUESTION: {user_message}"""
                 chatgpt_url = f"https://chatgpt.com/?q={encoded}"
 
                 st.markdown("**Open blended context in:**")
-                col_claude, col_gpt = st.columns(2)
-                with col_claude:
+                btn_col1, btn_col2 = st.columns(2)
+
+                with btn_col1:
                     st.markdown(f"""
 <a href="{claude_url}" target="_blank" style="
     display:block; background:#7c3aed; color:white;
@@ -758,7 +759,8 @@ MY QUESTION: {user_message}"""
     🟣 Claude →
 </a>
 """, unsafe_allow_html=True)
-                with col_gpt:
+
+                with btn_col2:
                     st.markdown(f"""
 <a href="{chatgpt_url}" target="_blank" style="
     display:block; background:#10A37F; color:white;
@@ -876,29 +878,24 @@ def show_map():
             st.session_state.get('selected_chat_id')
         )
 
-        event = st.plotly_chart(
-            fig,
-            use_container_width=True,
-            on_select="rerun",
-            selection_mode="points",
-            key="main_map"
+        st.plotly_chart(fig, use_container_width=True, key="main_map")
+
+        # Use a selectbox as a workaround for clicking dots
+        # Build a list of conversation titles for the selector
+        chat_titles = {c['id']: f"{'🟣' if c.get('source') == 'claude' else '🟢'} {c['title'][:60]}"
+                       for c in filtered}
+
+        st.markdown("**🔍 Select a conversation to inspect:**")
+        selected_option = st.selectbox(
+            "Or pick from list:",
+            options=["None"] + list(chat_titles.keys()),
+            format_func=lambda x: "Select a conversation..." if x == "None" else chat_titles[x],
+            key="dot_selector",
+            label_visibility="collapsed"
         )
 
-        # Handle click selection safely
-        try:
-            points = event.selection.points if hasattr(event, 'selection') \
-                and hasattr(event.selection, 'points') else []
-
-            if points:
-                clicked_x = points[0].x
-                clicked_y = points[0].y
-                for chat in filtered:
-                    if (abs(chat['x'] - clicked_x) < 0.1 and
-                            abs((1000 - chat['y']) - clicked_y) < 0.1):
-                        st.session_state.selected_chat_id = chat['id']
-                        break
-        except (AttributeError, TypeError, IndexError):
-            pass
+        if selected_option != "None":
+            st.session_state.selected_chat_id = selected_option
 
         # Detail panel for selected conversation
         selected_id = st.session_state.get('selected_chat_id')
