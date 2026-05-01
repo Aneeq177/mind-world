@@ -549,8 +549,7 @@ def show_landing():
             st.markdown("**Enter your email to generate your map:**")
             st.markdown(
                 "<p style='color:#888;font-size:0.8rem'>"
-                "We'll notify you when new features launch. "
-                "No spam ever.</p>",
+                "Required to generate your map.</p>",
                 unsafe_allow_html=True
             )
 
@@ -560,24 +559,21 @@ def show_landing():
                 label_visibility="collapsed"
             )
 
-            skip_email = st.checkbox("Skip — generate without email")
-
             st.markdown("")
 
             generate_clicked = st.button(
                 "🌍 Generate My Map",
                 type="primary",
                 use_container_width=True,
-                disabled=(not email_input and not skip_email)
+                disabled=(not email_input)
             )
         else:
             generate_clicked = False
             email_input = ""
-            skip_email = False
 
         if generate_clicked:
             # Save email if provided
-            if email_input and not st.session_state.email_captured:
+            if not st.session_state.email_captured:
                 if "@" in email_input and "." in email_input:
                     save_email_to_sheets(
                         email=email_input,
@@ -643,7 +639,7 @@ def show_landing():
                     st.session_state.chats = chats
 
                     # Update sheets with actual conversation count
-                    if st.session_state.get('user_email') and not skip_email:
+                    if st.session_state.get('user_email'):
                         save_email_to_sheets(
                             email=st.session_state.get('user_email', ''),
                             source=st.session_state.get('chat_source', 'unknown'),
