@@ -56,6 +56,8 @@ if 'selected_ids' not in st.session_state:
     st.session_state.selected_ids = []
 if 'chat_source' not in st.session_state:
     st.session_state.chat_source = 'both'
+if 'selected_chat_id' not in st.session_state:
+    st.session_state.selected_chat_id = None
 
 components.html("""
 <script>
@@ -287,7 +289,7 @@ Respond with ONLY the label, nothing else. No punctuation."""
 _fragment = getattr(st, 'fragment', lambda f: f)
 
 @st.cache_data
-def _build_map_figure(chats, region_filter, source_filter, selected_ids):
+def _build_map_figure(chats, region_filter, source_filter, selected_ids, focused_id=None):
     filtered = chats if region_filter == "All Topics" else \
         [c for c in chats if c['region'] == region_filter]
 
@@ -301,6 +303,7 @@ def _build_map_figure(chats, region_filter, source_filter, selected_ids):
     for chat in filtered:
         r = chat['region']
         is_selected = chat['id'] in selected_ids
+        is_focused = chat['id'] == focused_id
         if r not in regions_seen:
             regions_seen[r] = {
                 "x": [], "y": [], "text": [],
@@ -308,10 +311,17 @@ def _build_map_figure(chats, region_filter, source_filter, selected_ids):
             }
         regions_seen[r]["x"].append(chat['x'])
         regions_seen[r]["y"].append(1000 - chat['y'])
-        regions_seen[r]["size"].append(chat['size'] + (6 if is_selected else 0))
-        regions_seen[r]["color"].append("white" if is_selected else chat['color'])
+        size = chat['size']
+        if is_selected:
+            size += 6
+        if is_focused:
+            size += 4
+        regions_seen[r]["size"].append(size)
+        color = "white" if is_selected else chat['color']
+        regions_seen[r]["color"].append(color)
         base_symbol = "circle" if chat.get('source', 'claude') == 'claude' else "diamond"
-        regions_seen[r]["symbol"].append("star" if is_selected else base_symbol)
+        symbol = "star" if is_selected else base_symbol
+        regions_seen[r]["symbol"].append(symbol)
         source_emoji = "🟣" if chat.get('source') == 'claude' else "🟢"
         hover = (
             f"<b>{chat['title']}</b><br>"
@@ -861,15 +871,87 @@ def show_map():
         )
 
         fig, filtered = _build_map_figure(
-            tuple(chats), region_filter, source_filter, tuple(st.session_state.selected_ids)
+            tuple(chats), region_filter, source_filter,
+            tuple(st.session_state.selected_ids),
+            st.session_state.get('selected_chat_id')
         )
 
-        st.plotly_chart(fig, use_container_width=True)
+        event = st.plotly_chart(
+            fig,
+            use_container_width=True,
+            on_select="rerun",
+            selection_mode="points",
+            key="main_map"
+        )
+
+        # Handle click selection
+        if event and event.selection and event.selection.points:
+            point = event.selection.points[0]
+            clicked_x = point.x
+            clicked_y = point.y
+
+            for chat in filtered:
+                if (abs(chat['x'] - clicked_x) < 0.1 and
+                        abs((1000 - chat['y']) - clicked_y) < 0.1):
+                    st.session_state.selected_chat_id = chat['id']
+                    break
+
+        # Detail panel for selected conversation
+        selected_id = st.session_state.get('selected_chat_id')
+        if selected_id:
+            selected_chat = next(
+                (c for c in chats if c['id'] == selected_id), None
+            )
+            if selected_chat:
+                source_emoji = "🟣" if selected_chat.get('source') == 'claude' else "🟢"
+
+                st.markdown("---")
+                st.markdown(f"### {source_emoji} {selected_chat['title']}")
+
+                detail_col1, detail_col2, detail_col3 = st.columns(3)
+                detail_col1.metric("Messages", selected_chat['num_messages'])
+                detail_col2.metric("Topic", selected_chat['region'])
+                detail_col3.metric(
+                    "Date", selected_chat['created_at'][:10]
+                )
+
+                st.markdown(
+                    f"*{selected_chat['preview'][:400]}...*"
+                )
+
+                btn_col1, btn_col2, btn_col3 = st.columns(3)
+
+                with btn_col1:
+                    if selected_chat.get('source') == 'claude':
+                        st.markdown(
+                            f"[🟣 Open in Claude ↗]"
+                            f"(https://claude.ai/chat/{selected_chat['id']})"
+                        )
+                    else:
+                        st.markdown("🟢 ChatGPT conversation")
+
+                with btn_col2:
+                    if st.button(
+                        "➕ Add to Blend",
+                        key=f"add_blend_{selected_id}"
+                    ):
+                        if selected_id not in st.session_state.selected_ids:
+                            if len(st.session_state.selected_ids) < 4:
+                                st.session_state.selected_ids.append(selected_id)
+                                st.rerun()
+                            else:
+                                st.warning("Max 4 conversations in a blend")
+
+                with btn_col3:
+                    if st.button("✕ Close", key="close_detail"):
+                        st.session_state.selected_chat_id = None
+                        st.rerun()
+
         st.caption(
             f"Showing {len(filtered)} of {len(chats)} conversations · "
             f"● Circle = Claude · ◆ Diamond = ChatGPT · "
-            f"Color = topic · Star = selected for blending · "
-            f"Scroll to zoom · Drag to pan"
+            f"Color = topic · ★ Star = selected for blending · "
+            f"Click any dot to see details · Scroll to zoom · Drag to pan"
         )
 
         # ── Time slider ───────────────────────────────────────────────────
