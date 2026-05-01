@@ -58,6 +58,10 @@ if 'chat_source' not in st.session_state:
     st.session_state.chat_source = 'both'
 if 'selected_chat_id' not in st.session_state:
     st.session_state.selected_chat_id = None
+if 'email_captured' not in st.session_state:
+    st.session_state.email_captured = False
+if 'user_email' not in st.session_state:
+    st.session_state.user_email = ''
 
 components.html("""
 <script>
@@ -76,6 +80,37 @@ components.html("""
 FREE_BLEND_LIMIT = 2
 
 # ── Processing pipeline ───────────────────────────────────────────────────
+def save_email_to_sheets(email, source, num_conversations):
+    import gspread
+    from google.oauth2.service_account import Credentials
+
+    try:
+        creds_json = os.getenv("GOOGLE_CREDENTIALS")
+        sheet_id = os.getenv("GOOGLE_SHEETS_ID")
+
+        if not creds_json or not sheet_id:
+            return False
+
+        creds_dict = json.loads(creds_json)
+        scopes = [
+            "https://spreadsheets.google.com/feeds",
+            "https://www.googleapis.com/auth/drive"
+        ]
+        creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+        client = gspread.authorize(creds)
+        sheet = client.open_by_key(sheet_id).sheet1
+        sheet.append_row([
+            email,
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            source,
+            num_conversations
+        ])
+        return True
+
+    except Exception as e:
+        print(f"Sheets error: {e}")
+        return False
+
 def parse_conversations(json_data):
     convos = json_data if isinstance(json_data, list) else json_data.get('conversations', [])
     rows = []
@@ -509,18 +544,52 @@ def show_landing():
             if chatgpt_file:
                 st.markdown("✓ ChatGPT file ready")
 
+            st.markdown("---")
+
+            st.markdown("**Enter your email to generate your map:**")
+            st.markdown(
+                "<p style='color:#888;font-size:0.8rem'>"
+                "We'll notify you when new features launch. "
+                "No spam ever.</p>",
+                unsafe_allow_html=True
+            )
+
+            email_input = st.text_input(
+                "Email address",
+                placeholder="you@example.com",
+                label_visibility="collapsed"
+            )
+
+            skip_email = st.checkbox("Skip — generate without email")
+
             st.markdown("")
 
             generate_clicked = st.button(
                 "🌍 Generate My Map",
                 type="primary",
                 use_container_width=True,
-                help="Upload one or both files, then click to generate your map"
+                disabled=(not email_input and not skip_email)
             )
         else:
             generate_clicked = False
+            email_input = ""
+            skip_email = False
 
         if generate_clicked:
+            # Save email if provided
+            if email_input and not st.session_state.email_captured:
+                if "@" in email_input and "." in email_input:
+                    save_email_to_sheets(
+                        email=email_input,
+                        source="landing_page",
+                        num_conversations=0
+                    )
+                    st.session_state.email_captured = True
+                    st.session_state.user_email = email_input
+                else:
+                    st.error("Please enter a valid email address.")
+                    st.stop()
+
             with st.spinner("Reading your conversations..."):
                 try:
                     import io
@@ -572,6 +641,15 @@ def show_landing():
                         chat['size'] = max(8, min(25, chat['num_messages'] // 4 + 6))
 
                     st.session_state.chats = chats
+
+                    # Update sheets with actual conversation count
+                    if st.session_state.get('user_email') and not skip_email:
+                        save_email_to_sheets(
+                            email=st.session_state.get('user_email', ''),
+                            source=st.session_state.get('chat_source', 'unknown'),
+                            num_conversations=len(chats)
+                        )
+
                     st.rerun()
 
                 except Exception as e:

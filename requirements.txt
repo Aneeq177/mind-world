@@ -7,5 +7,7 @@ scikit-learn
 python-dotenv
 plotly
 anthropic
+gspread
+google-auth
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch==2.5.1+cpu
