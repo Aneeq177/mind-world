@@ -305,6 +305,40 @@ def _build_map_figure(chats, region_filter, source_filter, selected_ids):
             text=data["text"]
         ))
 
+    region_centers = {}
+    for chat in filtered:
+        r = chat['region']
+        if r not in region_centers:
+            region_centers[r] = {'x': [], 'y': []}
+        region_centers[r]['x'].append(chat['x'])
+        region_centers[r]['y'].append(1000 - chat['y'])
+
+    region_label_colors = {
+        "Applications & Writing": "#FF4444",
+        "Academics & History":    "#FFD700",
+        "Coding & Technical":     "#00BFFF",
+        "AI & Career":            "#00FF88",
+        "Research & Science":     "#FF8C00",
+        "Creative & Other":       "#DA70D6",
+    }
+
+    for region_name, coords in region_centers.items():
+        if len(coords['x']) < 2:
+            continue
+        center_x = sum(coords['x']) / len(coords['x'])
+        center_y = sum(coords['y']) / len(coords['y'])
+        color = region_label_colors.get(region_name, "#ffffff")
+        fig.add_annotation(
+            x=center_x,
+            y=center_y,
+            text=region_name.upper(),
+            showarrow=False,
+            font=dict(size=10, color=color, family="monospace"),
+            bgcolor="rgba(0,0,0,0.5)",
+            borderpad=3,
+            opacity=0.85
+        )
+
     fig.update_layout(
         paper_bgcolor="#0a0a0f",
         plot_bgcolor="#0a0a0f",
@@ -435,6 +469,23 @@ def show_landing():
         any_uploaded = claude_file is not None or chatgpt_file is not None
 
         if any_uploaded:
+            if claude_file:
+                st.markdown("✓ Claude file ready")
+            if chatgpt_file:
+                st.markdown("✓ ChatGPT file ready")
+
+            st.markdown("")
+
+            generate_clicked = st.button(
+                "🌍 Generate My Map",
+                type="primary",
+                use_container_width=True,
+                help="Upload one or both files, then click to generate your map"
+            )
+        else:
+            generate_clicked = False
+
+        if generate_clicked:
             with st.spinner("Reading your conversations..."):
                 try:
                     import io
@@ -662,16 +713,28 @@ MY QUESTION: {user_message}"""
 
                 encoded = urllib.parse.quote(full_message)
                 claude_url = f"https://claude.ai/new?q={encoded}"
+                chatgpt_url = f"https://chatgpt.com/?q={encoded}"
 
-                components.html(f"""
-<style>body{{margin:0;padding:4px 0;background:#0a0a0f}}</style>
+                st.markdown("**Open blended context in:**")
+                col_claude, col_gpt = st.columns(2)
+                with col_claude:
+                    st.markdown(f"""
 <a href="{claude_url}" target="_blank" style="
     display:block; background:#7c3aed; color:white;
-    text-align:center; padding:12px; border-radius:8px;
+    text-align:center; padding:10px; border-radius:8px;
     text-decoration:none; font-weight:bold;">
-    ✨ Open Blended Chat →
+    🟣 Claude →
 </a>
-""", height=52)
+""", unsafe_allow_html=True)
+                with col_gpt:
+                    st.markdown(f"""
+<a href="{chatgpt_url}" target="_blank" style="
+    display:block; background:#10A37F; color:white;
+    text-align:center; padding:10px; border-radius:8px;
+    text-decoration:none; font-weight:bold;">
+    🟢 ChatGPT →
+</a>
+""", unsafe_allow_html=True)
 
                 new_remaining = FREE_BLEND_LIMIT - st.session_state.blend_count
                 if not has_user_key and new_remaining > 0:
