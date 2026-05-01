@@ -55,7 +55,7 @@ if 'user_api_key' not in st.session_state:
 if 'selected_ids' not in st.session_state:
     st.session_state.selected_ids = []
 if 'chat_source' not in st.session_state:
-    st.session_state.chat_source = 'claude'
+    st.session_state.chat_source = 'both'
 
 components.html("""
 <script>
@@ -162,19 +162,6 @@ def parse_chatgpt_zip(zip_bytes):
         df = df.sort_values('created_at').reset_index(drop=True)
     return df, 'chatgpt'
 
-def detect_and_parse(uploaded_file):
-    import zipfile
-    import io
-
-    filename = uploaded_file.name.lower()
-    raw_bytes = uploaded_file.read()
-
-    if filename.endswith('.zip') or zipfile.is_zipfile(io.BytesIO(raw_bytes)):
-        return parse_chatgpt_zip(io.BytesIO(raw_bytes))
-
-    data = json.loads(raw_bytes.decode('utf-8-sig', errors='replace'))
-    return parse_conversations(data), 'claude'
-
 def embed_and_position(df):
     from sentence_transformers import SentenceTransformer
     import umap
@@ -218,43 +205,75 @@ def embed_and_position(df):
             'x': float(coords_norm[i, 0]),
             'y': float(coords_norm[i, 1]),
             'preview': str(row['full_text'])[:300],
-            'full_text': str(row['full_text'])
+            'full_text': str(row['full_text']),
+            'source': str(row.get('source', 'claude'))
         })
     return result
 
 @st.cache_data
 def get_region_and_color(chat):
-    title = chat['title'].lower()
+    source = chat.get('source', 'claude')
+    title = chat.get('title', '').lower()
     preview = chat.get('preview', '').lower()
     content = title + ' ' + preview
 
-    if any(w in content for w in ['essay', 'transfer', 'stanford', 'harvard', 'uc ', 'rice',
-                                   'scholarship', 'admission', 'personal statement', 'application']):
-        return "Applications & Writing", "#FF4444"
-    elif any(w in content for w in ['economic', 'gdp', 'fiscal', 'aggregate', 'federalism',
-                                    'constitution', 'congress', 'slavery', 'civil rights',
-                                    'history', 'political', 'government']):
-        return "Academics & History", "#FFD700"
-    elif any(w in content for w in ['c++', 'java', 'python', 'code', 'debug', 'function',
-                                    'algorithm', 'programming', 'compile', 'syntax']):
-        return "Coding & Technical", "#00BFFF"
-    elif any(w in content for w in ['ai', 'agent', 'crew', 'career', 'internship', 'job',
-                                    'resume', 'tech', 'mvp', 'startup', 'machine learning',
-                                    'neural', 'model', 'llm']):
-        return "AI & Career", "#00FF88"
-    elif any(w in content for w in ['research', 'physics', 'data', 'analysis', 'science',
-                                    'experiment', 'study', 'paper', 'methodology']):
-        return "Research & Science", "#FF8C00"
+    if source == 'chatgpt':
+        base_colors = {
+            "Applications & Writing": "#10B981",
+            "Academics & History":    "#34D399",
+            "Coding & Technical":     "#6EE7B7",
+            "AI & Career":            "#A7F3D0",
+            "Research & Science":     "#059669",
+            "Creative & Other":       "#047857",
+        }
     else:
-        return "Creative & Other", "#DA70D6"
+        base_colors = {
+            "Applications & Writing": "#FF4444",
+            "Academics & History":    "#FFD700",
+            "Coding & Technical":     "#00BFFF",
+            "AI & Career":            "#00FF88",
+            "Research & Science":     "#FF8C00",
+            "Creative & Other":       "#DA70D6",
+        }
+
+    if any(w in content for w in ['essay', 'transfer', 'stanford', 'harvard',
+                                   'uc ', 'rice', 'scholarship', 'admission',
+                                   'personal statement', 'application']):
+        region = "Applications & Writing"
+    elif any(w in content for w in ['economic', 'gdp', 'fiscal', 'aggregate',
+                                     'federalism', 'constitution', 'congress',
+                                     'slavery', 'civil rights', 'history',
+                                     'political', 'government']):
+        region = "Academics & History"
+    elif any(w in content for w in ['c++', 'java', 'python', 'code', 'debug',
+                                     'function', 'algorithm', 'programming',
+                                     'compile', 'syntax']):
+        region = "Coding & Technical"
+    elif any(w in content for w in ['ai', 'agent', 'crew', 'career', 'internship',
+                                     'job', 'resume', 'tech', 'mvp', 'startup',
+                                     'machine learning', 'neural', 'model', 'llm']):
+        region = "AI & Career"
+    elif any(w in content for w in ['research', 'physics', 'data', 'analysis',
+                                     'science', 'experiment', 'study', 'paper',
+                                     'methodology']):
+        region = "Research & Science"
+    else:
+        region = "Creative & Other"
+
+    return region, base_colors[region]
 
 # ── Caching helpers ───────────────────────────────────────────────────────
 _fragment = getattr(st, 'fragment', lambda f: f)
 
 @st.cache_data
-def _build_map_figure(chats, region_filter, selected_ids):
+def _build_map_figure(chats, region_filter, source_filter, selected_ids):
     filtered = chats if region_filter == "All Regions" else \
         [c for c in chats if c['region'] == region_filter]
+
+    if source_filter == "Claude only":
+        filtered = [c for c in filtered if c.get('source') == 'claude']
+    elif source_filter == "ChatGPT only":
+        filtered = [c for c in filtered if c.get('source') == 'chatgpt']
 
     fig = go.Figure()
     regions_seen = {}
@@ -271,8 +290,10 @@ def _build_map_figure(chats, region_filter, selected_ids):
         regions_seen[r]["size"].append(chat['size'] + (6 if is_selected else 0))
         regions_seen[r]["color"].append("white" if is_selected else chat['color'])
         regions_seen[r]["symbol"].append("star" if is_selected else "circle")
+        source_emoji = "🟣" if chat.get('source') == 'claude' else "🟢"
         hover = (
             f"<b>{chat['title']}</b><br>"
+            f"{source_emoji} {chat.get('source', 'claude').upper()}<br>"
             f"Region: {chat['region']}<br>"
             f"Messages: {chat['num_messages']}<br>"
             f"Date: {chat['created_at'][:10]}<br>"
@@ -325,7 +346,7 @@ def show_landing():
         Mind World
     </h1>
     <p style='color:#888; font-size:1.1rem; margin-bottom:32px; line-height:1.6'>
-        Turn your entire Claude conversation history into a navigable map.<br>
+        Map your entire AI conversation history across Claude and ChatGPT.<br>
         Similar topics cluster together. Watch your thinking take shape.
     </p>
 </div>
@@ -375,10 +396,10 @@ def show_landing():
     <div style='color:#58a6ff; font-weight:600; margin-bottom:12px; font-size:0.88rem'>
         📥 HOW TO GET YOUR EXPORT
     </div>
-    <div style='display:flex; gap:20px'>
+    <div style='display:flex; gap:20px; margin-bottom:12px'>
         <div style='flex:1'>
             <div style='color:#7C3AED; font-weight:600; font-size:0.82rem; margin-bottom:6px'>
-                Claude
+                🟣 Claude
             </div>
             <div style='color:#888; font-size:0.82rem; line-height:1.9'>
                 1. Go to <span style='color:white'>claude.ai</span><br>
@@ -389,8 +410,8 @@ def show_landing():
         </div>
         <div style='width:1px; background:#222'></div>
         <div style='flex:1'>
-            <div style='color:#D97706; font-weight:600; font-size:0.82rem; margin-bottom:6px'>
-                ChatGPT
+            <div style='color:#10B981; font-weight:600; font-size:0.82rem; margin-bottom:6px'>
+                🟢 ChatGPT
             </div>
             <div style='color:#888; font-size:0.82rem; line-height:1.9'>
                 1. Go to <span style='color:white'>chatgpt.com</span><br>
@@ -400,30 +421,73 @@ def show_landing():
             </div>
         </div>
     </div>
+    <div style='color:#555; font-size:0.78rem; border-top:1px solid #1e2433;
+                padding-top:10px; text-align:center'>
+        You can upload one or both — they will appear on the same map.
+    </div>
 </div>
-""", height=230)
+""", height=260)
 
-        # File uploader
-        uploaded = st.file_uploader(
-            "Drop your conversations file here",
-            type=['json', 'zip'],
-            help="Claude: upload conversations.json | ChatGPT: upload the ZIP file from your export"
-        )
+        # File uploaders
+        st.markdown("**Upload your conversation exports:**")
 
-        if uploaded:
+        col_a, col_b = st.columns(2)
+        with col_a:
+            claude_file = st.file_uploader(
+                "🟣 Claude export",
+                type=['json'],
+                help="Upload conversations.json from your Claude export"
+            )
+        with col_b:
+            chatgpt_file = st.file_uploader(
+                "🟢 ChatGPT export",
+                type=['zip'],
+                help="Upload the ZIP file directly from your ChatGPT export"
+            )
+
+        any_uploaded = claude_file is not None or chatgpt_file is not None
+
+        if any_uploaded:
             with st.spinner("Reading your conversations..."):
                 try:
-                    df, source = detect_and_parse(uploaded)
-                    st.session_state.chat_source = source
+                    import io
+                    all_dfs = []
 
-                    if len(df) == 0:
-                        st.error("No conversations found. Make sure you're uploading the correct export file.")
+                    if claude_file is not None:
+                        data = json.loads(
+                            claude_file.read().decode('utf-8-sig', errors='replace')
+                        )
+                        df_claude = parse_conversations(data)
+                        df_claude['source'] = 'claude'
+                        all_dfs.append(df_claude)
+                        st.success(f"✓ Claude: {len(df_claude)} conversations found")
+
+                    if chatgpt_file is not None:
+                        df_chatgpt, _ = parse_chatgpt_zip(io.BytesIO(chatgpt_file.read()))
+                        df_chatgpt['source'] = 'chatgpt'
+                        all_dfs.append(df_chatgpt)
+                        st.success(f"✓ ChatGPT: {len(df_chatgpt)} conversations found")
+
+                    if not all_dfs:
+                        st.error("No conversations found in the uploaded files.")
                         return
 
-                    platform = "Claude" if source == "claude" else "ChatGPT"
-                    st.success(f"Found {len(df)} {platform} conversations. Generating your world...")
+                    df = pd.concat(all_dfs, ignore_index=True)
 
-                    with st.spinner(f"Embedding {len(df)} conversations... (~30 seconds)"):
+                    if len(df) == 0:
+                        st.error("No conversations found.")
+                        return
+
+                    if claude_file and chatgpt_file:
+                        st.session_state.chat_source = 'both'
+                    elif claude_file:
+                        st.session_state.chat_source = 'claude'
+                    else:
+                        st.session_state.chat_source = 'chatgpt'
+
+                    st.info(f"Embedding {len(df)} total conversations... (~30-60 seconds)")
+
+                    with st.spinner("Generating your unified map..."):
                         chats = embed_and_position(df)
 
                     for chat in chats:
@@ -439,7 +503,6 @@ def show_landing():
                     import traceback
                     st.error(f"Something went wrong: {str(e)}")
                     st.code(traceback.format_exc())
-                    st.info("Claude: upload conversations.json from your export ZIP. ChatGPT: upload the ZIP file directly.")
 
         st.caption("🔒 Your data stays in your session only. Nothing is stored or shared.")
 
@@ -645,16 +708,29 @@ def show_map():
     # Header
     _total_msgs = sum(c['num_messages'] for c in chats)
     _total_chars_k = sum(c['char_count'] for c in chats) // 1000
-    source_label = "Claude" if st.session_state.get('chat_source') == 'claude' else "ChatGPT"
-    source_color = "#7C3AED" if source_label == "Claude" else "#D97706"
+    claude_count = sum(1 for c in chats if c.get('source') == 'claude')
+    chatgpt_count = sum(1 for c in chats if c.get('source') == 'chatgpt')
+    _chat_source = st.session_state.get('chat_source', 'both')
+    if _chat_source == 'both':
+        source_badge = (
+            "<span style='background:#7C3AED; color:white; font-size:0.7rem;"
+            " padding:2px 8px; border-radius:10px; margin-left:8px'>🟣 Claude</span>"
+            "<span style='background:#059669; color:white; font-size:0.7rem;"
+            " padding:2px 8px; border-radius:10px; margin-left:4px'>🟢 ChatGPT</span>"
+        )
+    elif _chat_source == 'claude':
+        source_badge = ("<span style='background:#7C3AED; color:white; font-size:0.7rem;"
+                        " padding:2px 8px; border-radius:10px; margin-left:8px'>Claude</span>")
+    else:
+        source_badge = ("<span style='background:#059669; color:white; font-size:0.7rem;"
+                        " padding:2px 8px; border-radius:10px; margin-left:8px'>ChatGPT</span>")
     components.html(f"""
 <style>body{{margin:0;background:#0a0a0f;font-family:sans-serif}}</style>
 <div style='display:flex; align-items:center; justify-content:space-between;
      padding:8px 4px; border-bottom:1px solid #222; margin-bottom:8px'>
     <div>
         <span style='font-size:1.4rem; font-weight:bold; color:white'>🌍 Mind World</span>
-        <span style='background:{source_color}; color:white; font-size:0.7rem;
-            padding:2px 8px; border-radius:10px; margin-left:8px'>{source_label}</span>
+        {source_badge}
         <span style='color:#555; font-size:0.85rem; margin-left:12px'>
             Your conversations mapped by meaning
         </span>
@@ -672,6 +748,14 @@ def show_map():
             <div style='font-size:1.2rem; font-weight:bold; color:white'>{_total_chars_k}K</div>
             <div style='font-size:0.7rem; color:#555'>characters</div>
         </div>
+        <div style='text-align:center'>
+            <div style='font-size:1.2rem; font-weight:bold; color:#DA70D6'>{claude_count}</div>
+            <div style='font-size:0.7rem; color:#555'>claude chats</div>
+        </div>
+        <div style='text-align:center'>
+            <div style='font-size:1.2rem; font-weight:bold; color:#10B981'>{chatgpt_count}</div>
+            <div style='font-size:0.7rem; color:#555'>chatgpt chats</div>
+        </div>
     </div>
 </div>
 """, height=65)
@@ -681,7 +765,7 @@ def show_map():
         st.session_state.chats = None
         st.session_state.blend_count = 0
         st.session_state.selected_ids = []
-        st.session_state.chat_source = 'claude'
+        st.session_state.chat_source = 'both'
         st.rerun()
 
     # Layout
@@ -700,8 +784,13 @@ def show_map():
              "Research & Science", "Creative & Other"]
         )
 
+        source_filter = st.selectbox(
+            "🤖 Filter by platform",
+            ["All Platforms", "Claude only", "ChatGPT only"]
+        )
+
         fig, filtered = _build_map_figure(
-            tuple(chats), region_filter, tuple(st.session_state.selected_ids)
+            tuple(chats), region_filter, source_filter, tuple(st.session_state.selected_ids)
         )
 
         st.plotly_chart(fig, use_container_width=True)
