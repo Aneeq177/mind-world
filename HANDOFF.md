@@ -1,5 +1,5 @@
 # Mind World — Handoff Document
-Last updated: 2026-04-30
+Last updated: 2026-04-30 (click-to-detail panel added)
 
 This document captures nuanced decisions, constraints, and architecture details
 that would be lost on context compaction. Update it whenever meaningful changes are made.
@@ -47,7 +47,7 @@ that would be lost on context compaction. Update it whenever meaningful changes 
 | `parse_chatgpt_zip(zip_bytes)` | ~line 110 | ChatGPT ZIP → (DataFrame, 'chatgpt') |
 | `embed_and_position(df)` | ~line 165 | Embed + UMAP + HDBSCAN → list of dicts |
 | `label_clusters(chats, api_key)` | ~line 220 | Claude API → region/color on each chat |
-| `_build_map_figure(chats, region_filter, source_filter, selected_ids)` | ~line 285 | Cached Plotly figure builder |
+| `_build_map_figure(chats, region_filter, source_filter, selected_ids, focused_id)` | ~line 285 | Cached Plotly figure builder; `focused_id` enlarges the clicked dot by +4px |
 | `_blend_panel(chats)` | ~line 550 | @_fragment — Context Blender UI |
 | `show_landing()` | ~line 358 | Upload page |
 | `show_map()` | ~line 730 | Main map page |
@@ -91,6 +91,7 @@ Both links pre-populate the same blended context via URL-encoded query param.
 - `st.fragment` — does NOT exist (use `getattr` fallback)
 - `components.html()` — works since Streamlit 0.63, is the ONLY reliable HTML renderer
 - HF appends `streamlit==1.31.0` to pip install; do NOT pin streamlit in requirements.txt
+- `st.plotly_chart(on_select=..., selection_mode=...)` — requires Streamlit ≥ 1.33; the click-to-detail feature will NOT work on HF (dots are still hoverable). Works locally with venv_public.
 
 ### torch version
 torch 2.5.1+cpu is the max safe version on this machine. DLL error on anything newer.
@@ -154,6 +155,7 @@ torch==2.5.1+cpu  (via --extra-index-url https://download.pytorch.org/whl/cpu)
 | `user_api_key` | str or None | User-provided Anthropic key |
 | `selected_ids` | list[str] | Chat IDs selected for blending |
 | `chat_source` | str | `'claude'`, `'chatgpt'`, or `'both'` |
+| `selected_chat_id` | str or None | ID of dot clicked on map; drives detail panel below map |
 
 ---
 

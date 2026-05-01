@@ -884,17 +884,21 @@ def show_map():
             key="main_map"
         )
 
-        # Handle click selection
-        if event and event.selection and event.selection.points:
-            point = event.selection.points[0]
-            clicked_x = point.x
-            clicked_y = point.y
+        # Handle click selection safely
+        try:
+            points = event.selection.points if hasattr(event, 'selection') \
+                and hasattr(event.selection, 'points') else []
 
-            for chat in filtered:
-                if (abs(chat['x'] - clicked_x) < 0.1 and
-                        abs((1000 - chat['y']) - clicked_y) < 0.1):
-                    st.session_state.selected_chat_id = chat['id']
-                    break
+            if points:
+                clicked_x = points[0].x
+                clicked_y = points[0].y
+                for chat in filtered:
+                    if (abs(chat['x'] - clicked_x) < 0.1 and
+                            abs((1000 - chat['y']) - clicked_y) < 0.1):
+                        st.session_state.selected_chat_id = chat['id']
+                        break
+        except (AttributeError, TypeError, IndexError):
+            pass
 
         # Detail panel for selected conversation
         selected_id = st.session_state.get('selected_chat_id')
