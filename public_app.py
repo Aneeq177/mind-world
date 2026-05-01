@@ -54,6 +54,8 @@ if 'user_api_key' not in st.session_state:
     st.session_state.user_api_key = None
 if 'selected_ids' not in st.session_state:
     st.session_state.selected_ids = []
+if 'chat_source' not in st.session_state:
+    st.session_state.chat_source = 'claude'
 
 components.html("""
 <script>
@@ -103,6 +105,75 @@ def parse_conversations(json_data):
             'full_text': full_text[:8000]
         })
     return pd.DataFrame(rows)
+
+def parse_chatgpt_zip(zip_bytes):
+    import zipfile
+    import io
+
+    rows = []
+    with zipfile.ZipFile(zip_bytes) as z:
+        json_files = sorted([
+            f for f in z.namelist()
+            if f.startswith('conversations') and f.endswith('.json')
+        ])
+        for json_file in json_files:
+            with z.open(json_file) as f:
+                convos = json.load(f)
+            for c in convos:
+                mapping = c.get('mapping', {})
+                text_parts = []
+                for node_id, node in mapping.items():
+                    msg = node.get('message')
+                    if not msg:
+                        continue
+                    role = msg.get('author', {}).get('role', '')
+                    if role not in ['user', 'assistant']:
+                        continue
+                    content = msg.get('content', {})
+                    parts = content.get('parts', [])
+                    text = ' '.join(
+                        p for p in parts
+                        if isinstance(p, str) and p.strip()
+                    )
+                    if text.strip():
+                        text_parts.append(f'[{role}] {text}')
+                full_text = '\n\n'.join(text_parts)
+                if len(full_text.strip()) < 50:
+                    continue
+                create_time = c.get('create_time', 0)
+                update_time = c.get('update_time', 0)
+                try:
+                    created_at = datetime.fromtimestamp(float(create_time)).isoformat()
+                    updated_at = datetime.fromtimestamp(float(update_time)).isoformat()
+                except Exception:
+                    created_at = ''
+                    updated_at = ''
+                rows.append({
+                    'uuid': c.get('id', ''),
+                    'name': c.get('title', 'Untitled') or 'Untitled',
+                    'created_at': created_at,
+                    'updated_at': updated_at,
+                    'num_messages': len(text_parts),
+                    'char_count': len(full_text),
+                    'full_text': full_text[:8000]
+                })
+    df = pd.DataFrame(rows)
+    if not df.empty:
+        df = df.sort_values('created_at').reset_index(drop=True)
+    return df, 'chatgpt'
+
+def detect_and_parse(uploaded_file):
+    import zipfile
+    import io
+
+    filename = uploaded_file.name.lower()
+    raw_bytes = uploaded_file.read()
+
+    if filename.endswith('.zip') or zipfile.is_zipfile(io.BytesIO(raw_bytes)):
+        return parse_chatgpt_zip(io.BytesIO(raw_bytes))
+
+    data = json.loads(raw_bytes.decode('utf-8-sig', errors='replace'))
+    return parse_conversations(data), 'claude'
 
 def embed_and_position(df):
     from sentence_transformers import SentenceTransformer
@@ -301,37 +372,56 @@ def show_landing():
 <style>body{margin:0;background:#0a0a0f;font-family:sans-serif}</style>
 <div style='background:#0d1117; border:1px solid #30363d; border-radius:12px;
             padding:18px; margin-bottom:20px'>
-    <div style='color:#58a6ff; font-weight:600; margin-bottom:10px; font-size:0.88rem'>
+    <div style='color:#58a6ff; font-weight:600; margin-bottom:12px; font-size:0.88rem'>
         📥 HOW TO GET YOUR EXPORT
     </div>
-    <div style='color:#888; font-size:0.84rem; line-height:2'>
-        1. Go to <span style='color:white'>claude.ai</span><br>
-        2. Click your profile → <span style='color:white'>Settings</span><br>
-        3. Go to <span style='color:white'>Account → Export Data</span><br>
-        4. Download and unzip the file<br>
-        5. Upload <span style='color:white'>conversations.json</span> below
+    <div style='display:flex; gap:20px'>
+        <div style='flex:1'>
+            <div style='color:#7C3AED; font-weight:600; font-size:0.82rem; margin-bottom:6px'>
+                Claude
+            </div>
+            <div style='color:#888; font-size:0.82rem; line-height:1.9'>
+                1. Go to <span style='color:white'>claude.ai</span><br>
+                2. Settings → Account → <span style='color:white'>Export Data</span><br>
+                3. Download and unzip<br>
+                4. Upload <span style='color:white'>conversations.json</span>
+            </div>
+        </div>
+        <div style='width:1px; background:#222'></div>
+        <div style='flex:1'>
+            <div style='color:#D97706; font-weight:600; font-size:0.82rem; margin-bottom:6px'>
+                ChatGPT
+            </div>
+            <div style='color:#888; font-size:0.82rem; line-height:1.9'>
+                1. Go to <span style='color:white'>chatgpt.com</span><br>
+                2. Settings → Data Controls → <span style='color:white'>Export Data</span><br>
+                3. Wait for the email<br>
+                4. Upload the <span style='color:white'>ZIP file directly</span>
+            </div>
+        </div>
     </div>
 </div>
-""", height=210)
+""", height=230)
 
         # File uploader
         uploaded = st.file_uploader(
-            "Drop your conversations.json here",
-            type=['json'],
-            help="Your data never leaves your session. We don't store anything."
+            "Drop your conversations file here",
+            type=['json', 'zip'],
+            help="Claude: upload conversations.json | ChatGPT: upload the ZIP file from your export"
         )
 
         if uploaded:
             with st.spinner("Reading your conversations..."):
                 try:
-                    data = json.loads(uploaded.read().decode('utf-8-sig', errors='replace'))
-                    df = parse_conversations(data)
+                    df, source = detect_and_parse(uploaded)
+                    st.session_state.chat_source = source
 
                     if len(df) == 0:
-                        st.error("No conversations found. Make sure you're uploading conversations.json from your Claude export.")
+                        st.error("No conversations found. Make sure you're uploading the correct export file.")
                         return
 
-                    st.success(f"Found {len(df)} conversations. Generating your world...")
+                    platform = "Claude" if source == "claude" else "ChatGPT"
+                    st.success(f"Found {len(df)} {platform} conversations. Generating your world...")
 
                     with st.spinner(f"Embedding {len(df)} conversations... (~30 seconds)"):
                         chats = embed_and_position(df)
@@ -349,7 +439,7 @@ def show_landing():
                     import traceback
                     st.error(f"Something went wrong: {str(e)}")
                     st.code(traceback.format_exc())
-                    st.info("Make sure you're uploading conversations.json from your Claude export ZIP.")
+                    st.info("Claude: upload conversations.json from your export ZIP. ChatGPT: upload the ZIP file directly.")
 
         st.caption("🔒 Your data stays in your session only. Nothing is stored or shared.")
 
@@ -555,14 +645,18 @@ def show_map():
     # Header
     _total_msgs = sum(c['num_messages'] for c in chats)
     _total_chars_k = sum(c['char_count'] for c in chats) // 1000
+    source_label = "Claude" if st.session_state.get('chat_source') == 'claude' else "ChatGPT"
+    source_color = "#7C3AED" if source_label == "Claude" else "#D97706"
     components.html(f"""
 <style>body{{margin:0;background:#0a0a0f;font-family:sans-serif}}</style>
 <div style='display:flex; align-items:center; justify-content:space-between;
      padding:8px 4px; border-bottom:1px solid #222; margin-bottom:8px'>
     <div>
         <span style='font-size:1.4rem; font-weight:bold; color:white'>🌍 Mind World</span>
+        <span style='background:{source_color}; color:white; font-size:0.7rem;
+            padding:2px 8px; border-radius:10px; margin-left:8px'>{source_label}</span>
         <span style='color:#555; font-size:0.85rem; margin-left:12px'>
-            Your Claude conversations mapped by meaning
+            Your conversations mapped by meaning
         </span>
     </div>
     <div style='display:flex; gap:24px; align-items:center'>
@@ -587,6 +681,7 @@ def show_map():
         st.session_state.chats = None
         st.session_state.blend_count = 0
         st.session_state.selected_ids = []
+        st.session_state.chat_source = 'claude'
         st.rerun()
 
     # Layout
