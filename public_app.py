@@ -165,6 +165,7 @@ def parse_chatgpt_zip(zip_bytes):
 def embed_and_position(df):
     from sentence_transformers import SentenceTransformer
     import umap
+    import hdbscan as hdbscan_lib
 
     def build_text(row):
         title = str(row['name']) if pd.notna(row['name']) else 'Untitled'
@@ -172,7 +173,6 @@ def embed_and_position(df):
         return f"{title}. {text}"
 
     texts = [build_text(row) for _, row in df.iterrows()]
-
     model = SentenceTransformer('all-MiniLM-L6-v2')
     embeddings = model.encode(texts, show_progress_bar=False)
 
@@ -186,9 +186,16 @@ def embed_and_position(df):
     )
     coords = reducer.fit_transform(embeddings)
 
+    min_cluster = max(3, len(df) // 30)
+    clusterer = hdbscan_lib.HDBSCAN(
+        min_cluster_size=min_cluster,
+        min_samples=2,
+        metric='euclidean'
+    )
+    cluster_labels = clusterer.fit_predict(coords)
+
     x_min, x_max = coords[:, 0].min(), coords[:, 0].max()
     y_min, y_max = coords[:, 1].min(), coords[:, 1].max()
-
     coords_norm = np.zeros_like(coords)
     coords_norm[:, 0] = (coords[:, 0] - x_min) / (x_max - x_min + 1e-8) * 900 + 50
     coords_norm[:, 1] = (coords[:, 1] - y_min) / (y_max - y_min + 1e-8) * 900 + 50
@@ -206,54 +213,82 @@ def embed_and_position(df):
             'y': float(coords_norm[i, 1]),
             'preview': str(row['full_text'])[:300],
             'full_text': str(row['full_text']),
-            'source': str(row.get('source', 'claude'))
+            'source': str(row.get('source', 'claude')),
+            'cluster_id': int(cluster_labels[i])
         })
     return result
 
-@st.cache_data
-def get_region_and_color(chat):
-    title = chat.get('title', '').lower()
-    preview = chat.get('preview', '').lower()
-    content = title + ' ' + preview
+def label_clusters(chats, api_key):
+    import anthropic
 
-    if any(w in content for w in ['essay', 'transfer', 'stanford', 'harvard',
-                                   'uc ', 'rice', 'scholarship', 'admission',
-                                   'personal statement', 'application']):
-        region = "Applications & Writing"
-        color = "#FF4444"
-    elif any(w in content for w in ['economic', 'gdp', 'fiscal', 'aggregate',
-                                     'federalism', 'constitution', 'congress',
-                                     'slavery', 'civil rights', 'history',
-                                     'political', 'government']):
-        region = "Academics & History"
-        color = "#FFD700"
-    elif any(w in content for w in ['c++', 'java', 'python', 'code', 'debug',
-                                     'function', 'algorithm', 'programming',
-                                     'compile', 'syntax']):
-        region = "Coding & Technical"
-        color = "#00BFFF"
-    elif any(w in content for w in ['ai', 'agent', 'crew', 'career', 'internship',
-                                     'job', 'resume', 'tech', 'mvp', 'startup',
-                                     'machine learning', 'neural', 'model', 'llm']):
-        region = "AI & Career"
-        color = "#00FF88"
-    elif any(w in content for w in ['research', 'physics', 'data', 'analysis',
-                                     'science', 'experiment', 'study', 'paper',
-                                     'methodology']):
-        region = "Research & Science"
-        color = "#FF8C00"
-    else:
-        region = "Creative & Other"
-        color = "#DA70D6"
+    PALETTE = [
+        "#FF4444", "#FFD700", "#00BFFF", "#00FF88", "#FF8C00",
+        "#DA70D6", "#FF69B4", "#7CFC00", "#FF6347", "#40E0D0",
+        "#9370DB", "#F0E68C", "#87CEEB", "#DDA0DD", "#98FB98",
+        "#F4A460", "#B0C4DE", "#FFB6C1", "#FFDAB9", "#E0FFFF"
+    ]
 
-    return region, color
+    clusters = {}
+    for chat in chats:
+        cid = chat['cluster_id']
+        if cid == -1:
+            continue
+        if cid not in clusters:
+            clusters[cid] = []
+        clusters[cid].append(chat['title'])
+
+    if not clusters:
+        for chat in chats:
+            chat['region'] = 'General'
+            chat['color'] = PALETTE[0]
+        return chats
+
+    cluster_labels = {}
+    cluster_colors = {}
+
+    try:
+        client = anthropic.Anthropic(api_key=api_key)
+
+        for cid, titles in clusters.items():
+            sample = titles[:8]
+            prompt = f"""Here are titles of conversations someone had with an AI assistant:
+
+{chr(10).join(f'- {t}' for t in sample)}
+
+Give a single short label (2-4 words max) that best describes what topic or theme connects these conversations.
+Respond with ONLY the label, nothing else. No punctuation."""
+
+            response = client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=20,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            label = response.content[0].text.strip()
+            cluster_labels[cid] = label
+            cluster_colors[cid] = PALETTE[cid % len(PALETTE)]
+
+    except Exception:
+        for cid in clusters:
+            cluster_labels[cid] = f"Topic {cid + 1}"
+            cluster_colors[cid] = PALETTE[cid % len(PALETTE)]
+
+    for chat in chats:
+        cid = chat['cluster_id']
+        if cid == -1:
+            chat['region'] = 'Other'
+            chat['color'] = '#666666'
+        else:
+            chat['region'] = cluster_labels.get(cid, f'Topic {cid}')
+            chat['color'] = cluster_colors.get(cid, '#666666')
+
+    return chats
 
 # ── Caching helpers ───────────────────────────────────────────────────────
 _fragment = getattr(st, 'fragment', lambda f: f)
 
 @st.cache_data
 def _build_map_figure(chats, region_filter, source_filter, selected_ids):
-    filtered = chats if region_filter == "All Regions" else \
+    filtered = chats if region_filter == "All Topics" else \
         [c for c in chats if c['region'] == region_filter]
 
     if source_filter == "Claude only":
@@ -309,31 +344,21 @@ def _build_map_figure(chats, region_filter, source_filter, selected_ids):
     for chat in filtered:
         r = chat['region']
         if r not in region_centers:
-            region_centers[r] = {'x': [], 'y': []}
+            region_centers[r] = {'x': [], 'y': [], 'color': chat['color']}
         region_centers[r]['x'].append(chat['x'])
         region_centers[r]['y'].append(1000 - chat['y'])
-
-    region_label_colors = {
-        "Applications & Writing": "#FF4444",
-        "Academics & History":    "#FFD700",
-        "Coding & Technical":     "#00BFFF",
-        "AI & Career":            "#00FF88",
-        "Research & Science":     "#FF8C00",
-        "Creative & Other":       "#DA70D6",
-    }
 
     for region_name, coords in region_centers.items():
         if len(coords['x']) < 2:
             continue
         center_x = sum(coords['x']) / len(coords['x'])
         center_y = sum(coords['y']) / len(coords['y'])
-        color = region_label_colors.get(region_name, "#ffffff")
         fig.add_annotation(
             x=center_x,
             y=center_y,
             text=region_name.upper(),
             showarrow=False,
-            font=dict(size=10, color=color, family="monospace"),
+            font=dict(size=10, color=coords['color'], family="monospace"),
             bgcolor="rgba(0,0,0,0.5)",
             borderpad=3,
             opacity=0.85
@@ -528,10 +553,12 @@ def show_landing():
                     with st.spinner("Generating your unified map..."):
                         chats = embed_and_position(df)
 
+                    api_key = st.session_state.get('user_api_key') or os.getenv("ANTHROPIC_API_KEY")
+
+                    with st.spinner("Identifying your unique topics..."):
+                        chats = label_clusters(chats, api_key)
+
                     for chat in chats:
-                        region, color = get_region_and_color(chat)
-                        chat['region'] = region
-                        chat['color'] = color
                         chat['size'] = max(8, min(25, chat['num_messages'] // 4 + 6))
 
                     st.session_state.chats = chats
@@ -576,12 +603,7 @@ def _blend_panel(chats):
         for sid in selected:
             if sid in chat_lookup:
                 c = chat_lookup[sid]
-                emoji = {"Applications & Writing": "🔴",
-                         "Academics & History": "🟡",
-                         "Coding & Technical": "🔵",
-                         "AI & Career": "🟢",
-                         "Research & Science": "🟠",
-                         "Creative & Other": "🟣"}.get(c['region'], "⚪")
+                emoji = "🟣" if c.get('source', 'claude') == 'claude' else "🟢"
                 st.markdown(f"{emoji} **{c['title'][:40]}**")
 
         st.markdown("---")
@@ -827,11 +849,10 @@ def show_map():
 
     # ── Map ───────────────────────────────────────────────────────────────
     with map_col:
+        all_regions = sorted(set(c['region'] for c in chats))
         region_filter = st.selectbox(
-            "🔍 Filter by region",
-            ["All Regions", "Applications & Writing", "Academics & History",
-             "Coding & Technical", "AI & Career",
-             "Research & Science", "Creative & Other"]
+            "🔍 Filter by topic",
+            ["All Topics"] + all_regions
         )
 
         source_filter = st.selectbox(
@@ -997,12 +1018,7 @@ def show_map():
             if new_this_month:
                 st.markdown(f"**🆕 New in {month_labels[selected_month_idx]}:**")
                 for c in new_this_month:
-                    emoji = {"Applications & Writing": "🔴",
-                             "Academics & History": "🟡",
-                             "Coding & Technical": "🔵",
-                             "AI & Career": "🟢",
-                             "Research & Science": "🟠",
-                             "Creative & Other": "🟣"}.get(c['region'], "⚪")
+                    emoji = "🟣" if c.get('source', 'claude') == 'claude' else "🟢"
                     st.markdown(
                         f"{emoji} **{c['title']}** — {c['num_messages']} messages")
 
@@ -1024,12 +1040,7 @@ def show_map():
 
         for d in display[:25]:
             is_sel = d['id'] in st.session_state.selected_ids
-            emoji = {"Applications & Writing": "🔴",
-                     "Academics & History": "🟡",
-                     "Coding & Technical": "🔵",
-                     "AI & Career": "🟢",
-                     "Research & Science": "🟠",
-                     "Creative & Other": "🟣"}.get(d['region'], "⚪")
+            emoji = "🟣" if d.get('source', 'claude') == 'claude' else "🟢"
             prefix = "⭐ " if is_sel else ""
             with st.expander(f"{prefix}{emoji} {d['title'][:35]}"):
                 st.markdown(f"**{d['num_messages']} msgs** · {d['created_at'][:10]}")
