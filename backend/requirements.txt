@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+python-multipart
+sentence-transformers
+umap-learn
+hdbscan
+pandas
+numpy
+scikit-learn
+anthropic
+python-dotenv
+torch==2.5.1+cpu
+--extra-index-url https://download.pytorch.org/whl/cpu
