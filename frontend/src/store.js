@@ -1,0 +1,43 @@
+import { create } from 'zustand'
+
+export const useStore = create((set) => ({
+  // App state
+  phase: 'landing', // 'landing' | 'processing' | 'universe'
+
+  // Data
+  conversations: [],
+  totalConversations: 0,
+  sources: { claude: 0, chatgpt: 0 },
+
+  // Selection
+  selectedId: null,
+  blendIds: [],
+
+  // Filters
+  filterSource: 'all', // 'all' | 'claude' | 'chatgpt'
+  filterRegion: 'all',
+
+  // UI
+  hoveredId: null,
+
+  // Actions
+  setPhase: (phase) => set({ phase }),
+  setConversations: (conversations, sources) => set({
+    conversations,
+    totalConversations: conversations.length,
+    sources
+  }),
+  setSelected: (id) => set({ selectedId: id }),
+  setHovered: (id) => set({ hoveredId: id }),
+  toggleBlend: (id) => set((state) => {
+    const exists = state.blendIds.includes(id)
+    if (exists) {
+      return { blendIds: state.blendIds.filter(b => b !== id) }
+    }
+    if (state.blendIds.length >= 4) return state
+    return { blendIds: [...state.blendIds, id] }
+  }),
+  clearBlend: () => set({ blendIds: [] }),
+  setFilterSource: (filterSource) => set({ filterSource }),
+  setFilterRegion: (filterRegion) => set({ filterRegion }),
+}))
