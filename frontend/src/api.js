@@ -8,6 +8,13 @@ export async function processFiles({ claudeFile, chatgptFile, apiKey, email }) {
   formData.append('api_key', apiKey)
   formData.append('email', email)
 
+  console.log('Sending to API:', {
+    claudeFile: claudeFile?.name,
+    chatgptFile: chatgptFile?.name,
+    email: email,
+    hasApiKey: !!apiKey
+  })
+
   const response = await fetch(`${BASE_URL}/process`, {
     method: 'POST',
     body: formData
