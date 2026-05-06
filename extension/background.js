@@ -1,6 +1,14 @@
 const API_BASE = 'https://mind-world-app-mv4yv.ondigitalocean.app'
 const USER_EMAIL = 'aneequddin66@gmail.com'
 
+function getPlatform(url) {
+  if (url.includes('claude.ai')) return 'claude'
+  if (url.includes('chatgpt.com')) return 'chatgpt'
+  if (url.includes('gemini.google.com')) return 'gemini'
+  if (url.includes('perplexity.ai')) return 'perplexity'
+  return 'unknown'
+}
+
 // Handle messages from content script
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'SEARCH') {

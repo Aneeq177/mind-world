@@ -116,17 +116,52 @@ function watchInputField() {
 }
 
 function findInputField() {
-  const selectors = [
-    '.ProseMirror',
+  const hostname = window.location.hostname
+
+  // Platform-specific selectors
+  const platformSelectors = {
+    'claude.ai': [
+      '.ProseMirror',
+      '[contenteditable="true"]',
+      'div[data-placeholder]'
+    ],
+    'chatgpt.com': [
+      '#prompt-textarea',
+      'div[contenteditable="true"]',
+      'textarea[data-id="root"]',
+      '.ProseMirror'
+    ],
+    'gemini.google.com': [
+      '.ql-editor',
+      'rich-textarea',
+      '[contenteditable="true"]'
+    ],
+    'perplexity.ai': [
+      'textarea[placeholder]',
+      '[contenteditable="true"]'
+    ]
+  }
+
+  // Get selectors for current platform
+  const selectors = platformSelectors[hostname] || [
     '[contenteditable="true"]',
-    'div[data-placeholder]',
-    'textarea'
+    'textarea',
+    'input[type="text"]'
   ]
+
   for (const selector of selectors) {
     const el = document.querySelector(selector)
-    if (el) return el
+    if (el && isVisible(el)) return el
   }
   return null
+}
+
+function isVisible(el) {
+  return !!(
+    el.offsetWidth ||
+    el.offsetHeight ||
+    el.getClientRects().length
+  )
 }
 
 function handleInput(e) {
@@ -293,10 +328,22 @@ function injectIntoChat(contextBlock) {
   const inputField = findInputField()
   if (!inputField) return
 
-  const userText = inputField.innerText || inputField.value || ''
+  const userText = inputField.innerText ||
+                   inputField.value ||
+                   inputField.textContent || ''
+
   const fullText = contextBlock + userText
 
-  if (inputField.contentEditable === 'true') {
+  // Handle different input types per platform
+  if (inputField.tagName === 'TEXTAREA') {
+    // ChatGPT and Perplexity use textarea
+    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+      window.HTMLTextAreaElement.prototype, 'value'
+    ).set
+    nativeInputValueSetter.call(inputField, fullText)
+    inputField.dispatchEvent(new Event('input', { bubbles: true }))
+  } else if (inputField.contentEditable === 'true') {
+    // Claude and Gemini use contenteditable
     inputField.innerText = fullText
 
     // Move cursor to end
@@ -306,11 +353,52 @@ function injectIntoChat(contextBlock) {
     range.collapse(false)
     sel.removeAllRanges()
     sel.addRange(range)
-  } else {
-    inputField.value = fullText
+
+    inputField.dispatchEvent(new Event('input', { bubbles: true }))
   }
 
-  inputField.dispatchEvent(new Event('input', { bubbles: true }))
+  // Focus the input
+  inputField.focus()
+}
+
+function autoSaveConversation() {
+  const url = window.location.href
+  const conversationId = url.split('/chat/')[1]?.split('?')[0] ||
+                         url.split('/c/')[1]?.split('?')[0]
+
+  if (!conversationId) return
+
+  const titleEl = document.querySelector('title')
+  const title = titleEl?.textContent?.replace(/ - Claude| - ChatGPT| - Gemini/g, '') || 'Untitled'
+
+  const messages = []
+  const messageEls = document.querySelectorAll(
+    '[data-testid="human-turn"], [data-testid="ai-turn"]'
+  )
+
+  messageEls.forEach(el => {
+    const isHuman = el.dataset.testid === 'human-turn'
+    messages.push({
+      role: isHuman ? 'human' : 'assistant',
+      content: el.innerText?.slice(0, 2000) || ''
+    })
+  })
+
+  if (messages.length < 2) return
+
+  const conversation = {
+    id: conversationId,
+    title,
+    messages,
+    url,
+    platform: window.location.hostname,
+    saved_at: new Date().toISOString()
+  }
+
+  chrome.runtime.sendMessage({
+    type: 'SAVE_CONVERSATION',
+    conversation
+  })
 }
 
 function escapeHtml(text) {
