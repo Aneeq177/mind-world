@@ -138,6 +138,100 @@ async def search(request: SearchRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+class SummarizeRequest(BaseModel):
+    conversation_ids: list[str]
+    current_query: str
+    email: str
+
+@app.post("/summarize")
+async def summarize(request: SummarizeRequest):
+    try:
+        from services.database import get_or_create_user, get_user_conversations
+        import anthropic
+
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise HTTPException(status_code=400, detail="API key not configured")
+
+        user_id = get_or_create_user(request.email)
+
+        # Get all user conversations from DB
+        all_convos = get_user_conversations(user_id)
+
+        # Filter to requested IDs
+        selected = [
+            c for c in all_convos
+            if c['id'] in request.conversation_ids
+        ]
+
+        if not selected:
+            raise HTTPException(
+                status_code=404,
+                detail="Conversations not found"
+            )
+
+        client = anthropic.Anthropic(api_key=api_key)
+        summaries = []
+
+        for convo in selected:
+            prompt = f"""You are summarizing a past AI conversation to use as context in a new chat.
+
+Current question the user is asking: "{request.current_query}"
+
+Past conversation title: "{convo['title']}"
+Past conversation content:
+{convo.get('full_text', convo.get('preview', ''))[:3000]}
+
+Extract ONLY what is relevant to the current question. Summarize in this format:
+
+CONVERSATION: {convo['title']}
+RELEVANT CONTEXT: (2-3 sentences about what was discussed that relates to the current question)
+KEY POINTS:
+- (bullet point 1)
+- (bullet point 2)
+- (bullet point 3 if needed)
+
+Be concise and specific. Focus on information that will help answer the current question."""
+
+            response = client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=400,
+                messages=[{"role": "user", "content": prompt}]
+            )
+
+            summaries.append({
+                "id": convo['id'],
+                "title": convo['title'],
+                "summary": response.content[0].text.strip(),
+                "source": convo.get('source', 'claude'),
+                "created_at": convo.get('created_at', '')
+            })
+
+        # Build the full formatted context block
+        context_block = "=== MIND WORLD MEMORY CONTEXT ===\n"
+        context_block += f"Relevant past conversations for: \"{request.current_query}\"\n\n"
+
+        for i, s in enumerate(summaries, 1):
+            source_label = "Claude" if s['source'] == 'claude' else "ChatGPT"
+            context_block += f"[{i}] {s['summary']}\n"
+            context_block += f"Source: {source_label} · {s['created_at'][:10]}\n"
+            if i < len(summaries):
+                context_block += "\n---\n\n"
+
+        context_block += "\n=== END CONTEXT ===\n\n"
+        context_block += "Using the above context from my past conversations, please help me with:\n"
+
+        return {
+            "summaries": summaries,
+            "context_block": context_block,
+            "conversation_count": len(summaries)
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/blend")
 async def blend(request: BlendRequest):
     api_key = request.api_key or os.getenv("ANTHROPIC_API_KEY")
