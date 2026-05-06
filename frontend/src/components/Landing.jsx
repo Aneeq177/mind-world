@@ -4,13 +4,13 @@ import { processFiles } from '../api'
 
 export default function Landing() {
   const setPhase = useStore(s => s.setPhase)
+  const phase = useStore(s => s.phase)
   const setConversations = useStore(s => s.setConversations)
 
   const [claudeFile, setClaudeFile] = useState(null)
   const [chatgptFile, setChatgptFile] = useState(null)
   const [apiKey, setApiKey] = useState('')
   const [email, setEmail] = useState('')
-  const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [loadingMsg, setLoadingMsg] = useState('')
 
@@ -26,13 +26,16 @@ export default function Landing() {
 
   async function handleGenerate() {
     if (!canGenerate) return
+    if (!email.includes('@') || !email.includes('.')) {
+      setError('Please enter a valid email address.')
+      return
+    }
 
-    setLoading(true)
     setError('')
+    setLoadingMsg(LOADING_MESSAGES[0])
     setPhase('processing')
 
     let msgIndex = 0
-    setLoadingMsg(LOADING_MESSAGES[0])
     const msgInterval = setInterval(() => {
       msgIndex = (msgIndex + 1) % LOADING_MESSAGES.length
       setLoadingMsg(LOADING_MESSAGES[msgIndex])
@@ -45,13 +48,13 @@ export default function Landing() {
       setPhase('universe')
     } catch (err) {
       clearInterval(msgInterval)
-      setError(err.message)
+      setError(err.message || 'Something went wrong. Please try again.')
       setPhase('landing')
-      setLoading(false)
     }
   }
 
-  if (loading && useStore.getState().phase === 'processing') {
+  // Show loading screen when processing
+  if (phase === 'processing') {
     return (
       <div style={{
         width: '100vw', height: '100vh',
@@ -60,7 +63,12 @@ export default function Landing() {
         background: '#000008', color: 'white', gap: '24px'
       }}>
         <div style={{ fontSize: '4rem' }}>🌍</div>
-        <div style={{ fontSize: '1.2rem', color: '#888' }}>{loadingMsg}</div>
+        <div style={{
+          fontSize: '1.2rem', color: '#888',
+          minHeight: '2rem', textAlign: 'center'
+        }}>
+          {loadingMsg}
+        </div>
         <div style={{
           width: '200px', height: '2px',
           background: 'rgba(255,255,255,0.1)',
@@ -68,7 +76,7 @@ export default function Landing() {
         }}>
           <div style={{
             height: '100%', background: '#7c3aed',
-            animation: 'progress 20s linear forwards',
+            animation: 'progress 60s linear forwards',
             width: '0%'
           }} />
         </div>
@@ -112,16 +120,22 @@ export default function Landing() {
         <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
           <label style={{
             flex: 1, padding: '16px', textAlign: 'center',
-            border: `1px dashed ${claudeFile ? '#7c3aed' : 'rgba(255,255,255,0.15)'}`,
+            border: `1px dashed ${claudeFile
+              ? '#7c3aed' : 'rgba(255,255,255,0.15)'}`,
             borderRadius: '12px', cursor: 'pointer',
-            background: claudeFile ? 'rgba(124,58,237,0.1)' : 'transparent',
+            background: claudeFile
+              ? 'rgba(124,58,237,0.1)' : 'transparent',
             transition: 'all 0.2s'
           }}>
             <div style={{ fontSize: '1.5rem', marginBottom: '4px' }}>🟣</div>
             <div style={{ fontSize: '0.8rem', color: '#888' }}>
-              {claudeFile ? claudeFile.name.slice(0, 20) + '...' : 'Claude export'}
+              {claudeFile
+                ? claudeFile.name.slice(0, 20) + '...'
+                : 'Claude export'}
             </div>
-            <div style={{ fontSize: '0.7rem', color: '#555', marginTop: '2px' }}>
+            <div style={{
+              fontSize: '0.7rem', color: '#555', marginTop: '2px'
+            }}>
               conversations.json
             </div>
             <input
@@ -133,16 +147,22 @@ export default function Landing() {
 
           <label style={{
             flex: 1, padding: '16px', textAlign: 'center',
-            border: `1px dashed ${chatgptFile ? '#10a37f' : 'rgba(255,255,255,0.15)'}`,
+            border: `1px dashed ${chatgptFile
+              ? '#10a37f' : 'rgba(255,255,255,0.15)'}`,
             borderRadius: '12px', cursor: 'pointer',
-            background: chatgptFile ? 'rgba(16,163,127,0.1)' : 'transparent',
+            background: chatgptFile
+              ? 'rgba(16,163,127,0.1)' : 'transparent',
             transition: 'all 0.2s'
           }}>
             <div style={{ fontSize: '1.5rem', marginBottom: '4px' }}>🟢</div>
             <div style={{ fontSize: '0.8rem', color: '#888' }}>
-              {chatgptFile ? chatgptFile.name.slice(0, 20) + '...' : 'ChatGPT export'}
+              {chatgptFile
+                ? chatgptFile.name.slice(0, 20) + '...'
+                : 'ChatGPT export'}
             </div>
-            <div style={{ fontSize: '0.7rem', color: '#555', marginTop: '2px' }}>
+            <div style={{
+              fontSize: '0.7rem', color: '#555', marginTop: '2px'
+            }}>
               .zip file
             </div>
             <input
@@ -187,7 +207,8 @@ export default function Landing() {
 
         {error && (
           <div style={{
-            padding: '12px', background: 'rgba(255,68,68,0.1)',
+            padding: '12px',
+            background: 'rgba(255,68,68,0.1)',
             border: '1px solid rgba(255,68,68,0.3)',
             borderRadius: '8px', color: '#ff6b6b',
             fontSize: '0.85rem', marginBottom: '16px'
@@ -196,7 +217,6 @@ export default function Landing() {
           </div>
         )}
 
-        {/* Generate button */}
         <button
           onClick={handleGenerate}
           disabled={!canGenerate}

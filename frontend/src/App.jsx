@@ -10,9 +10,9 @@ export default function App() {
 
   return (
     <div style={{ width: '100vw', height: '100vh', position: 'relative' }}>
-      {phase === 'landing' && <Landing />}
+      {(phase === 'landing' || phase === 'processing') && <Landing />}
 
-      {(phase === 'processing' || phase === 'universe') && (
+      {phase === 'universe' && (
         <>
           <Universe />
           <Controls />

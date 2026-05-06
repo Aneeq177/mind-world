@@ -1,4 +1,4 @@
-const BASE_URL = 'https://mind-world.onrender.com'
+const BASE_URL = import.meta.env.VITE_API_URL || 'https://mind-world.onrender.com'
 
 export async function processFiles({ claudeFile, chatgptFile, apiKey }) {
   const formData = new FormData()
