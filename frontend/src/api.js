@@ -14,8 +14,18 @@ export async function processFiles({ claudeFile, chatgptFile, apiKey, email }) {
   })
 
   if (!response.ok) {
-    const error = await response.json()
-    throw new Error(error.detail || 'Processing failed')
+    let errorDetail = 'Processing failed'
+    try {
+      const error = await response.json()
+      if (typeof error.detail === 'string') {
+        errorDetail = error.detail
+      } else if (typeof error.detail === 'object') {
+        errorDetail = JSON.stringify(error.detail)
+      }
+    } catch {
+      errorDetail = `Server error: ${response.status}`
+    }
+    throw new Error(errorDetail)
   }
 
   return response.json()

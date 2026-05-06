@@ -48,7 +48,15 @@ export default function Landing() {
       setPhase('universe')
     } catch (err) {
       clearInterval(msgInterval)
-      setError(err.message || 'Something went wrong. Please try again.')
+      let errorMsg = 'Something went wrong. Please try again.'
+      if (typeof err === 'string') {
+        errorMsg = err
+      } else if (err?.message && typeof err.message === 'string') {
+        errorMsg = err.message
+      } else if (err?.detail && typeof err.detail === 'string') {
+        errorMsg = err.detail
+      }
+      setError(errorMsg)
       setPhase('landing')
     }
   }
