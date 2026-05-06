@@ -9,7 +9,7 @@ def build_text(row):
     text = str(row['full_text'])[:500] if pd.notna(row['full_text']) else ''
     return f"{title}. {text}"
 
-def embed_and_position(df: pd.DataFrame) -> list[dict]:
+def embed_and_position(df: pd.DataFrame) -> tuple[list[dict], np.ndarray]:
     texts = [build_text(row) for _, row in df.iterrows()]
 
     model = SentenceTransformer('all-MiniLM-L6-v2')
@@ -60,4 +60,4 @@ def embed_and_position(df: pd.DataFrame) -> list[dict]:
             'region': '',
             'color': ''
         })
-    return result
+    return result, embeddings

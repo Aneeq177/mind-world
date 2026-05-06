@@ -42,7 +42,7 @@ export default function Landing() {
     }, 4000)
 
     try {
-      const data = await processFiles({ claudeFile, chatgptFile, apiKey })
+      const data = await processFiles({ claudeFile, chatgptFile, apiKey, email })
       clearInterval(msgInterval)
       setConversations(data.conversations, data.sources)
       setPhase('universe')

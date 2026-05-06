@@ -1,11 +1,12 @@
 const BASE_URL = 'https://mind-world-app-mv4yv.ondigitalocean.app'
 
-export async function processFiles({ claudeFile, chatgptFile, apiKey }) {
+export async function processFiles({ claudeFile, chatgptFile, apiKey, email }) {
   const formData = new FormData()
 
   if (claudeFile) formData.append('claude_file', claudeFile)
   if (chatgptFile) formData.append('chatgpt_file', chatgptFile)
   formData.append('api_key', apiKey)
+  formData.append('email', email)
 
   const response = await fetch(`${BASE_URL}/process`, {
     method: 'POST',

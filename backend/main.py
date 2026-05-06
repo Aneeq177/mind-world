@@ -6,10 +6,16 @@ import os
 import pandas as pd
 from dotenv import load_dotenv
 
+from pydantic import BaseModel
 from models import ProcessResponse, BlendRequest, BlendResponse
 from services.parser import parse_claude, parse_chatgpt
 from services.embedder import embed_and_position
 from services.blender import label_clusters, blend_conversations
+from services.database import (
+    get_or_create_user,
+    store_conversations,
+    get_user_conversations
+)
 
 load_dotenv()
 
@@ -32,7 +38,8 @@ def health():
 async def process_files(
     claude_file: UploadFile | None = File(None),
     chatgpt_file: UploadFile | None = File(None),
-    api_key: str = Form(...)
+    api_key: str = Form(...),
+    email: str = Form(...)
 ):
     if not claude_file and not chatgpt_file:
         raise HTTPException(
@@ -45,7 +52,9 @@ async def process_files(
     try:
         if claude_file:
             content = await claude_file.read()
-            data = json.loads(content.decode('utf-8-sig', errors='replace'))
+            data = json.loads(
+                content.decode('utf-8-sig', errors='replace')
+            )
             df = parse_claude(data)
             all_dfs.append(df)
 
@@ -55,19 +64,36 @@ async def process_files(
             all_dfs.append(df)
 
         if not all_dfs:
-            raise HTTPException(status_code=400, detail="No conversations found")
+            raise HTTPException(
+                status_code=400,
+                detail="No conversations found"
+            )
 
         df = pd.concat(all_dfs, ignore_index=True)
 
         if len(df) == 0:
-            raise HTTPException(status_code=400, detail="No conversations found")
+            raise HTTPException(
+                status_code=400,
+                detail="No conversations found"
+            )
 
-        chats = embed_and_position(df)
+        chats, embeddings = embed_and_position(df)
         chats = label_clusters(chats, api_key)
 
+        try:
+            user_id = get_or_create_user(email)
+            store_conversations(user_id, chats, embeddings)
+        except Exception as db_error:
+            print(f"DB storage error: {db_error}")
+            user_id = None
+
         sources = {
-            "claude": sum(1 for c in chats if c['source'] == 'claude'),
-            "chatgpt": sum(1 for c in chats if c['source'] == 'chatgpt')
+            "claude": sum(
+                1 for c in chats if c['source'] == 'claude'
+            ),
+            "chatgpt": sum(
+                1 for c in chats if c['source'] == 'chatgpt'
+            )
         }
 
         for chat in chats:
@@ -76,11 +102,39 @@ async def process_files(
         return {
             "conversations": chats,
             "total": len(chats),
-            "sources": sources
+            "sources": sources,
+            "user_id": user_id
         }
 
     except HTTPException:
         raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class SearchRequest(BaseModel):
+    query: str
+    email: str
+    limit: int = 5
+
+@app.post("/search")
+async def search(request: SearchRequest):
+    try:
+        from services.database import search_conversations
+        from sentence_transformers import SentenceTransformer
+
+        user_id = get_or_create_user(request.email)
+
+        model = SentenceTransformer('all-MiniLM-L6-v2')
+        query_embedding = model.encode([request.query])[0]
+
+        results = search_conversations(
+            user_id,
+            query_embedding,
+            request.limit
+        )
+
+        return {"results": results, "query": request.query}
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
