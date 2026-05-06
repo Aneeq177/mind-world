@@ -29,46 +29,65 @@ def get_or_create_user(email: str) -> str:
 def store_conversations(
     user_id: str,
     chats: list[dict],
-    embeddings: np.ndarray
+    embeddings
 ):
+    import numpy as np
     supabase = get_supabase()
 
-    rows = []
-    for chat in chats:
-        rows.append({
-            "id": chat["id"],
-            "user_id": user_id,
-            "title": chat["title"],
-            "source": chat["source"],
-            "created_at": chat["created_at"],
-            "updated_at": chat["updated_at"],
-            "num_messages": chat["num_messages"],
-            "char_count": chat["char_count"],
-            "preview": chat["preview"],
-            "full_text": chat.get("full_text", ""),
-            "cluster_id": chat["cluster_id"],
-            "region": chat["region"],
-            "color": chat["color"],
-            "x": chat["x"],
-            "y": chat["y"],
-            "z": chat["z"]
-        })
+    # Store conversations in batches of 50
+    batch_size = 50
+    for i in range(0, len(chats), batch_size):
+        batch = chats[i:i + batch_size]
+        rows = []
+        for chat in batch:
+            rows.append({
+                "id": chat["id"],
+                "user_id": user_id,
+                "title": chat["title"],
+                "source": chat["source"],
+                "created_at": chat["created_at"],
+                "updated_at": chat["updated_at"],
+                "num_messages": chat["num_messages"],
+                "char_count": chat["char_count"],
+                "preview": chat["preview"],
+                "full_text": chat.get("full_text", ""),
+                "cluster_id": chat["cluster_id"],
+                "region": chat["region"],
+                "color": chat["color"],
+                "x": chat["x"],
+                "y": chat["y"],
+                "z": chat["z"]
+            })
+        try:
+            supabase.table("conversations")\
+                .upsert(rows, on_conflict="id")\
+                .execute()
+        except Exception as e:
+            print(f"Batch conversation upsert error: {e}")
+            continue
 
-    supabase.table("conversations")\
-        .upsert(rows)\
-        .execute()
+    # Store embeddings in batches of 50
+    for i in range(0, len(chats), batch_size):
+        batch_chats = chats[i:i + batch_size]
+        batch_embeddings = embeddings[i:i + batch_size]
 
-    embedding_rows = []
-    for i, chat in enumerate(chats):
-        embedding_rows.append({
-            "conversation_id": chat["id"],
-            "user_id": user_id,
-            "embedding": embeddings[i].tolist()
-        })
-
-    supabase.table("embeddings")\
-        .upsert(embedding_rows)\
-        .execute()
+        embedding_rows = []
+        for j, chat in enumerate(batch_chats):
+            embedding_rows.append({
+                "conversation_id": chat["id"],
+                "user_id": user_id,
+                "embedding": batch_embeddings[j].tolist()
+            })
+        try:
+            supabase.table("embeddings")\
+                .upsert(
+                    embedding_rows,
+                    on_conflict="conversation_id,user_id"
+                )\
+                .execute()
+        except Exception as e:
+            print(f"Batch embedding upsert error: {e}")
+            continue
 
 def search_conversations(
     user_id: str,
