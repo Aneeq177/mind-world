@@ -98,62 +98,89 @@ function injectSidebar() {
 }
 
 function watchInputField() {
+  const hostname = window.location.hostname
+  const delay = hostname.includes('chatgpt.com') ? 500 : 100
+
   const observer = new MutationObserver(() => {
     const inputField = findInputField()
     if (inputField && !inputField._mwWatching) {
       inputField._mwWatching = true
       inputField.addEventListener('input', handleInput)
+      console.log('Mind World: watching input field on', hostname)
     }
   })
 
-  observer.observe(document.body, { childList: true, subtree: true })
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true
+  })
 
-  const inputField = findInputField()
-  if (inputField && !inputField._mwWatching) {
-    inputField._mwWatching = true
-    inputField.addEventListener('input', handleInput)
-  }
+  // Also try immediately with delay
+  setTimeout(() => {
+    const inputField = findInputField()
+    if (inputField && !inputField._mwWatching) {
+      inputField._mwWatching = true
+      inputField.addEventListener('input', handleInput)
+      console.log('Mind World: watching input field on', hostname)
+    }
+  }, delay)
 }
 
 function findInputField() {
   const hostname = window.location.hostname
 
-  // Platform-specific selectors
-  const platformSelectors = {
-    'claude.ai': [
-      '.ProseMirror',
-      '[contenteditable="true"]',
-      'div[data-placeholder]'
-    ],
-    'chatgpt.com': [
-      '#prompt-textarea',
-      'div[contenteditable="true"]',
-      'textarea[data-id="root"]',
-      '.ProseMirror'
-    ],
-    'gemini.google.com': [
-      '.ql-editor',
-      'rich-textarea',
-      '[contenteditable="true"]'
-    ],
-    'perplexity.ai': [
-      'textarea[placeholder]',
-      '[contenteditable="true"]'
-    ]
+  if (hostname.includes('chatgpt.com')) {
+    // ChatGPT specific - try multiple approaches
+    const byId = document.querySelector('#prompt-textarea')
+    if (byId) return byId
+
+    const byClass = document.querySelector(
+      'div.ProseMirror[contenteditable="true"]'
+    )
+    if (byClass) return byClass
+
+    const byRole = document.querySelector(
+      'div[role="textbox"][contenteditable="true"]'
+    )
+    if (byRole) return byRole
   }
 
-  // Get selectors for current platform
-  const selectors = platformSelectors[hostname] || [
-    '[contenteditable="true"]',
-    'textarea',
-    'input[type="text"]'
-  ]
+  if (hostname.includes('claude.ai')) {
+    const prosemirror = document.querySelector('.ProseMirror')
+    if (prosemirror) return prosemirror
 
-  for (const selector of selectors) {
-    const el = document.querySelector(selector)
-    if (el && isElementVisible(el)) return el
+    const contenteditable = document.querySelector(
+      '[contenteditable="true"]'
+    )
+    if (contenteditable) return contenteditable
   }
-  return null
+
+  if (hostname.includes('gemini.google.com')) {
+    const editor = document.querySelector('.ql-editor')
+    if (editor) return editor
+
+    const contenteditable = document.querySelector(
+      '[contenteditable="true"]'
+    )
+    if (contenteditable) return contenteditable
+  }
+
+  if (hostname.includes('perplexity.ai')) {
+    const textarea = document.querySelector('textarea')
+    if (textarea) return textarea
+
+    const contenteditable = document.querySelector(
+      '[contenteditable="true"]'
+    )
+    if (contenteditable) return contenteditable
+  }
+
+  // Generic fallback
+  return (
+    document.querySelector('[contenteditable="true"]') ||
+    document.querySelector('textarea') ||
+    null
+  )
 }
 
 function isElementVisible(el) {
