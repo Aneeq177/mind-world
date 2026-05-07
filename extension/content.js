@@ -115,7 +115,6 @@ function watchInputField() {
       setTimeout(() => handleInput(e), 100)
     })
 
-    console.log('Mind World: attached listeners on', hostname)
   }
 
   // Watch for DOM changes to catch dynamically added inputs
