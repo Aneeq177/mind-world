@@ -151,12 +151,12 @@ function findInputField() {
 
   for (const selector of selectors) {
     const el = document.querySelector(selector)
-    if (el && isVisible(el)) return el
+    if (el && isElementVisible(el)) return el
   }
   return null
 }
 
-function isVisible(el) {
+function isElementVisible(el) {
   return !!(
     el.offsetWidth ||
     el.offsetHeight ||
