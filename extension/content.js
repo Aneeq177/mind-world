@@ -99,15 +99,29 @@ function injectSidebar() {
 
 function watchInputField() {
   const hostname = window.location.hostname
-  const delay = hostname.includes('chatgpt.com') ? 500 : 100
 
+  function attachListeners(inputField) {
+    if (inputField._mwWatching) return
+    inputField._mwWatching = true
+
+    // Standard input event
+    inputField.addEventListener('input', handleInput)
+
+    // ChatGPT and some editors use keyup instead
+    inputField.addEventListener('keyup', handleInput)
+
+    // Also watch for paste events
+    inputField.addEventListener('paste', (e) => {
+      setTimeout(() => handleInput(e), 100)
+    })
+
+    console.log('Mind World: attached listeners on', hostname)
+  }
+
+  // Watch for DOM changes to catch dynamically added inputs
   const observer = new MutationObserver(() => {
     const inputField = findInputField()
-    if (inputField && !inputField._mwWatching) {
-      inputField._mwWatching = true
-      inputField.addEventListener('input', handleInput)
-      console.log('Mind World: watching input field on', hostname)
-    }
+    if (inputField) attachListeners(inputField)
   })
 
   observer.observe(document.body, {
@@ -115,15 +129,14 @@ function watchInputField() {
     subtree: true
   })
 
-  // Also try immediately with delay
-  setTimeout(() => {
-    const inputField = findInputField()
-    if (inputField && !inputField._mwWatching) {
-      inputField._mwWatching = true
-      inputField.addEventListener('input', handleInput)
-      console.log('Mind World: watching input field on', hostname)
-    }
-  }, delay)
+  // Try immediately and with delays
+  const delays = [500, 1000, 2000, 3000]
+  delays.forEach(delay => {
+    setTimeout(() => {
+      const inputField = findInputField()
+      if (inputField) attachListeners(inputField)
+    }, delay)
+  })
 }
 
 function findInputField() {
@@ -192,7 +205,11 @@ function isElementVisible(el) {
 }
 
 function handleInput(e) {
-  const text = e.target.innerText || e.target.value || ''
+  const target = e.target
+  const text = target.innerText ||
+               target.value ||
+               target.textContent || ''
+
   currentQuery = text.trim()
 
   if (searchTimeout) clearTimeout(searchTimeout)
