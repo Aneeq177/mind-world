@@ -40,6 +40,14 @@ function injectSidebar() {
       <span id="mw-title">Mind World</span>
       <button id="mw-close">×</button>
     </div>
+    <div id="mw-search-bar">
+      <input
+        type="text"
+        id="mw-search-input"
+        placeholder="Search your memory..."
+      />
+      <button id="mw-search-btn">→</button>
+    </div>
     <div id="mw-status">Watching for relevant memories...</div>
     <div id="mw-results"></div>
     <div id="mw-staging" style="display:none">
@@ -94,6 +102,28 @@ function injectSidebar() {
     stagedConversations = []
     updateStagingArea()
     updateStatus('✓ Context injected successfully')
+  })
+
+  // Manual search
+  const searchInput = document.getElementById('mw-search-input')
+  const searchBtn = document.getElementById('mw-search-btn')
+
+  searchBtn.addEventListener('click', () => {
+    const query = searchInput.value.trim()
+    if (query.length >= 3) {
+      currentQuery = query
+      performSearch(query)
+    }
+  })
+
+  searchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      const query = searchInput.value.trim()
+      if (query.length >= 3) {
+        currentQuery = query
+        performSearch(query)
+      }
+    }
   })
 }
 
