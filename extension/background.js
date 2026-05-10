@@ -55,7 +55,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 async function handleSearch(query) {
   try {
-    if (!query || query.trim().length < 10) {
+    if (!query || query.trim().length < 2) {
       return { results: [] }
     }
 
@@ -64,11 +64,17 @@ async function handleSearch(query) {
       return { results: [], error: 'not_logged_in' }
     }
 
+    // Expand short queries for better semantic search
+    let searchQuery = query.trim()
+    if (searchQuery.split(' ').length <= 2) {
+      searchQuery = expandQuery(searchQuery)
+    }
+
     const response = await fetch(`${API_BASE}/search`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        query: query.trim(),
+        query: searchQuery,
         email: email,
         limit: 5
       })
@@ -81,6 +87,36 @@ async function handleSearch(query) {
   } catch (error) {
     return { results: [] }
   }
+}
+
+// Expand short queries into fuller phrases for better embedding
+function expandQuery(query) {
+  const expansions = {
+    'transfer': 'college transfer application university admission',
+    'code': 'coding programming software development',
+    'coding': 'coding programming software development',
+    'essay': 'essay writing college application personal statement',
+    'career': 'career job internship professional development',
+    'ai': 'artificial intelligence machine learning AI tools',
+    'research': 'research paper academic study analysis',
+    'math': 'mathematics calculations equations problem solving',
+    'physics': 'physics science research experiment',
+    'resume': 'resume job application career professional',
+    'python': 'python programming code development',
+    'java': 'java programming code development',
+    'money': 'finance money economics budget',
+    'health': 'health medical wellness fitness',
+  }
+
+  const lower = query.toLowerCase()
+
+  // Check if we have a direct expansion
+  if (expansions[lower]) {
+    return expansions[lower]
+  }
+
+  // Otherwise wrap in a generic phrase
+  return `conversations about ${query}`
 }
 
 async function handleSummarize(conversationIds, currentQuery) {

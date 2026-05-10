@@ -110,7 +110,7 @@ function injectSidebar() {
 
   searchBtn.addEventListener('click', () => {
     const query = searchInput.value.trim()
-    if (query.length >= 3) {
+    if (query.length >= 2) {
       currentQuery = query
       performSearch(query)
     }
@@ -119,7 +119,7 @@ function injectSidebar() {
   searchInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       const query = searchInput.value.trim()
-      if (query.length >= 3) {
+      if (query.length >= 2) {
         currentQuery = query
         performSearch(query)
       }
