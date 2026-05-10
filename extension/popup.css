@@ -5,14 +5,14 @@
 }
 
 body {
-  width: 280px;
+  width: 300px;
   background: #0a0a14;
   color: white;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
 #popup {
-  padding: 16px;
+  padding: 20px;
 }
 
 #header {
@@ -20,13 +20,87 @@ body {
   align-items: center;
   gap: 8px;
   font-weight: 700;
-  font-size: 1rem;
+  font-size: 1.1rem;
   margin-bottom: 16px;
   padding-bottom: 12px;
   border-bottom: 1px solid rgba(255,255,255,0.08);
 }
 
-#status-section {
+#login-subtitle {
+  font-size: 0.82rem;
+  color: #888;
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+
+.input-group {
+  margin-bottom: 14px;
+}
+
+.input-group label {
+  display: block;
+  font-size: 0.75rem;
+  color: #888;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.input-group input {
+  width: 100%;
+  padding: 10px 12px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 8px;
+  color: white;
+  font-size: 0.85rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.input-group input:focus {
+  border-color: rgba(124,58,237,0.6);
+}
+
+#get-key-link {
+  display: block;
+  font-size: 0.72rem;
+  color: #7c3aed;
+  margin-top: 4px;
+  text-decoration: none;
+}
+
+#login-error {
+  font-size: 0.78rem;
+  color: #ff6b6b;
+  margin-bottom: 10px;
+  min-height: 18px;
+}
+
+#save-btn {
+  width: 100%;
+  padding: 12px;
+  background: linear-gradient(135deg, #7c3aed, #5b21b6);
+  border: none;
+  border-radius: 10px;
+  color: white;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+#save-btn:hover {
+  opacity: 0.9;
+}
+
+#save-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Connected view */
+#status-row {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -38,6 +112,7 @@ body {
   height: 8px;
   border-radius: 50%;
   background: #00FF88;
+  box-shadow: 0 0 6px #00FF88;
 }
 
 #status-text {
@@ -45,59 +120,94 @@ body {
   color: #00FF88;
 }
 
-#email-section {
+#user-card {
   background: rgba(255,255,255,0.05);
-  border-radius: 8px;
-  padding: 10px 12px;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  padding: 12px;
   margin-bottom: 12px;
 }
 
-#email-label {
+#user-label {
   font-size: 0.7rem;
   color: #555;
+  margin-bottom: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+#user-email {
+  font-size: 0.85rem;
+  color: #aaa;
+}
+
+#stats-row {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.stat {
+  flex: 1;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 8px;
+  padding: 10px;
+  text-align: center;
+}
+
+.stat div:first-child {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: white;
   margin-bottom: 2px;
 }
 
-#email-value {
-  font-size: 0.82rem;
-  color: #888;
-}
-
-#divider {
-  height: 1px;
-  background: rgba(255,255,255,0.06);
-  margin: 12px 0;
+.stat-label {
+  font-size: 0.68rem;
+  color: #555;
 }
 
 #instructions {
   font-size: 0.78rem;
   color: #666;
   line-height: 1.6;
-  margin-bottom: 16px;
-}
-
-#instructions p {
-  margin-bottom: 8px;
-}
-
-#instructions strong {
-  color: #a78bfa;
+  margin-bottom: 14px;
 }
 
 #open-map {
   display: block;
   padding: 10px;
-  background: rgba(124,58,237,0.2);
-  border: 1px solid rgba(124,58,237,0.4);
+  background: rgba(124,58,237,0.15);
+  border: 1px solid rgba(124,58,237,0.3);
   border-radius: 8px;
   color: #a78bfa;
   text-decoration: none;
   text-align: center;
   font-size: 0.82rem;
   font-weight: 500;
+  margin-bottom: 8px;
+  transition: all 0.2s;
 }
 
 #open-map:hover {
-  background: rgba(124,58,237,0.35);
+  background: rgba(124,58,237,0.25);
   color: white;
+}
+
+#logout-btn {
+  width: 100%;
+  padding: 8px;
+  background: none;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  color: #555;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+#logout-btn:hover {
+  border-color: rgba(255,68,68,0.3);
+  color: #ff6b6b;
 }

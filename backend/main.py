@@ -6,6 +6,8 @@ import os
 import pandas as pd
 from dotenv import load_dotenv
 
+from typing import Optional
+
 from pydantic import BaseModel
 from models import ProcessResponse, BlendRequest, BlendResponse
 from services.parser import parse_claude, parse_chatgpt
@@ -142,6 +144,7 @@ class SummarizeRequest(BaseModel):
     conversation_ids: list[str]
     current_query: str
     email: str
+    api_key: Optional[str] = None
 
 @app.post("/summarize")
 async def summarize(request: SummarizeRequest):
@@ -149,9 +152,12 @@ async def summarize(request: SummarizeRequest):
         from services.database import get_or_create_user, get_user_conversations
         import anthropic
 
-        api_key = os.getenv("ANTHROPIC_API_KEY")
+        api_key = request.api_key or os.getenv("ANTHROPIC_API_KEY")
         if not api_key:
-            raise HTTPException(status_code=400, detail="API key not configured")
+            raise HTTPException(
+                status_code=400,
+                detail="Anthropic API key required — add one in the extension or configure the server.",
+            )
 
         user_id = get_or_create_user(request.email)
 
@@ -231,6 +237,39 @@ Be concise and specific. Focus on information that will help answer the current 
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+class UserStatsRequest(BaseModel):
+    email: str
+
+@app.post("/user_stats")
+async def user_stats(request: UserStatsRequest):
+    try:
+        from services.database import get_or_create_user
+        from services.database import get_supabase
+
+        supabase = get_supabase()
+        user_id = get_or_create_user(request.email)
+
+        # Count conversations
+        conv_result = supabase.table("conversations")\
+            .select("id, source")\
+            .eq("user_id", user_id)\
+            .execute()
+
+        conversations = conv_result.data or []
+        sources = set(c.get('source', '') for c in conversations)
+
+        return {
+            "conversation_count": len(conversations),
+            "platform_count": len(sources),
+            "sources": list(sources)
+        }
+    except Exception as e:
+        return {
+            "conversation_count": 0,
+            "platform_count": 0,
+            "sources": []
+        }
 
 @app.post("/blend")
 async def blend(request: BlendRequest):

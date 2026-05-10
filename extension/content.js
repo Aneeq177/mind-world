@@ -224,6 +224,18 @@ function handleInput(e) {
 }
 
 async function performSearch(query) {
+  // Check if logged in first
+  const response_status = await chrome.runtime.sendMessage({
+    type: 'GET_STATUS'
+  })
+
+  if (!response_status?.loggedIn) {
+    updateStatus('⚠️ Please log in via the Mind World extension icon')
+    showSidebar()
+    updateResults([])
+    return
+  }
+
   updateStatus('🔍 Searching your memories...')
   showSidebar()
 
@@ -359,7 +371,15 @@ async function openPreviewPanel() {
   })
 
   if (response.error) {
-    content.textContent = 'Failed to generate summary. Try again.'
+    if (response.error === 'not_configured') {
+      content.textContent =
+        'Open the Mind World extension and sign in with your email and Anthropic API key.'
+    } else if (response.error === 'missing_api_key') {
+      content.textContent =
+        'Add your Anthropic API key in the Mind World extension popup (required for summaries).'
+    } else {
+      content.textContent = 'Failed to generate summary. Try again.'
+    }
     return
   }
 

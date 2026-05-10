@@ -1,5 +1,16 @@
 const API_BASE = 'https://mind-world-app-mv4yv.ondigitalocean.app'
-const USER_EMAIL = 'aneequddin66@gmail.com'
+
+// Get credentials from Chrome storage
+async function getCredentials() {
+  const stored = await chrome.storage.local.get([
+    'mw_email',
+    'mw_api_key'
+  ])
+  return {
+    email: stored.mw_email || null,
+    apiKey: stored.mw_api_key || null
+  }
+}
 
 function getPlatform(url) {
   if (url.includes('claude.ai')) return 'claude'
@@ -30,7 +41,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'GET_STATUS') {
-    sendResponse({ email: USER_EMAIL, api: API_BASE })
+    getCredentials().then(creds => {
+      sendResponse({
+        email: creds.email,
+        apiKey: creds.apiKey,
+        api: API_BASE,
+        loggedIn: !!creds.email
+      })
+    })
     return true
   }
 })
@@ -41,13 +59,18 @@ async function handleSearch(query) {
       return { results: [] }
     }
 
+    const { email } = await getCredentials()
+    if (!email) {
+      return { results: [], error: 'not_logged_in' }
+    }
+
     const response = await fetch(`${API_BASE}/search`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         query: query.trim(),
-        email: USER_EMAIL,
-        limit: 3
+        email: email,
+        limit: 5
       })
     })
 
@@ -56,20 +79,22 @@ async function handleSearch(query) {
     const data = await response.json()
     return { results: data.results || [] }
   } catch (error) {
-    console.error('Mind World search error:', error)
     return { results: [] }
   }
 }
 
 async function handleSummarize(conversationIds, currentQuery) {
   try {
+    const { email, apiKey } = await getCredentials()
+    if (!email) return { error: 'not_logged_in' }
+
     const response = await fetch(`${API_BASE}/summarize`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         conversation_ids: conversationIds,
         current_query: currentQuery,
-        email: USER_EMAIL
+        email: email
       })
     })
 
@@ -82,18 +107,22 @@ async function handleSummarize(conversationIds, currentQuery) {
       count: data.conversation_count
     }
   } catch (error) {
-    console.error('Mind World summarize error:', error)
     return { error: error.message }
   }
 }
 
 async function handleSaveConversation(conversation) {
   try {
+    const { email } = await getCredentials()
+    if (!email) {
+      return { success: false, error: 'not_configured' }
+    }
+
     const response = await fetch(`${API_BASE}/save_conversation`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        email: USER_EMAIL,
+        email,
         conversation
       })
     })

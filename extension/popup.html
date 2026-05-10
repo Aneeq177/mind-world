@@ -6,28 +6,80 @@
 </head>
 <body>
   <div id="popup">
-    <div id="header">
-      <span>🌍</span>
-      <span>Mind World</span>
+    <!-- Login View -->
+    <div id="login-view">
+      <div id="header">
+        <span>🌍</span>
+        <span>Mind World</span>
+      </div>
+      <p id="login-subtitle">
+        Enter your details to activate your memory layer.
+      </p>
+      <div class="input-group">
+        <label>Email</label>
+        <input
+          type="email"
+          id="email-input"
+          placeholder="you@example.com"
+          autocomplete="email"
+        />
+      </div>
+      <div class="input-group">
+        <label>Anthropic API Key</label>
+        <input
+          type="password"
+          id="apikey-input"
+          placeholder="sk-ant-..."
+        />
+        <a
+          href="https://console.anthropic.com"
+          target="_blank"
+          id="get-key-link"
+        >
+          Get a free key →
+        </a>
+      </div>
+      <div id="login-error"></div>
+      <button id="save-btn">Activate Mind World</button>
     </div>
-    <div id="status-section">
-      <div id="status-dot"></div>
-      <div id="status-text">Active on claude.ai</div>
+
+    <!-- Connected View -->
+    <div id="connected-view" style="display:none">
+      <div id="header">
+        <span>🌍</span>
+        <span>Mind World</span>
+      </div>
+      <div id="status-row">
+        <div id="status-dot"></div>
+        <span id="status-text">Active</span>
+      </div>
+      <div id="user-card">
+        <div id="user-label">Connected as</div>
+        <div id="user-email"></div>
+      </div>
+      <div id="stats-row">
+        <div class="stat">
+          <div id="conv-count">—</div>
+          <div class="stat-label">conversations</div>
+        </div>
+        <div class="stat">
+          <div id="platforms-count">—</div>
+          <div class="stat-label">platforms</div>
+        </div>
+      </div>
+      <div id="instructions">
+        Start typing in Claude, ChatGPT, or Gemini and Mind World
+        will surface relevant past conversations automatically.
+      </div>
+      <a
+        href="https://mind-world-indol.vercel.app"
+        target="_blank"
+        id="open-map"
+      >
+        🌍 Upload History / Open Map
+      </a>
+      <button id="logout-btn">Sign out</button>
     </div>
-    <div id="email-section">
-      <div id="email-label">Connected as</div>
-      <div id="email-value">Loading...</div>
-    </div>
-    <div id="divider"></div>
-    <div id="instructions">
-      <p>Start typing in Claude and Mind World will automatically surface relevant past conversations.</p>
-      <p>Click <strong>⚡ Inject Context</strong> to add a past conversation to your current chat.</p>
-    </div>
-    <a href="https://mind-world-indol.vercel.app"
-       target="_blank"
-       id="open-map">
-      🌍 Open Mind World Map
-    </a>
   </div>
   <script src="popup.js"></script>
 </body>
