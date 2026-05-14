@@ -121,7 +121,10 @@ export default function Landing() {
     return (
       <div style={{
         width: '100vw', height: '100vh',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        overflowY: 'auto',
+        display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+        padding: 'max(48px, calc(50vh - 320px)) 24px',
+        boxSizing: 'border-box',
         background: '#000008',
         backgroundImage: 'radial-gradient(ellipse at center, #0a0a1a 0%, #000008 100%)'
       }}>
@@ -254,7 +257,7 @@ export default function Landing() {
   // Marketing home
   return (
     <div style={{
-      width: '100vw', minHeight: '100vh',
+      width: '100vw', height: '100vh',
       background: '#000008',
       backgroundImage: 'radial-gradient(ellipse at 50% 0%, #0d0a1f 0%, #000008 60%)',
       color: 'white',
