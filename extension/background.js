@@ -1,5 +1,8 @@
 const API_BASE = 'https://mind-world-app-mv4yv.ondigitalocean.app'
 
+// Track IDs we've already notified so we don't show duplicate toasts
+const notifiedConversationIds = new Set()
+
 // Get credentials from Chrome storage
 async function getCredentials() {
   const stored = await chrome.storage.local.get([
@@ -190,14 +193,26 @@ async function handleSaveConversation(conversation) {
       return { success: false, error: 'not_configured' }
     }
 
+    // Skip if we already notified for this conversation this session
+    const alreadyNotified = notifiedConversationIds.has(conversation.id)
+
     const response = await fetch(`${API_BASE}/save_conversation`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email,
-        conversation
-      })
+      body: JSON.stringify({ email, conversation })
     })
+
+    if (response.ok && !alreadyNotified) {
+      notifiedConversationIds.add(conversation.id)
+      chrome.notifications.create({
+        type: 'basic',
+        iconUrl: chrome.runtime.getURL('icons/icon48.png'),
+        title: 'Mind World',
+        message: 'Conversation saved to your memory',
+        requireInteraction: false
+      })
+    }
+
     return { success: response.ok }
   } catch (error) {
     console.error('Mind World save error:', error)

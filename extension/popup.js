@@ -1,4 +1,5 @@
 const API_BASE = 'https://mind-world-app-mv4yv.ondigitalocean.app'
+const UPLOAD_BASE = 'https://mind-world-indol.vercel.app'
 
 document.addEventListener('DOMContentLoaded', async () => {
   const loginView = document.getElementById('login-view')
@@ -11,12 +12,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   const logoutBtn = document.getElementById('logout-btn')
   const convCount = document.getElementById('conv-count')
   const platformsCount = document.getElementById('platforms-count')
+  const openMap = document.getElementById('open-map')
+  const uploadBtn = document.getElementById('upload-btn')
+
+  let currentEmail = null
 
   // Check if already logged in
-  const stored = await chrome.storage.local.get([
-    'mw_email',
-    'mw_api_key'
-  ])
+  const stored = await chrome.storage.local.get(['mw_email', 'mw_api_key'])
 
   if (stored.mw_email && stored.mw_api_key) {
     showConnectedView(stored.mw_email)
@@ -25,6 +27,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     loginView.style.display = 'block'
     connectedView.style.display = 'none'
   }
+
+  // Upload button opens the app with email pre-filled
+  uploadBtn.addEventListener('click', () => {
+    if (currentEmail) {
+      const url = `${UPLOAD_BASE}?email=${encodeURIComponent(currentEmail)}`
+      chrome.tabs.create({ url })
+    }
+  })
 
   // Save credentials
   saveBtn.addEventListener('click', async () => {
@@ -47,17 +57,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     saveBtn.textContent = 'Connecting...'
 
     try {
-      // Test the API key works by calling health endpoint
       const res = await fetch(`${API_BASE}/health`)
       if (!res.ok) throw new Error('Cannot reach Mind World server')
 
-      // Save to Chrome storage
-      await chrome.storage.local.set({
-        mw_email: email,
-        mw_api_key: apiKey
-      })
+      await chrome.storage.local.set({ mw_email: email, mw_api_key: apiKey })
 
-      // Notify all active tabs to update
       const tabs = await chrome.tabs.query({})
       tabs.forEach(tab => {
         chrome.tabs.sendMessage(tab.id, {
@@ -80,6 +84,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Logout
   logoutBtn.addEventListener('click', async () => {
     await chrome.storage.local.remove(['mw_email', 'mw_api_key'])
+    currentEmail = null
     connectedView.style.display = 'none'
     loginView.style.display = 'block'
     emailInput.value = ''
@@ -87,9 +92,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   })
 
   function showConnectedView(email) {
+    currentEmail = email
     loginView.style.display = 'none'
     connectedView.style.display = 'block'
     userEmail.textContent = email
+
+    // Pre-fill the open-map link with the email so the upload page knows who this is
+    const uploadUrl = `${UPLOAD_BASE}?email=${encodeURIComponent(email)}`
+    if (openMap) openMap.href = uploadUrl
   }
 
   async function loadStats(email) {
@@ -107,12 +117,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const onboarding = document.getElementById('onboarding')
         const instructions = document.getElementById('instructions')
+
         if (count === 0) {
           if (onboarding) onboarding.style.display = 'block'
           if (instructions) instructions.style.display = 'none'
+          if (openMap) openMap.style.display = 'none'
         } else {
           if (onboarding) onboarding.style.display = 'none'
           if (instructions) instructions.style.display = 'block'
+          if (openMap) openMap.style.display = 'block'
         }
       }
     } catch {

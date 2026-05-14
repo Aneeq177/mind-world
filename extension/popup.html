@@ -68,34 +68,38 @@
         </div>
       </div>
 
-      <!-- Onboarding steps: shown when 0 conversations -->
+      <!-- Onboarding: shown when 0 conversations -->
       <div id="onboarding" style="display:none">
-        <div id="onboarding-title">Get started in 3 steps</div>
+        <div id="no-data-box">
+          No conversations found — let's fix that.
+        </div>
+        <div id="onboarding-title">3 steps to get started</div>
         <div class="onboarding-step">
           <span class="step-num">1</span>
           <div class="step-text">
-            <div class="step-label">Export your history</div>
-            <div class="step-sub">Settings → Export data in Claude or ChatGPT</div>
+            <div class="step-label">Export your Claude history</div>
+            <div class="step-sub">claude.ai → Settings → Account → Export Data</div>
           </div>
         </div>
         <div class="onboarding-step">
           <span class="step-num">2</span>
           <div class="step-text">
-            <div class="step-label">Upload it to your map</div>
-            <div class="step-sub">At mind-world-indol.vercel.app</div>
+            <div class="step-label">Export your ChatGPT history</div>
+            <div class="step-sub">chatgpt.com → Settings → Data Controls → Export Data</div>
           </div>
         </div>
         <div class="onboarding-step">
           <span class="step-num">3</span>
           <div class="step-text">
-            <div class="step-label">Start typing anywhere</div>
-            <div class="step-sub">Mind World surfaces your memories automatically</div>
+            <div class="step-label">Upload both files</div>
+            <div class="step-sub">Click the button below to build your 3D map</div>
           </div>
         </div>
+        <button id="upload-btn">Upload My History →</button>
       </div>
 
       <!-- Normal instructions: shown when conversations exist -->
-      <div id="instructions">
+      <div id="instructions" style="display:none">
         Start typing in Claude, ChatGPT, or Gemini and Mind World
         will surface relevant past conversations automatically.
       </div>
@@ -104,8 +108,9 @@
         href="https://mind-world-indol.vercel.app"
         target="_blank"
         id="open-map"
+        style="display:none"
       >
-        🌍 Upload History / Open Map
+        🌍 Add more history / Open Map
       </a>
       <button id="logout-btn">Sign out</button>
     </div>

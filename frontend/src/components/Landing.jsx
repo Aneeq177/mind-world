@@ -1,9 +1,8 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useStore } from '../store'
 import { processFiles } from '../api'
 
 const CHROME_STORE_URL = 'https://chrome.google.com/webstore/detail/mind-world'
-const APP_URL = 'https://mind-world-indol.vercel.app'
 
 const FEATURES = [
   {
@@ -44,6 +43,16 @@ export default function Landing() {
   const [email, setEmail] = useState('')
   const [error, setError] = useState('')
   const [loadingMsg, setLoadingMsg] = useState('')
+
+  // If the popup opened this page with ?email=..., pre-fill and jump to upload
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const emailParam = params.get('email')
+    if (emailParam) {
+      setEmail(emailParam)
+      setView('upload')
+    }
+  }, [])
 
   const canGenerate = (claudeFile || chatgptFile) && apiKey && email
 

@@ -260,3 +260,32 @@ body {
   color: #555;
   line-height: 1.4;
 }
+
+#no-data-box {
+  padding: 10px 12px;
+  background: rgba(124,58,237,0.1);
+  border: 1px solid rgba(124,58,237,0.3);
+  border-radius: 8px;
+  font-size: 0.78rem;
+  color: #a78bfa;
+  text-align: center;
+  margin-bottom: 14px;
+}
+
+#upload-btn {
+  width: 100%;
+  padding: 11px;
+  background: linear-gradient(135deg, #7c3aed, #5b21b6);
+  border: none;
+  border-radius: 10px;
+  color: white;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 6px;
+  transition: opacity 0.2s;
+}
+
+#upload-btn:hover {
+  opacity: 0.9;
+}
