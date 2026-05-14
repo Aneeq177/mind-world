@@ -9,7 +9,7 @@ export default function ConvoList({ conversations, selectedId, blendIds, sortBy,
   const display = sorted.slice(0, 25)
 
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {/* Header */}
       <div style={{
         padding: '12px 14px 10px',
@@ -44,7 +44,7 @@ export default function ConvoList({ conversations, selectedId, blendIds, sortBy,
       </div>
 
       {/* List */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '8px' }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '8px', minHeight: 0 }}>
         {display.map(c => {
           const isSelected = c.id === selectedId
           const isBlend = blendIds.includes(c.id)

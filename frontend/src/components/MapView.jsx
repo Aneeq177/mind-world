@@ -168,7 +168,7 @@ export default function MapView() {
           flexShrink: 0,
           borderRight: BORDER,
           background: PANEL_BG,
-          overflow: 'hidden',
+          overflowY: 'auto',
         }}>
           <BlenderPanel
             blendIds={blendIds}
@@ -180,9 +180,9 @@ export default function MapView() {
         </div>
 
         {/* Center: Map + Time Machine (scrolls vertically) */}
-        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
-          {/* Map — fixed height so it doesn't collapse */}
-          <div style={{ height: '500px', flexShrink: 0 }}>
+        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+          {/* Map */}
+          <div style={{ height: 'clamp(260px, 40vh, 460px)', flexShrink: 0 }}>
             <MapPlot
               conversations={filtered}
               selectedId={selectedId}
@@ -220,6 +220,8 @@ export default function MapView() {
           background: PANEL_BG,
           position: 'relative',
           overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
         }}>
           <ConvoList
             conversations={filtered}

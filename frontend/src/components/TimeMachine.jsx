@@ -152,7 +152,7 @@ export default function TimeMachine({ conversations }) {
       </div>
 
       {/* Time-filtered map */}
-      <div style={{ height: '380px' }}>
+      <div style={{ height: 'clamp(180px, 26vh, 340px)' }}>
         <Plot
           data={traces}
           layout={layout}
