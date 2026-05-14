@@ -211,3 +211,52 @@ body {
   border-color: rgba(255,68,68,0.3);
   color: #ff6b6b;
 }
+
+/* Onboarding steps */
+#onboarding {
+  margin-bottom: 14px;
+}
+
+#onboarding-title {
+  font-size: 0.72rem;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 10px;
+}
+
+.onboarding-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.step-num {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(124,58,237,0.2);
+  border: 1px solid rgba(124,58,237,0.4);
+  color: #a78bfa;
+  font-size: 0.72rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.step-label {
+  font-size: 0.82rem;
+  color: #ccc;
+  font-weight: 500;
+  margin-bottom: 2px;
+}
+
+.step-sub {
+  font-size: 0.72rem;
+  color: #555;
+  line-height: 1.4;
+}

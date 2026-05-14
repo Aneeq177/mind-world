@@ -101,8 +101,19 @@ document.addEventListener('DOMContentLoaded', async () => {
       })
       if (res.ok) {
         const data = await res.json()
-        convCount.textContent = data.conversation_count || '0'
+        const count = data.conversation_count || 0
+        convCount.textContent = count
         platformsCount.textContent = data.platform_count || '0'
+
+        const onboarding = document.getElementById('onboarding')
+        const instructions = document.getElementById('instructions')
+        if (count === 0) {
+          if (onboarding) onboarding.style.display = 'block'
+          if (instructions) instructions.style.display = 'none'
+        } else {
+          if (onboarding) onboarding.style.display = 'none'
+          if (instructions) instructions.style.display = 'block'
+        }
       }
     } catch {
       convCount.textContent = '—'
