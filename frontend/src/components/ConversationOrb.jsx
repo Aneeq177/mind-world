@@ -21,7 +21,7 @@ export default function ConversationOrb({ chat }) {
   const color = useMemo(() => new THREE.Color(chat.color), [chat.color])
 
   const geometry = useMemo(() => {
-    if (chat.source === 'chatgpt') {
+    if (chat.source?.toLowerCase() === 'chatgpt') {
       return new THREE.OctahedronGeometry(baseSize, 0)
     }
     return new THREE.SphereGeometry(baseSize, 16, 16)

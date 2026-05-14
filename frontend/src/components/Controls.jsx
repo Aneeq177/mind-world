@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { useStore } from '../store'
 
 export default function Controls() {
@@ -10,6 +10,27 @@ export default function Controls() {
   const setFilterSource = useStore(s => s.setFilterSource)
   const setFilterRegion = useStore(s => s.setFilterRegion)
   const clearBlend = useStore(s => s.clearBlend)
+  const email = useStore(s => s.email)
+  const apiKey = useStore(s => s.apiKey)
+  const [blending, setBlending] = useState(false)
+
+  const handleBlend = async () => {
+    try {
+      setBlending(true)
+      const { blendConversations } = await import('../api')
+      const result = await blendConversations({
+        conversationIds: blendIds,
+        question: "Based on these past conversations, what connections or next steps do you see?",
+        email,
+        apiKey
+      })
+      window.open(result.claude_url, '_blank')
+    } catch (err) {
+      alert(err.message)
+    } finally {
+      setBlending(false)
+    }
+  }
 
   const regions = ['all', ...new Set(conversations.map(c => c.region))]
 
@@ -108,15 +129,17 @@ export default function Controls() {
           </button>
 
           <button
+            onClick={handleBlend}
+            disabled={blending}
             style={{
               padding: '8px 20px',
-              background: 'linear-gradient(135deg, #7c3aed, #5b21b6)',
+              background: blending ? '#555' : 'linear-gradient(135deg, #7c3aed, #5b21b6)',
               border: 'none', borderRadius: '8px',
-              color: 'white', cursor: 'pointer',
+              color: 'white', cursor: blending ? 'not-allowed' : 'pointer',
               fontSize: '0.85rem', fontWeight: '600'
             }}
           >
-            🔀 Blend Conversations
+            {blending ? 'Blending...' : '🔀 Blend Conversations'}
           </button>
         </div>
       )}

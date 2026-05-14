@@ -280,10 +280,18 @@ async def blend(request: BlendRequest):
     if not request.conversation_ids:
         raise HTTPException(status_code=400, detail="No conversations selected")
 
-    raise HTTPException(
-        status_code=501,
-        detail="Blend endpoint requires database integration - coming soon"
-    )
+    from services.database import get_user_conversations, get_or_create_user
+    try:
+        user_id = get_or_create_user(request.email)
+        all_convos = get_user_conversations(user_id)
+        selected = [c for c in all_convos if c['id'] in request.conversation_ids]
+        
+        if not selected:
+            raise HTTPException(status_code=404, detail="Conversations not found")
+            
+        return blend_conversations(selected, request.question, api_key)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/")
 def root():

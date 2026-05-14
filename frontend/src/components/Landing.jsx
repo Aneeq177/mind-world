@@ -6,6 +6,7 @@ export default function Landing() {
   const setPhase = useStore(s => s.setPhase)
   const phase = useStore(s => s.phase)
   const setConversations = useStore(s => s.setConversations)
+  const setCredentials = useStore(s => s.setCredentials)
 
   const [claudeFile, setClaudeFile] = useState(null)
   const [chatgptFile, setChatgptFile] = useState(null)
@@ -49,6 +50,7 @@ export default function Landing() {
         email
       })
       clearInterval(msgInterval)
+      setCredentials(email, apiKey)
       setConversations(data.conversations, data.sources)
       setPhase('universe')
     } catch (err) {

@@ -42,3 +42,21 @@ export async function healthCheck() {
   const response = await fetch(`${BASE_URL}/health`)
   return response.json()
 }
+
+export async function blendConversations({ conversationIds, question, email, apiKey }) {
+  const response = await fetch(`${BASE_URL}/blend`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      conversation_ids: conversationIds,
+      question: question || '',
+      email: email,
+      api_key: apiKey
+    })
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(error.detail || 'Failed to blend conversations')
+  }
+  return response.json()
+}

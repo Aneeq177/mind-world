@@ -15,7 +15,7 @@ function Scene() {
 
   const filtered = useMemo(() => {
     return conversations.filter(c => {
-      if (filterSource !== 'all' && c.source !== filterSource) return false
+      if (filterSource !== 'all' && c.source?.toLowerCase() !== filterSource) return false
       if (filterRegion !== 'all' && c.region !== filterRegion) return false
       return true
     })

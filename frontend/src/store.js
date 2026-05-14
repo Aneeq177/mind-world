@@ -13,6 +13,10 @@ export const useStore = create((set) => ({
   selectedId: null,
   blendIds: [],
 
+  // Credentials
+  email: '',
+  apiKey: '',
+
   // Filters
   filterSource: 'all', // 'all' | 'claude' | 'chatgpt'
   filterRegion: 'all',
@@ -21,6 +25,7 @@ export const useStore = create((set) => ({
   hoveredId: null,
 
   // Actions
+  setCredentials: (email, apiKey) => set({ email, apiKey }),
   setPhase: (phase) => set({ phase }),
   setConversations: (conversations, sources) => set({
     conversations,

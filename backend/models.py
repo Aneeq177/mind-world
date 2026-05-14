@@ -25,6 +25,7 @@ class ProcessResponse(BaseModel):
 class BlendRequest(BaseModel):
     conversation_ids: list[str]
     question: str
+    email: str
     api_key: Optional[str] = None
 
 class BlendResponse(BaseModel):

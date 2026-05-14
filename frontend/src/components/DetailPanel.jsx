@@ -14,8 +14,9 @@ export default function DetailPanel() {
   if (!chat) return null
 
   const isBlend = blendIds.includes(selectedId)
-  const sourceColor = chat.source === 'claude' ? '#7c3aed' : '#10a37f'
-  const sourceEmoji = chat.source === 'claude' ? '🟣' : '🟢'
+  const isClaude = chat.source?.toLowerCase() === 'claude'
+  const sourceColor = isClaude ? '#7c3aed' : '#10a37f'
+  const sourceEmoji = isClaude ? '🟣' : '🟢'
 
   return (
     <div style={{
@@ -87,7 +88,7 @@ export default function DetailPanel() {
 
       {/* Actions */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        {chat.source === 'claude' && (
+        {isClaude && (
           <a
             href={`https://claude.ai/chat/${chat.id}`}
             target="_blank"
