@@ -12,8 +12,8 @@ const FEATURES = [
   },
   {
     icon: '🌍',
-    title: 'Your mind in 3D',
-    desc: 'Upload your Claude and ChatGPT history and see every conversation mapped as a glowing orb in a 3D universe, clustered by topic.'
+    title: 'Your mind in 2D',
+    desc: 'Upload your Claude and ChatGPT history and see every conversation mapped as a glowing orb in a 2D universe, clustered by topic.'
   },
   {
     icon: '⚡',
@@ -25,7 +25,7 @@ const FEATURES = [
 const LOADING_MESSAGES = [
   'Reading your conversations...',
   'Generating embeddings...',
-  'Mapping your mind in 3D...',
+  'Mapping your mind in 2D...',
   'Identifying your unique topics...',
   'Building your universe...'
 ]
@@ -152,7 +152,7 @@ export default function Landing() {
             </h1>
             <p style={{ color: '#888', fontSize: '0.9rem', lineHeight: '1.6' }}>
               Upload your conversation exports and Mind World<br />
-              maps your AI history in 3D.
+              maps your AI history in 2D.
             </p>
           </div>
 
