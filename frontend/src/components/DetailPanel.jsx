@@ -1,122 +1,106 @@
-import React from 'react'
-import { useStore } from '../store'
+export default function DetailPanel({ conversation: c, isBlended, onClose, onToggleBlend }) {
+  if (!c) return null
 
-export default function DetailPanel() {
-  const selectedId = useStore(s => s.selectedId)
-  const conversations = useStore(s => s.conversations)
-  const setSelected = useStore(s => s.setSelected)
-  const toggleBlend = useStore(s => s.toggleBlend)
-  const blendIds = useStore(s => s.blendIds)
+  const isClaude = c.source === 'claude'
 
-  if (!selectedId) return null
-
-  const chat = conversations.find(c => c.id === selectedId)
-  if (!chat) return null
-
-  const isBlend = blendIds.includes(selectedId)
-  const isClaude = chat.source?.toLowerCase() === 'claude'
-  const sourceColor = isClaude ? '#7c3aed' : '#10a37f'
-  const sourceEmoji = isClaude ? '🟣' : '🟢'
+  const badgeStyle = {
+    fontSize: '0.68rem',
+    padding: '3px 10px',
+    background: isClaude ? 'rgba(124,58,237,0.18)' : 'rgba(16,185,129,0.18)',
+    border: `1px solid ${isClaude ? 'rgba(124,58,237,0.4)' : 'rgba(16,185,129,0.4)'}`,
+    borderRadius: '10px',
+    color: isClaude ? '#a78bfa' : '#34d399',
+    fontWeight: '600',
+  }
 
   return (
-    <div style={{
-      position: 'fixed', right: '24px', top: '50%',
-      transform: 'translateY(-50%)',
-      width: '320px',
-      background: 'rgba(0,0,0,0.85)',
-      border: '1px solid rgba(255,255,255,0.1)',
-      borderRadius: '16px', padding: '24px',
-      color: 'white', zIndex: 100,
-      backdropFilter: 'blur(12px)'
-    }}>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
-        <div style={{
-          fontSize: '0.7rem', color: sourceColor,
-          background: `${sourceColor}22`,
-          padding: '3px 8px', borderRadius: '20px',
-          textTransform: 'uppercase', letterSpacing: '0.5px'
-        }}>
-          {sourceEmoji} {chat.source}
-        </div>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '12px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={badgeStyle}>{isClaude ? '🟣 Claude' : '🟢 ChatGPT'}</span>
         <button
-          onClick={() => setSelected(null)}
-          style={{
-            background: 'none', border: 'none',
-            color: '#666', cursor: 'pointer', fontSize: '1.2rem'
-          }}
-        >✕</button>
+          onClick={onClose}
+          style={{ background: 'none', border: 'none', color: '#555', cursor: 'pointer', fontSize: '1.3rem', lineHeight: 1 }}
+        >
+          ×
+        </button>
       </div>
 
-      {/* Title */}
-      <h3 style={{
-        fontSize: '1rem', fontWeight: '600',
-        marginBottom: '12px', lineHeight: '1.4'
-      }}>
-        {chat.title}
-      </h3>
+      <div style={{ fontSize: '0.88rem', fontWeight: '700', color: 'white', lineHeight: 1.4 }}>
+        {c.title}
+      </div>
 
-      {/* Stats */}
-      <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
+      <div style={{ display: 'flex', gap: '8px' }}>
         {[
-          { label: 'Messages', value: chat.num_messages },
-          { label: 'Topic', value: chat.region },
-          { label: 'Date', value: chat.created_at.slice(0, 10) }
-        ].map(stat => (
-          <div key={stat.label} style={{ flex: 1 }}>
-            <div style={{ color: '#555', fontSize: '0.65rem', marginBottom: '2px' }}>
-              {stat.label.toUpperCase()}
-            </div>
-            <div style={{ fontSize: '0.8rem', fontWeight: '500' }}>
-              {stat.value}
-            </div>
+          { label: 'Messages', value: c.num_messages || 0 },
+          { label: 'Topic', value: (c.region || 'Other').slice(0, 14) },
+          { label: 'Date', value: (c.created_at || '').slice(0, 10) },
+        ].map(({ label, value }) => (
+          <div key={label} style={{
+            flex: 1,
+            padding: '8px 4px',
+            background: 'rgba(255,255,255,0.04)',
+            border: '1px solid rgba(255,255,255,0.07)',
+            borderRadius: '7px',
+            textAlign: 'center',
+          }}>
+            <div style={{ fontSize: '0.82rem', fontWeight: '700', color: 'white' }}>{value}</div>
+            <div style={{ fontSize: '0.62rem', color: '#555', marginTop: '2px' }}>{label}</div>
           </div>
         ))}
       </div>
 
-      {/* Preview */}
-      <p style={{
-        color: '#888', fontSize: '0.8rem', lineHeight: '1.5',
-        marginBottom: '20px',
-        display: '-webkit-box',
-        WebkitLineClamp: 4,
-        WebkitBoxOrient: 'vertical',
-        overflow: 'hidden'
+      <div style={{
+        flex: 1,
+        overflowY: 'auto',
+        fontSize: '0.75rem',
+        color: '#777',
+        lineHeight: 1.65,
+        padding: '10px',
+        background: 'rgba(255,255,255,0.02)',
+        border: '1px solid rgba(255,255,255,0.05)',
+        borderRadius: '7px',
       }}>
-        {chat.preview}
-      </p>
+        {(c.preview || '').slice(0, 400)}{(c.preview || '').length > 400 ? '…' : ''}
+      </div>
 
-      {/* Actions */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flexShrink: 0 }}>
         {isClaude && (
           <a
-            href={`https://claude.ai/chat/${chat.id}`}
+            href={`https://claude.ai/chat/${c.id}`}
             target="_blank"
-            rel="noopener noreferrer"
+            rel="noreferrer"
             style={{
-              display: 'block', padding: '10px',
-              background: 'rgba(124,58,237,0.2)',
-              border: '1px solid rgba(124,58,237,0.4)',
-              borderRadius: '8px', color: '#a78bfa',
-              textDecoration: 'none', textAlign: 'center',
-              fontSize: '0.85rem', fontWeight: '500'
+              display: 'block',
+              padding: '9px',
+              background: 'rgba(124,58,237,0.1)',
+              border: '1px solid rgba(124,58,237,0.3)',
+              borderRadius: '7px',
+              color: '#a78bfa',
+              fontSize: '0.78rem',
+              fontWeight: '600',
+              textDecoration: 'none',
+              textAlign: 'center',
             }}
           >
-            🟣 Open in Claude →
+            🟣 Open in Claude ↗
           </a>
         )}
 
         <button
-          onClick={() => toggleBlend(chat.id)}
+          onClick={onToggleBlend}
           style={{
-            padding: '10px',
-            background: isBlend ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.05)',
-            border: `1px solid ${isBlend ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.1)'}`,
-            borderRadius: '8px', color: isBlend ? 'white' : '#888',
-            cursor: 'pointer', fontSize: '0.85rem', fontWeight: '500'
+            padding: '9px',
+            background: isBlended ? 'rgba(124,58,237,0.22)' : 'rgba(255,255,255,0.05)',
+            border: `1px solid ${isBlended ? 'rgba(124,58,237,0.5)' : 'rgba(255,255,255,0.1)'}`,
+            borderRadius: '7px',
+            color: isBlended ? '#a78bfa' : '#888',
+            fontSize: '0.78rem',
+            fontWeight: '600',
+            cursor: 'pointer',
+            transition: 'all 0.15s',
           }}
         >
-          {isBlend ? '✓ Added to Blend' : '➕ Add to Blend'}
+          {isBlended ? '⭐ In Blend — Remove' : '+ Add to Blend'}
         </button>
       </div>
     </div>

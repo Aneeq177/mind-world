@@ -8,13 +8,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "plotly.js-dist-min": "^3.5.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "three": "^0.163.0",
-    "@react-three/fiber": "^8.16.0",
-    "@react-three/drei": "^9.105.0",
-    "zustand": "^4.5.2",
-    "framer-motion": "^11.1.7"
+    "react-plotly.js": "^2.6.0",
+    "zustand": "^4.5.2"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.1",

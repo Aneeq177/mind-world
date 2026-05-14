@@ -8,13 +8,6 @@ export async function processFiles({ claudeFile, chatgptFile, apiKey, email }) {
   formData.append('api_key', apiKey)
   formData.append('email', email)
 
-  console.log('Sending to API:', {
-    claudeFile: claudeFile?.name,
-    chatgptFile: chatgptFile?.name,
-    email: email,
-    hasApiKey: !!apiKey
-  })
-
   const response = await fetch(`${BASE_URL}/process`, {
     method: 'POST',
     body: formData
@@ -24,11 +17,8 @@ export async function processFiles({ claudeFile, chatgptFile, apiKey, email }) {
     let errorDetail = 'Processing failed'
     try {
       const error = await response.json()
-      if (typeof error.detail === 'string') {
-        errorDetail = error.detail
-      } else if (typeof error.detail === 'object') {
-        errorDetail = JSON.stringify(error.detail)
-      }
+      if (typeof error.detail === 'string') errorDetail = error.detail
+      else if (typeof error.detail === 'object') errorDetail = JSON.stringify(error.detail)
     } catch {
       errorDetail = `Server error: ${response.status}`
     }
@@ -43,20 +33,19 @@ export async function healthCheck() {
   return response.json()
 }
 
-export async function blendConversations({ conversationIds, question, email, apiKey }) {
-  const response = await fetch(`${BASE_URL}/blend`, {
+export async function engineerPrompt({ email, message, conversationIds }) {
+  const response = await fetch(`${BASE_URL}/engineer_prompt`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      conversation_ids: conversationIds,
-      question: question || '',
-      email: email,
-      api_key: apiKey
+      email,
+      message,
+      conversation_ids: conversationIds && conversationIds.length > 0 ? conversationIds : null
     })
   })
   if (!response.ok) {
     const error = await response.json().catch(() => ({}))
-    throw new Error(error.detail || 'Failed to blend conversations')
+    throw new Error(error.detail || 'Failed to engineer prompt')
   }
   return response.json()
 }

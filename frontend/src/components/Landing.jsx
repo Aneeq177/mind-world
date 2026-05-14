@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { useStore } from '../store'
 import { processFiles } from '../api'
 
@@ -78,7 +78,7 @@ export default function Landing() {
       clearInterval(msgInterval)
       setCredentials(email, apiKey)
       setConversations(data.conversations, data.sources)
-      setPhase('universe')
+      setPhase('map')
     } catch (err) {
       clearInterval(msgInterval)
       let errorMsg = 'Something went wrong. Please try again.'

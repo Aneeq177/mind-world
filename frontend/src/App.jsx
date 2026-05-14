@@ -1,9 +1,6 @@
-import React from 'react'
 import { useStore } from './store'
 import Landing from './components/Landing'
-import Universe from './components/Universe'
-import DetailPanel from './components/DetailPanel'
-import Controls from './components/Controls'
+import MapView from './components/MapView'
 
 export default function App() {
   const phase = useStore(s => s.phase)
@@ -11,14 +8,7 @@ export default function App() {
   return (
     <div style={{ width: '100vw', height: '100vh', position: 'relative' }}>
       {(phase === 'landing' || phase === 'processing') && <Landing />}
-
-      {phase === 'universe' && (
-        <>
-          <Universe />
-          <Controls />
-          <DetailPanel />
-        </>
-      )}
+      {phase === 'map' && <MapView />}
     </div>
   )
 }
