@@ -170,6 +170,28 @@
   color: #888;
 }
 
+#mw-auto-engineer {
+  padding: 8px 12px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  flex-shrink: 0;
+}
+
+#mw-auto-engineer-btn {
+  width: 100%;
+  padding: 10px;
+  background: linear-gradient(135deg, #7c3aed, #5b21b6);
+  border: none;
+  border-radius: 8px;
+  color: white;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+#mw-auto-engineer-btn:hover {
+  opacity: 0.9;
+}
+
 #mw-preview-btn {
   width: 100%;
   padding: 10px;
@@ -184,6 +206,22 @@
 
 #mw-preview-btn:hover {
   opacity: 0.9;
+}
+
+#mw-quick-inject-btn {
+  width: 100%;
+  margin-top: 6px;
+  padding: 6px;
+  background: transparent;
+  border: none;
+  color: #555;
+  font-size: 0.72rem;
+  cursor: pointer;
+  text-align: center;
+}
+
+#mw-quick-inject-btn:hover {
+  color: #888;
 }
 
 #mw-preview-panel {
@@ -221,7 +259,7 @@
   flex: 1;
   overflow-y: auto;
   font-size: 0.78rem;
-  color: #aaa;
+  color: #ccc;
   line-height: 1.6;
   white-space: pre-wrap;
   background: rgba(255,255,255,0.03);
@@ -229,6 +267,15 @@
   border-radius: 8px;
   padding: 12px;
   margin-bottom: 12px;
+  resize: none;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  width: 100%;
+  box-sizing: border-box;
+  outline: none;
+}
+
+#mw-preview-content:focus {
+  border-color: rgba(124,58,237,0.4);
 }
 
 #mw-preview-actions {

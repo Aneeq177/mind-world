@@ -146,6 +146,12 @@ class SummarizeRequest(BaseModel):
     email: str
     api_key: Optional[str] = None
 
+class EngineerPromptRequest(BaseModel):
+    email: str
+    message: str
+    conversation_ids: Optional[list[str]] = None
+    api_key: Optional[str] = None
+
 @app.post("/summarize")
 async def summarize(request: SummarizeRequest):
     try:
@@ -231,6 +237,87 @@ Be concise and specific. Focus on information that will help answer the current 
             "summaries": summaries,
             "context_block": context_block,
             "conversation_count": len(summaries)
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/engineer_prompt")
+async def engineer_prompt(request: EngineerPromptRequest):
+    try:
+        import anthropic
+        from sentence_transformers import SentenceTransformer
+        from services.database import search_conversations
+
+        api_key = request.api_key or os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise HTTPException(
+                status_code=400,
+                detail="Anthropic API key required — add one in the extension or configure the server."
+            )
+
+        user_id = get_or_create_user(request.email)
+
+        if request.conversation_ids:
+            all_convos = get_user_conversations(user_id)
+            selected = [c for c in all_convos if c["id"] in request.conversation_ids]
+        else:
+            model = SentenceTransformer("all-MiniLM-L6-v2")
+            embedding = model.encode([request.message])[0]
+            selected = search_conversations(user_id, embedding, limit=5)
+
+        conv_context = "\n\n".join([
+            f"[{c.get('source', '').upper()} | {c.get('title', 'Untitled')} | {str(c.get('created_at', ''))[:10]}]\n{str(c.get('full_text', ''))[:2000]}"
+            for c in selected
+        ]) if selected else "No relevant past conversations found."
+
+        system_prompt = """You are an expert prompt engineer. Transform the user's rough message into a complete, well-structured prompt that will get the best possible response from an AI assistant.
+
+You will receive the user's original message and relevant excerpts from their past AI conversations.
+
+Your task:
+1. Classify the intent: advice / continuation / learning / building / decision
+2. Extract ONLY facts, decisions, preferences, and constraints from past conversations that are genuinely relevant to this specific question
+3. Engineer a complete prompt using EXACTLY this format:
+
+---
+[CONTEXT FROM YOUR HISTORY]
+
+WHO YOU ARE (relevant to this question):
+• [relevant background facts about the user from past conversations]
+
+WHAT YOU HAVE ALREADY EXPLORED:
+• [relevant past thinking, research, or attempts]
+
+WHAT HAS BEEN DECIDED OR RULED OUT:
+• [decisions already made, things already tried]
+
+[YOUR QUESTION]
+[the user's question reframed for clarity and specificity, with relevant constraints embedded]
+---
+
+Rules:
+- Omit any section that has nothing relevant to contribute — do not include empty sections
+- Reframe the question to be specific, actionable, and grounded in the user's actual situation
+- Never invent or assume information not present in the past conversations
+- Keep the entire output under 500 words
+- Output ONLY the engineered prompt. No preamble, no explanation, no commentary."""
+
+        user_content = f"User's message:\n{request.message}\n\nRelevant past conversations:\n{conv_context}"
+
+        client = anthropic.Anthropic(api_key=api_key)
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=1000,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_content}]
+        )
+
+        return {
+            "engineered_prompt": response.content[0].text,
+            "conversations_used": len(selected)
         }
 
     except HTTPException:

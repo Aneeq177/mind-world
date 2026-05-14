@@ -6,6 +6,7 @@ let searchTimeout = null
 let lastQuery = ''
 let isVisible = false
 let stagedConversations = [] // conversations staged for injection
+let currentResults = []      // last auto-search results
 let currentQuery = ''
 
 init()
@@ -50,21 +51,25 @@ function injectSidebar() {
     </div>
     <div id="mw-status">Watching for relevant memories...</div>
     <div id="mw-results"></div>
+    <div id="mw-auto-engineer" style="display:none">
+      <button id="mw-auto-engineer-btn">⚡ Engineer Prompt</button>
+    </div>
     <div id="mw-staging" style="display:none">
       <div id="mw-staging-header">
         <span id="mw-staging-count">0 selected</span>
         <button id="mw-staging-clear">Clear</button>
       </div>
-      <button id="mw-preview-btn">✨ Preview & Inject</button>
+      <button id="mw-preview-btn">⚡ Engineer Prompt</button>
+      <button id="mw-quick-inject-btn">Just inject context →</button>
     </div>
     <div id="mw-preview-panel" style="display:none">
       <div id="mw-preview-header">
-        <span>Context Preview</span>
+        <span id="mw-preview-title">Engineered Prompt</span>
         <button id="mw-preview-close">×</button>
       </div>
-      <div id="mw-preview-content"></div>
+      <textarea id="mw-preview-content" spellcheck="false"></textarea>
       <div id="mw-preview-actions">
-        <button id="mw-confirm-inject">⚡ Inject into Chat</button>
+        <button id="mw-confirm-inject">⚡ Use This Prompt</button>
         <button id="mw-cancel-inject">Cancel</button>
       </div>
     </div>
@@ -83,7 +88,15 @@ function injectSidebar() {
   })
 
   document.getElementById('mw-preview-btn').addEventListener('click', () => {
+    openEngineerPanel(stagedConversations.map(s => s.id))
+  })
+
+  document.getElementById('mw-quick-inject-btn').addEventListener('click', () => {
     openPreviewPanel()
+  })
+
+  document.getElementById('mw-auto-engineer-btn').addEventListener('click', () => {
+    openEngineerPanel(currentResults.map(r => r.id))
   })
 
   document.getElementById('mw-preview-close').addEventListener('click', () => {
@@ -95,13 +108,14 @@ function injectSidebar() {
   })
 
   document.getElementById('mw-confirm-inject').addEventListener('click', () => {
-    const contextBlock = document.getElementById('mw-preview-content')
-      .dataset.contextBlock
-    injectIntoChat(contextBlock)
-    document.getElementById('mw-preview-panel').style.display = 'none'
+    const panel = document.getElementById('mw-preview-panel')
+    const content = document.getElementById('mw-preview-content')
+    const isLegacy = panel.dataset.injectMode === 'legacy'
+    injectIntoChat(content.value, isLegacy)
+    panel.style.display = 'none'
     stagedConversations = []
     updateStagingArea()
-    updateStatus('✓ Context injected successfully')
+    updateStatus('✓ Injected successfully')
   })
 
   // Manual search
@@ -298,6 +312,12 @@ function updateStatus(text) {
 }
 
 function updateResults(results) {
+  currentResults = results
+  const autoEngineer = document.getElementById('mw-auto-engineer')
+  if (autoEngineer) {
+    autoEngineer.style.display = results.length > 0 && stagedConversations.length === 0 ? 'block' : 'none'
+  }
+
   const container = document.getElementById('mw-results')
   if (!container) return
 
@@ -372,25 +392,61 @@ function toggleStaged(convo) {
 function updateStagingArea() {
   const staging = document.getElementById('mw-staging')
   const count = document.getElementById('mw-staging-count')
+  const autoEngineer = document.getElementById('mw-auto-engineer')
 
   if (!staging || !count) return
 
   if (stagedConversations.length === 0) {
     staging.style.display = 'none'
+    if (autoEngineer) {
+      autoEngineer.style.display = currentResults.length > 0 ? 'block' : 'none'
+    }
   } else {
     staging.style.display = 'block'
-    count.textContent = `${stagedConversations.length} selected for injection`
+    count.textContent = `${stagedConversations.length} selected`
+    if (autoEngineer) autoEngineer.style.display = 'none'
   }
+}
+
+async function openEngineerPanel(conversationIds) {
+  const panel = document.getElementById('mw-preview-panel')
+  const content = document.getElementById('mw-preview-content')
+  const title = document.getElementById('mw-preview-title')
+
+  if (!panel || !content) return
+
+  panel.style.display = 'flex'
+  panel.dataset.injectMode = 'engineer'
+  content.value = 'Engineering your prompt...'
+  if (title) title.textContent = 'Engineered Prompt'
+
+  const response = await chrome.runtime.sendMessage({
+    type: 'ENGINEER_PROMPT',
+    message: currentQuery,
+    conversationIds: conversationIds && conversationIds.length > 0 ? conversationIds : null
+  })
+
+  if (response.error) {
+    content.value = response.error === 'not_logged_in'
+      ? 'Open the Mind World extension and sign in with your email and Anthropic API key.'
+      : 'Failed to engineer prompt: ' + response.error
+    return
+  }
+
+  content.value = response.engineeredPrompt
 }
 
 async function openPreviewPanel() {
   const panel = document.getElementById('mw-preview-panel')
   const content = document.getElementById('mw-preview-content')
+  const title = document.getElementById('mw-preview-title')
 
   if (!panel || !content) return
 
   panel.style.display = 'flex'
-  content.textContent = 'Generating smart summary...'
+  panel.dataset.injectMode = 'legacy'
+  content.value = 'Generating smart summary...'
+  if (title) title.textContent = 'Context Preview'
 
   const ids = stagedConversations.map(s => s.id)
 
@@ -402,44 +458,41 @@ async function openPreviewPanel() {
 
   if (response.error) {
     if (response.error === 'not_configured') {
-      content.textContent =
-        'Open the Mind World extension and sign in with your email and Anthropic API key.'
+      content.value = 'Open the Mind World extension and sign in with your email and Anthropic API key.'
     } else if (response.error === 'missing_api_key') {
-      content.textContent =
-        'Add your Anthropic API key in the Mind World extension popup (required for summaries).'
+      content.value = 'Add your Anthropic API key in the Mind World extension popup (required for summaries).'
     } else {
-      content.textContent = 'Failed to generate summary. Try again.'
+      content.value = 'Failed to generate summary. Try again.'
     }
     return
   }
 
-  content.textContent = response.contextBlock
-  content.dataset.contextBlock = response.contextBlock
+  content.value = response.contextBlock
 }
 
-function injectIntoChat(contextBlock) {
+function injectIntoChat(text, isLegacy) {
   const inputField = findInputField()
   if (!inputField) return
 
-  const userText = inputField.innerText ||
-                   inputField.value ||
-                   inputField.textContent || ''
+  let fullText
+  if (isLegacy) {
+    const userText = inputField.innerText ||
+                     inputField.value ||
+                     inputField.textContent || ''
+    fullText = text + userText
+  } else {
+    fullText = text
+  }
 
-  const fullText = contextBlock + userText
-
-  // Handle different input types per platform
   if (inputField.tagName === 'TEXTAREA') {
-    // ChatGPT and Perplexity use textarea
     const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
       window.HTMLTextAreaElement.prototype, 'value'
     ).set
     nativeInputValueSetter.call(inputField, fullText)
     inputField.dispatchEvent(new Event('input', { bubbles: true }))
   } else if (inputField.contentEditable === 'true') {
-    // Claude and Gemini use contenteditable
     inputField.innerText = fullText
 
-    // Move cursor to end
     const range = document.createRange()
     const sel = window.getSelection()
     range.selectNodeContents(inputField)
@@ -450,7 +503,6 @@ function injectIntoChat(contextBlock) {
     inputField.dispatchEvent(new Event('input', { bubbles: true }))
   }
 
-  // Focus the input
   inputField.focus()
 }
 

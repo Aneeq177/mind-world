@@ -40,6 +40,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true
   }
 
+  if (message.type === 'ENGINEER_PROMPT') {
+    handleEngineerPrompt(message.message, message.conversationIds).then(sendResponse)
+    return true
+  }
+
   if (message.type === 'GET_STATUS') {
     getCredentials().then(creds => {
       sendResponse({
@@ -141,6 +146,37 @@ async function handleSummarize(conversationIds, currentQuery) {
       contextBlock: data.context_block,
       summaries: data.summaries,
       count: data.conversation_count
+    }
+  } catch (error) {
+    return { error: error.message }
+  }
+}
+
+async function handleEngineerPrompt(userMessage, conversationIds) {
+  try {
+    const { email, apiKey } = await getCredentials()
+    if (!email) return { error: 'not_logged_in' }
+
+    const response = await fetch(`${API_BASE}/engineer_prompt`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email,
+        message: userMessage,
+        conversation_ids: conversationIds && conversationIds.length > 0 ? conversationIds : null,
+        api_key: apiKey || null
+      })
+    })
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}))
+      return { error: err.detail || 'Engineer prompt failed' }
+    }
+
+    const data = await response.json()
+    return {
+      engineeredPrompt: data.engineered_prompt,
+      conversationsUsed: data.conversations_used
     }
   } catch (error) {
     return { error: error.message }
