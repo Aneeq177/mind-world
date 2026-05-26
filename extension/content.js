@@ -9,12 +9,18 @@ let stagedConversations = [] // conversations staged for injection
 let currentResults = []      // last auto-search results
 let currentQuery = ''
 
+// Auto-save state
+const savedConversationIds = new Set()
+let saveDebounceTimer = null
+let autoSaveObserver = null
+
 init()
 
 function init() {
   setTimeout(() => {
     injectSidebar()
     watchInputField()
+    startAutoSave()
   }, 2000)
 
   let lastUrl = location.href
@@ -24,6 +30,7 @@ function init() {
       lastUrl = url
       setTimeout(() => {
         watchInputField()
+        startAutoSave()
       }, 2000)
     }
   }).observe(document, { subtree: true, childList: true })
@@ -506,44 +513,241 @@ function injectIntoChat(text, isLegacy) {
   inputField.focus()
 }
 
-function autoSaveConversation() {
-  const url = window.location.href
-  const conversationId = url.split('/chat/')[1]?.split('?')[0] ||
-                         url.split('/c/')[1]?.split('?')[0]
-
-  if (!conversationId) return
-
-  const titleEl = document.querySelector('title')
-  const title = titleEl?.textContent?.replace(/ - Claude| - ChatGPT| - Gemini/g, '') || 'Untitled'
-
-  const messages = []
-  const messageEls = document.querySelectorAll(
-    '[data-testid="human-turn"], [data-testid="ai-turn"]'
-  )
-
-  messageEls.forEach(el => {
-    const isHuman = el.dataset.testid === 'human-turn'
-    messages.push({
-      role: isHuman ? 'human' : 'assistant',
-      content: el.innerText?.slice(0, 2000) || ''
-    })
-  })
-
-  if (messages.length < 2) return
-
-  const conversation = {
-    id: conversationId,
-    title,
-    messages,
-    url,
-    platform: window.location.hostname,
-    saved_at: new Date().toISOString()
+function startAutoSave() {
+  // Disconnect previous observer if navigating to a new conversation
+  if (autoSaveObserver) {
+    autoSaveObserver.disconnect()
+    autoSaveObserver = null
   }
 
-  chrome.runtime.sendMessage({
-    type: 'SAVE_CONVERSATION',
-    conversation
+  const hostname = window.location.hostname
+  const path = window.location.pathname
+
+  const isConversation = (
+    (hostname.includes('claude.ai') && /\/chat\/[a-f0-9-]+/.test(path)) ||
+    (hostname.includes('chatgpt.com') && /\/c\/[a-zA-Z0-9-]+/.test(path)) ||
+    (hostname.includes('gemini.google.com') && /\/app\/[a-zA-Z0-9]+/.test(path))
+  )
+
+  if (!isConversation) return
+
+  // Attempt an initial save after page settles
+  setTimeout(tryAutoSave, 4000)
+
+  autoSaveObserver = new MutationObserver((mutations) => {
+    // Ignore mutations inside our own sidebar to avoid feedback loops
+    const fromSidebar = mutations.some(m => sidebar && sidebar.contains(m.target))
+    if (fromSidebar) return
+    debounceAutoSave()
   })
+
+  autoSaveObserver.observe(document.body, { childList: true, subtree: true })
+}
+
+function debounceAutoSave() {
+  if (saveDebounceTimer) clearTimeout(saveDebounceTimer)
+  // Wait 10 seconds after the last DOM mutation — by then streaming is done
+  saveDebounceTimer = setTimeout(tryAutoSave, 10000)
+}
+
+function extractMessages() {
+  const hostname = window.location.hostname
+  const messages = []
+
+  if (hostname.includes('claude.ai')) {
+    // Strategy 1: data-testid attributes
+    const els = document.querySelectorAll('[data-testid="human-turn"], [data-testid="ai-turn"]')
+    if (els.length > 0) {
+      els.forEach(el => {
+        const role = el.dataset.testid === 'human-turn' ? 'human' : 'assistant'
+        const text = el.innerText?.trim().slice(0, 2000) || ''
+        if (text) messages.push({ role, content: text })
+      })
+      return messages
+    }
+
+    // Strategy 2: class names
+    const humanEls = document.querySelectorAll('.human-turn')
+    const aiEls = document.querySelectorAll('.ai-turn')
+    if (humanEls.length > 0 || aiEls.length > 0) {
+      humanEls.forEach(el => {
+        const text = el.innerText?.trim().slice(0, 2000) || ''
+        if (text) messages.push({ role: 'human', content: text })
+      })
+      aiEls.forEach(el => {
+        const text = el.innerText?.trim().slice(0, 2000) || ''
+        if (text) messages.push({ role: 'assistant', content: text })
+      })
+      return messages
+    }
+
+    // Strategy 3: partial class name matching
+    const humanClassEls = document.querySelectorAll('[class*="human-turn"]')
+    const assistantClassEls = document.querySelectorAll('[class*="ai-turn"], [class*="assistant-turn"]')
+    if (humanClassEls.length > 0) {
+      humanClassEls.forEach(el => {
+        const text = el.innerText?.trim().slice(0, 2000) || ''
+        if (text) messages.push({ role: 'human', content: text })
+      })
+      assistantClassEls.forEach(el => {
+        const text = el.innerText?.trim().slice(0, 2000) || ''
+        if (text) messages.push({ role: 'assistant', content: text })
+      })
+      return messages
+    }
+  }
+
+  if (hostname.includes('chatgpt.com')) {
+    // Strategy 1: data-message-author-role
+    const els = document.querySelectorAll(
+      '[data-message-author-role="user"], [data-message-author-role="assistant"]'
+    )
+    if (els.length > 0) {
+      els.forEach(el => {
+        const role = el.dataset.messageAuthorRole === 'user' ? 'human' : 'assistant'
+        const text = el.innerText?.trim().slice(0, 2000) || ''
+        if (text) messages.push({ role, content: text })
+      })
+      return messages
+    }
+
+    // Strategy 2: article elements (each article is one message turn)
+    const articles = document.querySelectorAll('article[data-testid]')
+    if (articles.length > 0) {
+      articles.forEach((el, i) => {
+        const role = i % 2 === 0 ? 'human' : 'assistant'
+        const text = el.innerText?.trim().slice(0, 2000) || ''
+        if (text) messages.push({ role, content: text })
+      })
+      return messages
+    }
+
+    // Strategy 3: generic articles
+    const genericArticles = document.querySelectorAll('article')
+    if (genericArticles.length > 0) {
+      genericArticles.forEach((el, i) => {
+        const role = i % 2 === 0 ? 'human' : 'assistant'
+        const text = el.innerText?.trim().slice(0, 2000) || ''
+        if (text) messages.push({ role, content: text })
+      })
+      return messages
+    }
+  }
+
+  if (hostname.includes('gemini.google.com')) {
+    // Strategy 1: data-chunk-index
+    const chunkEls = document.querySelectorAll('[data-chunk-index]')
+    if (chunkEls.length > 0) {
+      chunkEls.forEach((el, i) => {
+        const role = i % 2 === 0 ? 'human' : 'assistant'
+        const text = el.innerText?.trim().slice(0, 2000) || ''
+        if (text) messages.push({ role, content: text })
+      })
+      return messages
+    }
+
+    // Strategy 2: named query/response classes
+    const userEls = document.querySelectorAll('.user-query-text, [class*="user-query"]')
+    const modelEls = document.querySelectorAll('.model-response-text, [class*="model-response"]')
+    if (userEls.length > 0 || modelEls.length > 0) {
+      userEls.forEach(el => {
+        const text = el.innerText?.trim().slice(0, 2000) || ''
+        if (text) messages.push({ role: 'human', content: text })
+      })
+      modelEls.forEach(el => {
+        const text = el.innerText?.trim().slice(0, 2000) || ''
+        if (text) messages.push({ role: 'assistant', content: text })
+      })
+      return messages
+    }
+
+    // Strategy 3: partial class matching
+    const userClassEls = document.querySelectorAll('[class*="user-query"]')
+    const modelClassEls = document.querySelectorAll('[class*="model-response"], [class*="response-container"]')
+    if (userClassEls.length > 0) {
+      userClassEls.forEach(el => {
+        const text = el.innerText?.trim().slice(0, 2000) || ''
+        if (text) messages.push({ role: 'human', content: text })
+      })
+      modelClassEls.forEach(el => {
+        const text = el.innerText?.trim().slice(0, 2000) || ''
+        if (text) messages.push({ role: 'assistant', content: text })
+      })
+      return messages
+    }
+  }
+
+  return messages
+}
+
+async function tryAutoSave() {
+  try {
+    const url = window.location.href
+    const hostname = window.location.hostname
+    const path = window.location.pathname
+
+    let conversationId = null
+    let source = null
+
+    if (hostname.includes('claude.ai')) {
+      const match = path.match(/\/chat\/([a-f0-9-]+)/)
+      conversationId = match?.[1]
+      source = 'claude'
+    } else if (hostname.includes('chatgpt.com')) {
+      const match = path.match(/\/c\/([a-zA-Z0-9-]+)/)
+      conversationId = match?.[1]
+      source = 'chatgpt'
+    } else if (hostname.includes('gemini.google.com')) {
+      const match = path.match(/\/app\/([a-zA-Z0-9]+)/)
+      conversationId = match?.[1]
+      source = 'gemini'
+    }
+
+    if (!conversationId) return
+    if (savedConversationIds.has(conversationId)) return
+
+    const messages = extractMessages()
+    if (messages.length < 1) return
+
+    const titleEl = document.querySelector('title')
+    const title = titleEl?.textContent
+      ?.replace(/ - Claude| - ChatGPT| - Gemini/g, '')
+      ?.trim() || 'Untitled'
+
+    const conversation = {
+      id: conversationId,
+      title,
+      messages,
+      url,
+      platform: hostname,
+      source,
+      saved_at: new Date().toISOString()
+    }
+
+    const response = await chrome.runtime.sendMessage({
+      type: 'SAVE_CONVERSATION',
+      conversation
+    })
+
+    if (response?.success) {
+      savedConversationIds.add(conversationId)
+      showSaveToast()
+    }
+  } catch (_) {
+    // Never interrupt the user — fail silently
+  }
+}
+
+function showSaveToast() {
+  const statusEl = document.getElementById('mw-status')
+  if (!statusEl) return
+  const prev = statusEl.textContent
+  statusEl.textContent = '✓ Saved to memory'
+  setTimeout(() => {
+    if (statusEl.textContent === '✓ Saved to memory') {
+      statusEl.textContent = prev
+    }
+  }, 2000)
 }
 
 function escapeHtml(text) {

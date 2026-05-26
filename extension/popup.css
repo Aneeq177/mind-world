@@ -212,6 +212,33 @@ body {
   color: #ff6b6b;
 }
 
+/* Add-more banner (1–49 conversations) */
+#add-more-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: rgba(124,58,237,0.08);
+  border: 1px solid rgba(124,58,237,0.2);
+  border-radius: 8px;
+  font-size: 0.75rem;
+  color: #888;
+  margin-bottom: 12px;
+  gap: 8px;
+}
+
+#add-more-banner a {
+  color: #a78bfa;
+  text-decoration: none;
+  font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+#add-more-banner a:hover {
+  color: white;
+}
+
 /* Onboarding steps */
 #onboarding {
   margin-bottom: 14px;

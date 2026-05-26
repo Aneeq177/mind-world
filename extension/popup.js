@@ -117,13 +117,28 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const onboarding = document.getElementById('onboarding')
         const instructions = document.getElementById('instructions')
+        const addMoreBanner = document.getElementById('add-more-banner')
+        const addMoreLink = document.getElementById('add-more-link')
+        const uploadUrl = `${UPLOAD_BASE}?email=${encodeURIComponent(email)}`
+
+        if (addMoreLink) addMoreLink.href = uploadUrl
 
         if (count === 0) {
+          // Full onboarding: no conversations yet
           if (onboarding) onboarding.style.display = 'block'
+          if (addMoreBanner) addMoreBanner.style.display = 'none'
           if (instructions) instructions.style.display = 'none'
           if (openMap) openMap.style.display = 'none'
-        } else {
+        } else if (count < 50) {
+          // Some conversations, but nudge to add more
           if (onboarding) onboarding.style.display = 'none'
+          if (addMoreBanner) addMoreBanner.style.display = 'flex'
+          if (instructions) instructions.style.display = 'block'
+          if (openMap) openMap.style.display = 'block'
+        } else {
+          // Enough conversations — clean view, no prompts
+          if (onboarding) onboarding.style.display = 'none'
+          if (addMoreBanner) addMoreBanner.style.display = 'none'
           if (instructions) instructions.style.display = 'block'
           if (openMap) openMap.style.display = 'block'
         }
