@@ -1,5 +1,5 @@
 const API_BASE = 'https://mind-world-app-mv4yv.ondigitalocean.app'
-const UPLOAD_BASE = 'https://mind-world-indol.vercel.app'
+const UPLOAD_BASE = 'https://mind-world.app'
 
 document.addEventListener('DOMContentLoaded', async () => {
   const loginView = document.getElementById('login-view')

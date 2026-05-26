@@ -459,6 +459,21 @@ export default function Landing() {
           Install Chrome Extension — Free
         </a>
       </div>
+
+      <footer style={{
+        textAlign: 'center',
+        padding: '24px',
+        color: '#444',
+        fontSize: '0.8rem',
+        borderTop: '1px solid rgba(255,255,255,0.05)',
+        marginTop: '40px'
+      }}>
+        <a href="/privacy" style={{ color: '#666', textDecoration: 'none' }}>Privacy Policy</a>
+        {' · '}
+        <a href="/terms" style={{ color: '#666', textDecoration: 'none' }}>Terms of Service</a>
+        {' · '}
+        © 2026 Mind World
+      </footer>
     </div>
   )
 }
