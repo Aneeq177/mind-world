@@ -689,6 +689,7 @@ async function tryAutoSave() {
     const url = window.location.href
     const hostname = window.location.hostname
     const path = window.location.pathname
+    console.log('Mind World: tryAutoSave triggered', hostname)
 
     let conversationId = null
     let source = null
@@ -707,16 +708,30 @@ async function tryAutoSave() {
       source = 'gemini'
     }
 
-    if (!conversationId) return
-    if (savedConversationIds.has(conversationId)) return
+    console.log('Mind World: conversationId', conversationId)
+
+    if (!conversationId) {
+      console.log('Mind World: no conversation ID found, skipping')
+      return
+    }
+    if (savedConversationIds.has(conversationId)) {
+      console.log('Mind World: already saved this session, skipping')
+      return
+    }
 
     const messages = extractMessages()
-    if (messages.length < 1) return
+    console.log('Mind World: extracted messages count', messages.length)
+
+    if (messages.length < 1) {
+      console.log('Mind World: not enough messages, skipping')
+      return
+    }
 
     const titleEl = document.querySelector('title')
     const title = titleEl?.textContent
       ?.replace(/ - Claude| - ChatGPT| - Gemini/g, '')
       ?.trim() || 'Untitled'
+    console.log('Mind World: title', title)
 
     const conversation = {
       id: conversationId,
@@ -732,15 +747,17 @@ async function tryAutoSave() {
     // More reliable with MV3 service workers that go to sleep mid-async
     const queue = await chrome.storage.local.get('mw_save_queue')
     const existing = queue.mw_save_queue || []
+    console.log('Mind World: current queue length', existing.length)
 
     if (!existing.find(c => c.id === conversation.id)) {
       existing.push(conversation)
       await chrome.storage.local.set({ mw_save_queue: existing })
+      console.log('Mind World: added to queue, new length', existing.length)
       savedConversationIds.add(conversationId)
       showSaveToast()
     }
-  } catch (_) {
-    // Never interrupt the user — fail silently
+  } catch (err) {
+    console.error('Mind World: tryAutoSave error', err)
   }
 }
 
