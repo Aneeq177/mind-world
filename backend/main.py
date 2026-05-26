@@ -380,6 +380,82 @@ async def blend(request: BlendRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+class SaveConversationRequest(BaseModel):
+    email: str
+    conversation: dict
+
+@app.post("/save_conversation")
+async def save_conversation(request: SaveConversationRequest):
+    try:
+        from services.database import get_or_create_user
+        from services.database import get_supabase
+        from services.embedder import embed_single
+
+        supabase = get_supabase()
+        user_id = get_or_create_user(request.email)
+        convo = request.conversation
+
+        messages = convo.get('messages', [])
+        text_parts = []
+        for msg in messages:
+            role = msg.get('role', 'unknown')
+            content = msg.get('content', '')
+            if content:
+                text_parts.append(f"[{role}] {content}")
+
+        full_text = '\n\n'.join(text_parts)
+
+        if len(full_text.strip()) < 10:
+            return {"success": False, "reason": "too_short"}
+
+        conv_id = convo.get('id', '')
+        if not conv_id:
+            return {"success": False, "reason": "no_id"}
+
+        embed_text = f"{convo.get('title', 'Untitled')}. {full_text[:500]}"
+        embedding = embed_single(embed_text)
+
+        platform = convo.get('platform', 'claude.ai')
+        if 'chatgpt' in platform:
+            source = 'chatgpt'
+        else:
+            source = 'claude'
+
+        row = {
+            "id": conv_id,
+            "user_id": user_id,
+            "title": convo.get('title', 'Untitled'),
+            "source": source,
+            "created_at": convo.get('saved_at', ''),
+            "updated_at": convo.get('saved_at', ''),
+            "num_messages": len(messages),
+            "char_count": len(full_text),
+            "preview": full_text[:300],
+            "full_text": full_text[:8000],
+            "cluster_id": -1,
+            "region": "Recent",
+            "color": "#888888",
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.0,
+            "visibility": "private"
+        }
+
+        supabase.table("conversations").upsert(
+            row, on_conflict="id"
+        ).execute()
+
+        supabase.table("embeddings").upsert({
+            "conversation_id": conv_id,
+            "user_id": user_id,
+            "embedding": embedding.tolist()
+        }, on_conflict="conversation_id,user_id").execute()
+
+        return {"success": True, "id": conv_id}
+
+    except Exception as e:
+        return {"success": False, "reason": str(e)}
+
 class LoadMapRequest(BaseModel):
     email: str
 
