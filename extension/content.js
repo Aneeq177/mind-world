@@ -10,7 +10,8 @@ let currentResults = []      // last auto-search results
 let currentQuery = ''
 
 // Auto-save state
-const savedConversationIds = new Set()
+const lastSavedAt = new Map() // conversationId -> timestamp
+const SAVE_COOLDOWN_MS = 30000 // save at most every 30 seconds
 let saveDebounceTimer = null
 let autoSaveObserver = null
 
@@ -546,6 +547,26 @@ function startAutoSave() {
   })
 
   autoSaveObserver.observe(document.body, { childList: true, subtree: true })
+
+  // Also save when AI finishes responding
+  let streamingTimeout = null
+  const streamObserver = new MutationObserver(() => {
+    if (streamingTimeout) clearTimeout(streamingTimeout)
+    streamingTimeout = setTimeout(() => {
+      const hostname = window.location.hostname
+      const convId = extractConversationId(hostname)
+      if (convId) {
+        console.log('Mind World: stream ended, triggering save')
+        tryAutoSave()
+      }
+    }, 3000)
+  })
+
+  streamObserver.observe(document.body, {
+    childList: true,
+    subtree: true,
+    characterData: false
+  })
 }
 
 function debounceAutoSave() {
@@ -702,8 +723,9 @@ async function tryAutoSave() {
       console.log('Mind World: no conversation ID found, skipping')
       return
     }
-    if (savedConversationIds.has(conversationId)) {
-      console.log('Mind World: already saved this session, skipping')
+    const lastSave = lastSavedAt.get(conversationId)
+    if (lastSave && Date.now() - lastSave < SAVE_COOLDOWN_MS) {
+      console.log('Mind World: saved too recently, skipping')
       return
     }
 
@@ -741,7 +763,7 @@ async function tryAutoSave() {
       existing.push(conversation)
       await chrome.storage.local.set({ mw_save_queue: existing })
       console.log('Mind World: added to queue, new length', existing.length)
-      savedConversationIds.add(conversationId)
+      lastSavedAt.set(conversationId, Date.now())
       showSaveToast()
     }
   } catch (err) {
