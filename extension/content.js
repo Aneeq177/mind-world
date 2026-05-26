@@ -16,13 +16,137 @@ const minTimeBetweenSaves = 3000 // minimum 3s to avoid rapid duplicate saves
 let saveDebounceTimer = null
 let autoSaveObserver = null
 
+async function getAccumulatedMessages(conversationId) {
+  const key = `mw_msgs_${conversationId}`
+  const stored = await chrome.storage.local.get(key)
+  return stored[key] || []
+}
+
+async function addMessageToAccumulator(conversationId, message) {
+  const key = `mw_msgs_${conversationId}`
+  const existing = await getAccumulatedMessages(conversationId)
+
+  const isDuplicate = existing.some(m =>
+    m.role === message.role &&
+    m.content.slice(0, 100) === message.content.slice(0, 100)
+  )
+
+  if (!isDuplicate) {
+    existing.push(message)
+    await chrome.storage.local.set({ [key]: existing })
+    console.log('Mind World: accumulated message count', existing.length)
+  }
+
+  return existing
+}
+
+async function clearAccumulatedMessages(conversationId) {
+  const key = `mw_msgs_${conversationId}`
+  await chrome.storage.local.remove(key)
+}
+
 init()
+
+function watchForNewMessages() {
+  const seenH2s = new Set()
+
+  const observer = new MutationObserver(() => {
+    const h2s = Array.from(document.querySelectorAll('h2'))
+
+    h2s.forEach(async h2 => {
+      const text = h2.innerText?.trim()
+      if (!text) return
+      const key = text + (h2.closest('div')?.className || '')
+      if (seenH2s.has(key)) return
+
+      const hostname = window.location.hostname
+      if (!hostname.includes('claude.ai')) return
+
+      const path = window.location.pathname
+      const match = path.match(/\/chat\/([a-f0-9-]+)/)
+      const conversationId = match?.[1]
+      if (!conversationId) return
+
+      if (text.includes('You said:')) {
+        seenH2s.add(key)
+
+        let el = h2.parentElement
+        let msgText = ''
+        for (let i = 0; i < 5; i++) {
+          if (!el) break
+          const bubble = el.querySelector(
+            '[class*="bg-bg-300"], [class*="rounded-xl"][class*="pl-"]'
+          )
+          if (bubble) {
+            msgText = bubble.innerText?.trim()
+            break
+          }
+          el = el.parentElement
+        }
+
+        if (!msgText) {
+          msgText = text.replace('You said:', '').trim()
+        }
+
+        if (msgText) {
+          await addMessageToAccumulator(conversationId, {
+            role: 'human',
+            content: msgText.slice(0, 2000)
+          })
+        }
+      }
+
+      if (text.includes('Claude responded:')) {
+        setTimeout(async () => {
+          const currentText = h2.innerText?.trim()
+          if (!currentText?.includes('Claude responded:')) return
+          const currentKey = currentText + (h2.closest('div')?.className || '')
+          if (seenH2s.has(currentKey)) return
+
+          seenH2s.add(currentKey)
+
+          let el = h2.parentElement
+          let msgText = ''
+          for (let i = 0; i < 5; i++) {
+            if (!el) break
+            const response = el.querySelector(
+              '[class*="font-claude-response"]'
+            )
+            if (response) {
+              msgText = response.innerText?.trim()
+              break
+            }
+            el = el.parentElement
+          }
+
+          if (msgText) {
+            const allMessages = await addMessageToAccumulator(
+              conversationId,
+              {
+                role: 'assistant',
+                content: msgText.slice(0, 2000)
+              }
+            )
+
+            triggerAccumulatedSave(conversationId, allMessages)
+          }
+        }, 2000)
+      }
+    })
+  })
+
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true
+  })
+}
 
 function init() {
   setTimeout(() => {
     injectSidebar()
     watchInputField()
     startAutoSave()
+    watchForNewMessages()
   }, 2000)
 
   let lastUrl = location.href
@@ -693,6 +817,39 @@ function extractMessages(hostname) {
   return messages
 }
 
+async function triggerAccumulatedSave(conversationId, messages) {
+  if (!messages || messages.length === 0) return
+
+  const lastCount = lastSavedMessageCount.get(conversationId) || 0
+  if (messages.length <= lastCount) return
+
+  const hostname = window.location.hostname
+  const titleEl = document.querySelector('title')
+  const title = titleEl?.textContent
+    ?.replace(/ - Claude| - ChatGPT| - Gemini/g, '')
+    ?.trim() || 'Untitled'
+
+  const queue = await chrome.storage.local.get('mw_save_queue')
+  const existing = queue.mw_save_queue || []
+
+  const filtered = existing.filter(c => c.id !== conversationId)
+
+  filtered.push({
+    id: conversationId,
+    title,
+    messages,
+    platform: hostname,
+    saved_at: new Date().toISOString()
+  })
+
+  await chrome.storage.local.set({ mw_save_queue: filtered })
+  lastSavedMessageCount.set(conversationId, messages.length)
+  lastSavedAt.set(conversationId, Date.now())
+
+  console.log('Mind World: queued accumulated save with', messages.length, 'messages')
+  showSaveToast()
+}
+
 async function tryAutoSave() {
   try {
     const url = window.location.href
@@ -723,6 +880,15 @@ async function tryAutoSave() {
       console.log('Mind World: no conversation ID found, skipping')
       return
     }
+
+    // Try accumulated messages first (more reliable than DOM scraping)
+    const accumulated = await getAccumulatedMessages(conversationId)
+    if (accumulated.length > 0) {
+      await triggerAccumulatedSave(conversationId, accumulated)
+      return
+    }
+
+    // Fall back to DOM extraction (handles page reload of existing conversation)
     const lastSaveTime = lastSavedAt.get(conversationId) || 0
     if (Date.now() - lastSaveTime < minTimeBetweenSaves) {
       console.log('Mind World: saved too recently, skipping')
