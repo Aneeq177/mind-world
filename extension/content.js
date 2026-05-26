@@ -659,28 +659,6 @@ function extractMessages(hostname) {
       }
     })
 
-    if (messages.length === 0) {
-      const humanBubbles = document.querySelectorAll(
-        '[class*="bg-bg-300"][class*="rounded"]'
-      )
-      const aiResponses = document.querySelectorAll(
-        '[class*="font-claude-response"]'
-      )
-
-      humanBubbles.forEach(el => {
-        const text = el.innerText?.trim()
-        if (text && text.length > 5 && text.length < 2000) {
-          messages.push({ role: 'human', content: text })
-        }
-      })
-
-      aiResponses.forEach(el => {
-        const text = el.innerText?.trim()
-        if (text && text.length > 5 && text.length < 2000) {
-          messages.push({ role: 'assistant', content: text })
-        }
-      })
-    }
   }
 
   if (hostname.includes('chatgpt.com')) {
