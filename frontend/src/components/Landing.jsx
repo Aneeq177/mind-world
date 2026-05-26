@@ -240,7 +240,7 @@ export default function Landing() {
               transition: 'all 0.2s'
             }}
           >
-            🌍 Generate My Universe
+            🌍 Generate My Map
           </button>
 
           <p style={{
