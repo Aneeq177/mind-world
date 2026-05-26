@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useStore } from '../store'
-import { processFiles } from '../api'
+import { processFiles, loadExistingMap } from '../api'
 
 const CHROME_STORE_URL = 'https://chrome.google.com/webstore/detail/mind-world'
 
@@ -43,21 +43,64 @@ export default function Landing() {
   const [email, setEmail] = useState('')
   const [error, setError] = useState('')
   const [loadingMsg, setLoadingMsg] = useState('')
+  const [hasExistingData, setHasExistingData] = useState(false)
+  const [existingCount, setExistingCount] = useState(0)
+  const [checkingEmail, setCheckingEmail] = useState(false)
 
-  // If the popup opened this page with ?email=..., pre-fill and jump to upload
+  // If the popup opened this page with ?email=..., pre-fill, jump to upload, and check for data
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const emailParam = params.get('email')
     if (emailParam) {
       setEmail(emailParam)
       setView('upload')
+      checkExistingData(emailParam)
     }
   }, [])
 
-  const canGenerate = (claudeFile || chatgptFile) && apiKey && email
+  async function checkExistingData(emailValue) {
+    if (!emailValue || !emailValue.includes('@')) return
+    setCheckingEmail(true)
+    try {
+      const data = await loadExistingMap(emailValue)
+      if (data.has_data && data.total > 0) {
+        setHasExistingData(true)
+        setExistingCount(data.total)
+      } else {
+        setHasExistingData(false)
+        setExistingCount(0)
+      }
+    } catch {
+      setHasExistingData(false)
+    } finally {
+      setCheckingEmail(false)
+    }
+  }
+
+  async function handleLoadExisting() {
+    if (!email) return
+    setError('')
+    setLoadingMsg('Loading your map...')
+    setPhase('processing')
+    try {
+      const data = await loadExistingMap(email)
+      setConversations(data.conversations, data.sources)
+      setPhase('map')
+    } catch (err) {
+      setError(err.message || 'Failed to load map')
+      setPhase('landing')
+    }
+  }
+
+  // Files required only when the user has no existing data
+  const canGenerate = email && apiKey && (claudeFile || chatgptFile || hasExistingData)
 
   async function handleGenerate() {
     if (!canGenerate) return
+    // If no new files but existing data, just load from DB
+    if (!claudeFile && !chatgptFile && hasExistingData) {
+      return handleLoadExisting()
+    }
     if (!email.includes('@') || !email.includes('.')) {
       setError('Please enter a valid email address.')
       return
@@ -156,6 +199,58 @@ export default function Landing() {
             </p>
           </div>
 
+          <input
+            type="email" placeholder="your@email.com"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            onBlur={e => checkExistingData(e.target.value)}
+            style={{
+              width: '100%', padding: '14px 16px',
+              background: 'rgba(255,255,255,0.05)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: '10px', color: 'white',
+              fontSize: '0.9rem', marginBottom: '12px', outline: 'none'
+            }}
+          />
+
+          {checkingEmail && (
+            <div style={{ fontSize: '0.78rem', color: '#555', marginBottom: '12px', textAlign: 'center' }}>
+              Checking for existing data...
+            </div>
+          )}
+
+          {hasExistingData && !checkingEmail && (
+            <div style={{
+              background: 'rgba(124,58,237,0.1)',
+              border: '1px solid rgba(124,58,237,0.3)',
+              borderRadius: '10px',
+              padding: '14px 16px',
+              marginBottom: '16px'
+            }}>
+              <div style={{ color: '#a78bfa', fontWeight: '600', marginBottom: '4px' }}>
+                ✓ {existingCount} conversations found
+              </div>
+              <div style={{ color: '#888', fontSize: '0.82rem', marginBottom: '10px' }}>
+                You already have data. Load your existing map or upload new files to add more.
+              </div>
+              <button
+                onClick={handleLoadExisting}
+                style={{
+                  width: '100%', padding: '12px',
+                  background: 'linear-gradient(135deg, #7c3aed, #5b21b6)',
+                  border: 'none', borderRadius: '8px',
+                  color: 'white', fontSize: '0.9rem', fontWeight: '600',
+                  cursor: 'pointer', marginBottom: '8px'
+                }}
+              >
+                🌍 Load My Existing Map
+              </button>
+              <div style={{ color: '#555', fontSize: '0.75rem', textAlign: 'center' }}>
+                or upload new files below to add more conversations
+              </div>
+            </div>
+          )}
+
           <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
             <label style={{
               flex: 1, padding: '16px', textAlign: 'center',
@@ -189,18 +284,6 @@ export default function Landing() {
                 onChange={e => setChatgptFile(e.target.files[0])} />
             </label>
           </div>
-
-          <input
-            type="email" placeholder="your@email.com"
-            value={email} onChange={e => setEmail(e.target.value)}
-            style={{
-              width: '100%', padding: '14px 16px',
-              background: 'rgba(255,255,255,0.05)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: '10px', color: 'white',
-              fontSize: '0.9rem', marginBottom: '12px', outline: 'none'
-            }}
-          />
 
           <input
             type="password" placeholder="Anthropic API key (sk-ant-...)"

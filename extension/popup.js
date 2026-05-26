@@ -5,7 +5,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   const loginView = document.getElementById('login-view')
   const connectedView = document.getElementById('connected-view')
   const emailInput = document.getElementById('email-input')
-  const apikeyInput = document.getElementById('apikey-input')
   const saveBtn = document.getElementById('save-btn')
   const loginError = document.getElementById('login-error')
   const userEmail = document.getElementById('user-email')
@@ -14,14 +13,19 @@ document.addEventListener('DOMContentLoaded', async () => {
   const platformsCount = document.getElementById('platforms-count')
   const openMap = document.getElementById('open-map')
   const uploadBtn = document.getElementById('upload-btn')
+  const advancedToggle = document.getElementById('advanced-toggle')
+  const advancedContent = document.getElementById('advanced-content')
+  const apikeyInputConnected = document.getElementById('apikey-input-connected')
+  const saveApikeyBtn = document.getElementById('save-apikey-btn')
+  const apikeyStatus = document.getElementById('apikey-status')
 
   let currentEmail = null
 
-  // Check if already logged in
+  // Check if already logged in (email only required now)
   const stored = await chrome.storage.local.get(['mw_email', 'mw_api_key'])
 
-  if (stored.mw_email && stored.mw_api_key) {
-    showConnectedView(stored.mw_email)
+  if (stored.mw_email) {
+    showConnectedView(stored.mw_email, stored.mw_api_key)
     loadStats(stored.mw_email)
   } else {
     loginView.style.display = 'block'
@@ -36,20 +40,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   })
 
-  // Save credentials
+  // Save email (login)
   saveBtn.addEventListener('click', async () => {
     const email = emailInput.value.trim()
-    const apiKey = apikeyInput.value.trim()
-
     loginError.textContent = ''
 
     if (!email || !email.includes('@')) {
       loginError.textContent = 'Please enter a valid email.'
-      return
-    }
-
-    if (!apiKey || !apiKey.startsWith('sk-ant-')) {
-      loginError.textContent = 'API key must start with sk-ant-'
       return
     }
 
@@ -60,25 +57,42 @@ document.addEventListener('DOMContentLoaded', async () => {
       const res = await fetch(`${API_BASE}/health`)
       if (!res.ok) throw new Error('Cannot reach Mind World server')
 
-      await chrome.storage.local.set({ mw_email: email, mw_api_key: apiKey })
+      await chrome.storage.local.set({ mw_email: email })
 
       const tabs = await chrome.tabs.query({})
       tabs.forEach(tab => {
-        chrome.tabs.sendMessage(tab.id, {
-          type: 'CREDENTIALS_UPDATED',
-          email,
-          apiKey
-        }).catch(() => {})
+        chrome.tabs.sendMessage(tab.id, { type: 'CREDENTIALS_UPDATED', email }).catch(() => {})
       })
 
-      showConnectedView(email)
+      showConnectedView(email, null)
       loadStats(email)
 
     } catch (err) {
       loginError.textContent = 'Connection failed. Check your internet.'
       saveBtn.disabled = false
-      saveBtn.textContent = 'Activate Mind World'
+      saveBtn.textContent = 'Connect to Mind World'
     }
+  })
+
+  // Advanced section toggle
+  advancedToggle.addEventListener('click', () => {
+    const isOpen = advancedContent.style.display !== 'none'
+    advancedContent.style.display = isOpen ? 'none' : 'block'
+    advancedToggle.classList.toggle('advanced-open', !isOpen)
+  })
+
+  // Save API key separately
+  saveApikeyBtn.addEventListener('click', async () => {
+    const apiKey = apikeyInputConnected.value.trim()
+    if (!apiKey || !apiKey.startsWith('sk-ant-')) {
+      apikeyStatus.textContent = 'API key must start with sk-ant-'
+      apikeyStatus.className = 'apikey-error'
+      return
+    }
+    await chrome.storage.local.set({ mw_api_key: apiKey })
+    apikeyStatus.textContent = '✓ API key saved'
+    apikeyStatus.className = 'apikey-saved'
+    apikeyInputConnected.value = ''
   })
 
   // Logout
@@ -88,16 +102,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     connectedView.style.display = 'none'
     loginView.style.display = 'block'
     emailInput.value = ''
-    apikeyInput.value = ''
   })
 
-  function showConnectedView(email) {
+  function showConnectedView(email, existingApiKey) {
     currentEmail = email
     loginView.style.display = 'none'
     connectedView.style.display = 'block'
     userEmail.textContent = email
 
-    // Pre-fill the open-map link with the email so the upload page knows who this is
+    // Show API key status if already configured
+    if (existingApiKey && apikeyStatus) {
+      apikeyStatus.textContent = '✓ API key configured'
+      apikeyStatus.className = 'apikey-saved'
+    }
+
     const uploadUrl = `${UPLOAD_BASE}?email=${encodeURIComponent(email)}`
     if (openMap) openMap.href = uploadUrl
   }

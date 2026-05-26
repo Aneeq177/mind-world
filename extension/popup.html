@@ -13,7 +13,7 @@
         <span>Mind World</span>
       </div>
       <p id="login-subtitle">
-        Enter your details to activate your memory layer.
+        Enter your email to activate your memory layer.
       </p>
       <div class="input-group">
         <label>Email</label>
@@ -24,23 +24,8 @@
           autocomplete="email"
         />
       </div>
-      <div class="input-group">
-        <label>Anthropic API Key</label>
-        <input
-          type="password"
-          id="apikey-input"
-          placeholder="sk-ant-..."
-        />
-        <a
-          href="https://console.anthropic.com"
-          target="_blank"
-          id="get-key-link"
-        >
-          Get a free key →
-        </a>
-      </div>
       <div id="login-error"></div>
-      <button id="save-btn">Activate Mind World</button>
+      <button id="save-btn">Connect to Mind World</button>
     </div>
 
     <!-- Connected View -->
@@ -57,6 +42,29 @@
         <div id="user-label">Connected as</div>
         <div id="user-email"></div>
       </div>
+      <div id="advanced-section">
+        <button id="advanced-toggle">⚙️ API Settings</button>
+        <div id="advanced-content" style="display:none">
+          <div class="input-group">
+            <label>Anthropic API Key</label>
+            <input
+              type="password"
+              id="apikey-input-connected"
+              placeholder="sk-ant-... (for Engineer Prompt)"
+            />
+            <a
+              href="https://console.anthropic.com"
+              target="_blank"
+              id="get-key-link"
+            >
+              Get a free key →
+            </a>
+          </div>
+          <button id="save-apikey-btn">Save API Key</button>
+          <div id="apikey-status"></div>
+        </div>
+      </div>
+
       <div id="stats-row">
         <div class="stat">
           <div id="conv-count">—</div>

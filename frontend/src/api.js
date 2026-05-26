@@ -28,6 +28,21 @@ export async function processFiles({ claudeFile, chatgptFile, apiKey, email }) {
   return response.json()
 }
 
+export async function loadExistingMap(email) {
+  const response = await fetch(`${BASE_URL}/load_map`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email })
+  })
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(error.detail || 'Failed to load map')
+  }
+
+  return response.json()
+}
+
 export async function healthCheck() {
   const response = await fetch(`${BASE_URL}/health`)
   return response.json()

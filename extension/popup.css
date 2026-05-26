@@ -212,6 +212,78 @@ body {
   color: #ff6b6b;
 }
 
+/* Advanced / API Settings section */
+#advanced-section {
+  margin-bottom: 12px;
+}
+
+#advanced-toggle {
+  width: 100%;
+  padding: 8px 12px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  color: #888;
+  font-size: 0.78rem;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s;
+}
+
+#advanced-toggle:hover {
+  border-color: rgba(124,58,237,0.3);
+  color: #aaa;
+}
+
+#advanced-toggle.advanced-open {
+  border-color: rgba(124,58,237,0.3);
+  color: #a78bfa;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+#advanced-content {
+  padding: 12px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-top: none;
+  border-bottom-left-radius: 8px;
+  border-bottom-right-radius: 8px;
+}
+
+#save-apikey-btn {
+  width: 100%;
+  padding: 8px;
+  background: rgba(124,58,237,0.2);
+  border: 1px solid rgba(124,58,237,0.35);
+  border-radius: 7px;
+  color: #a78bfa;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-top: 2px;
+}
+
+#save-apikey-btn:hover {
+  background: rgba(124,58,237,0.35);
+  color: white;
+}
+
+#apikey-status {
+  font-size: 0.72rem;
+  margin-top: 6px;
+  min-height: 16px;
+}
+
+.apikey-saved {
+  color: #00cc88;
+}
+
+.apikey-error {
+  color: #ff6b6b;
+}
+
 /* Add-more banner (1–49 conversations) */
 #add-more-banner {
   display: flex;

@@ -434,9 +434,13 @@ async function openEngineerPanel(conversationIds) {
   })
 
   if (response.error) {
-    content.value = response.error === 'not_logged_in'
-      ? 'Open the Mind World extension and sign in with your email and Anthropic API key.'
-      : 'Failed to engineer prompt: ' + response.error
+    if (response.error === 'not_logged_in') {
+      content.value = 'Open the Mind World extension and sign in with your email.'
+    } else if (response.error === 'no_api_key') {
+      content.value = '⚠️ Add your Anthropic API key to use this feature.\n\nClick the Mind World icon in your toolbar → API Settings'
+    } else {
+      content.value = 'Failed to engineer prompt: ' + response.error
+    }
     return
   }
 
@@ -464,10 +468,10 @@ async function openPreviewPanel() {
   })
 
   if (response.error) {
-    if (response.error === 'not_configured') {
-      content.value = 'Open the Mind World extension and sign in with your email and Anthropic API key.'
-    } else if (response.error === 'missing_api_key') {
-      content.value = 'Add your Anthropic API key in the Mind World extension popup (required for summaries).'
+    if (response.error === 'not_logged_in' || response.error === 'not_configured') {
+      content.value = 'Open the Mind World extension and sign in with your email.'
+    } else if (response.error === 'no_api_key' || response.error === 'missing_api_key') {
+      content.value = '⚠️ Add your Anthropic API key to use this feature.\n\nClick the Mind World icon in your toolbar → API Settings'
     } else {
       content.value = 'Failed to generate summary. Try again.'
     }

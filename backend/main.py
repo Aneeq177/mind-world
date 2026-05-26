@@ -380,6 +380,70 @@ async def blend(request: BlendRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+class LoadMapRequest(BaseModel):
+    email: str
+
+@app.post("/load_map")
+async def load_map(request: LoadMapRequest):
+    try:
+        from services.database import get_supabase
+
+        supabase = get_supabase()
+        user_id = get_or_create_user(request.email)
+
+        result = supabase.table("conversations")\
+            .select("*")\
+            .eq("user_id", user_id)\
+            .execute()
+
+        conversations = result.data or []
+
+        if not conversations:
+            return {
+                "conversations": [],
+                "total": 0,
+                "sources": {"claude": 0, "chatgpt": 0},
+                "user_id": user_id,
+                "has_data": False
+            }
+
+        formatted = []
+        for c in conversations:
+            formatted.append({
+                "id": c.get("id", ""),
+                "title": c.get("title", "Untitled"),
+                "source": c.get("source", "claude"),
+                "x": c.get("x", 0.0),
+                "y": c.get("y", 0.0),
+                "z": c.get("z", 0.0),
+                "color": c.get("color", "#888888"),
+                "region": c.get("region", "Other"),
+                "num_messages": c.get("num_messages", 0),
+                "char_count": c.get("char_count", 0),
+                "preview": c.get("preview", ""),
+                "created_at": c.get("created_at", ""),
+                "updated_at": c.get("updated_at", ""),
+                "cluster_id": c.get("cluster_id", -1),
+                "visibility": c.get("visibility", "private")
+            })
+
+        sources = {
+            "claude": sum(1 for c in formatted if c["source"] == "claude"),
+            "chatgpt": sum(1 for c in formatted if c["source"] == "chatgpt")
+        }
+
+        return {
+            "conversations": formatted,
+            "total": len(formatted),
+            "sources": sources,
+            "user_id": user_id,
+            "has_data": True
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/")
 def root():
     return {
