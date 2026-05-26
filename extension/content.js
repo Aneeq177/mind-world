@@ -575,47 +575,82 @@ function extractMessages(hostname) {
   const messages = []
 
   if (hostname.includes('claude.ai')) {
-    // Strategy 1: data-testid attributes (original)
-    let humanTurns = document.querySelectorAll('[data-testid="human-turn"]')
-    let aiTurns = document.querySelectorAll('[data-testid="ai-turn"]')
+    const allDivs = Array.from(document.querySelectorAll('div'))
+    const container = allDivs.find(el => {
+      const style = window.getComputedStyle(el)
+      return (style.overflowY === 'auto' ||
+              style.overflowY === 'scroll') &&
+             el.scrollHeight > 3000
+    })
 
-    // Strategy 2: class patterns
-    if (humanTurns.length === 0) {
-      humanTurns = document.querySelectorAll(
-        '[class*="human-turn"], [class*="HumanTurn"], ' +
-        '[class*="user-message"], [class*="UserMessage"]'
+    if (!container) return messages
+
+    const h2s = Array.from(container.querySelectorAll('h2'))
+
+    h2s.forEach(h2 => {
+      const text = h2.innerText?.trim()
+      if (!text) return
+
+      if (text.startsWith('You said:')) {
+        const parent = h2.closest('[class*="mb-1"]') ||
+                       h2.closest('[class*="mt-6"]') ||
+                       h2.parentElement
+        if (parent) {
+          const bubble = parent.querySelector(
+            '[class*="bg-bg-300"], [class*="rounded-xl"]'
+          )
+          const msgText = bubble?.innerText?.trim() ||
+                         text.replace('You said:', '').trim()
+          if (msgText && msgText.length > 0) {
+            messages.push({
+              role: 'human',
+              content: msgText.slice(0, 2000)
+            })
+          }
+        }
+      }
+
+      if (text.startsWith('Claude responded:')) {
+        const parent = h2.closest('[class*="pb-3"]') ||
+                       h2.closest('[class*="group"]') ||
+                       h2.parentElement
+        if (parent) {
+          const response = parent.querySelector(
+            '[class*="font-claude-response"]'
+          )
+          const msgText = response?.innerText?.trim()
+          if (msgText && msgText.length > 0) {
+            messages.push({
+              role: 'assistant',
+              content: msgText.slice(0, 2000)
+            })
+          }
+        }
+      }
+    })
+
+    if (messages.length === 0) {
+      const humanBubbles = container.querySelectorAll(
+        '[class*="bg-bg-300"][class*="rounded-xl"]'
       )
-      aiTurns = document.querySelectorAll(
-        '[class*="ai-turn"], [class*="AiTurn"], ' +
-        '[class*="assistant-message"], [class*="AssistantMessage"]'
+      const aiBubbles = container.querySelectorAll(
+        '[class*="font-claude-response"]'
       )
+
+      humanBubbles.forEach(el => {
+        const text = el.innerText?.trim()
+        if (text && text.length > 5) {
+          messages.push({ role: 'human', content: text.slice(0, 2000) })
+        }
+      })
+
+      aiBubbles.forEach(el => {
+        const text = el.innerText?.trim()
+        if (text && text.length > 5) {
+          messages.push({ role: 'assistant', content: text.slice(0, 2000) })
+        }
+      })
     }
-
-    // Strategy 3: role attributes
-    if (humanTurns.length === 0) {
-      humanTurns = document.querySelectorAll('[data-role="user"]')
-      aiTurns = document.querySelectorAll('[data-role="assistant"]')
-    }
-
-    // Collect, sort by DOM position, and return
-    const allTurns = []
-    humanTurns.forEach(el => {
-      const text = el.innerText?.trim()
-      if (text) allTurns.push({ role: 'human', el, text })
-    })
-    aiTurns.forEach(el => {
-      const text = el.innerText?.trim()
-      if (text) allTurns.push({ role: 'assistant', el, text })
-    })
-
-    allTurns.sort((a, b) => {
-      const pos = a.el.compareDocumentPosition(b.el)
-      return pos & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1
-    })
-
-    allTurns.forEach(turn => {
-      messages.push({ role: turn.role, content: turn.text.slice(0, 2000) })
-    })
   }
 
   if (hostname.includes('chatgpt.com')) {
