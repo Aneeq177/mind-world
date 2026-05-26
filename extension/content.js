@@ -554,131 +554,119 @@ function debounceAutoSave() {
   saveDebounceTimer = setTimeout(tryAutoSave, 10000)
 }
 
-function extractMessages() {
-  const hostname = window.location.hostname
+function extractMessages(hostname) {
   const messages = []
 
   if (hostname.includes('claude.ai')) {
-    // Strategy 1: data-testid attributes
-    const els = document.querySelectorAll('[data-testid="human-turn"], [data-testid="ai-turn"]')
-    if (els.length > 0) {
-      els.forEach(el => {
-        const role = el.dataset.testid === 'human-turn' ? 'human' : 'assistant'
-        const text = el.innerText?.trim().slice(0, 2000) || ''
-        if (text) messages.push({ role, content: text })
-      })
-      return messages
+    // Strategy 1: data-testid attributes (original)
+    let humanTurns = document.querySelectorAll('[data-testid="human-turn"]')
+    let aiTurns = document.querySelectorAll('[data-testid="ai-turn"]')
+
+    // Strategy 2: class patterns
+    if (humanTurns.length === 0) {
+      humanTurns = document.querySelectorAll(
+        '[class*="human-turn"], [class*="HumanTurn"], ' +
+        '[class*="user-message"], [class*="UserMessage"]'
+      )
+      aiTurns = document.querySelectorAll(
+        '[class*="ai-turn"], [class*="AiTurn"], ' +
+        '[class*="assistant-message"], [class*="AssistantMessage"]'
+      )
     }
 
-    // Strategy 2: class names
-    const humanEls = document.querySelectorAll('.human-turn')
-    const aiEls = document.querySelectorAll('.ai-turn')
-    if (humanEls.length > 0 || aiEls.length > 0) {
-      humanEls.forEach(el => {
-        const text = el.innerText?.trim().slice(0, 2000) || ''
-        if (text) messages.push({ role: 'human', content: text })
-      })
-      aiEls.forEach(el => {
-        const text = el.innerText?.trim().slice(0, 2000) || ''
-        if (text) messages.push({ role: 'assistant', content: text })
-      })
-      return messages
+    // Strategy 3: role attributes
+    if (humanTurns.length === 0) {
+      humanTurns = document.querySelectorAll('[data-role="user"]')
+      aiTurns = document.querySelectorAll('[data-role="assistant"]')
     }
 
-    // Strategy 3: partial class name matching
-    const humanClassEls = document.querySelectorAll('[class*="human-turn"]')
-    const assistantClassEls = document.querySelectorAll('[class*="ai-turn"], [class*="assistant-turn"]')
-    if (humanClassEls.length > 0) {
-      humanClassEls.forEach(el => {
-        const text = el.innerText?.trim().slice(0, 2000) || ''
-        if (text) messages.push({ role: 'human', content: text })
-      })
-      assistantClassEls.forEach(el => {
-        const text = el.innerText?.trim().slice(0, 2000) || ''
-        if (text) messages.push({ role: 'assistant', content: text })
-      })
-      return messages
+    // Strategy 4: paragraphs inside main content area
+    if (humanTurns.length === 0) {
+      const mainContent = document.querySelector(
+        'main, [role="main"], .conversation, #conversation'
+      )
+      if (mainContent) {
+        const allDivs = mainContent.querySelectorAll(
+          'div > div > div > p, div > div > div > pre'
+        )
+        if (allDivs.length > 0) {
+          allDivs.forEach((el, i) => {
+            const text = el.innerText?.trim()
+            if (text && text.length > 10) {
+              messages.push({
+                role: i % 2 === 0 ? 'human' : 'assistant',
+                content: text.slice(0, 2000)
+              })
+            }
+          })
+          return messages
+        }
+      }
     }
+
+    // Strategy 5: fall back to capturing visible page text
+    if (humanTurns.length === 0 && aiTurns.length === 0) {
+      const bodyText = document.body.innerText
+      if (bodyText.length > 100) {
+        messages.push({
+          role: 'human',
+          content: 'Conversation content: ' + bodyText.slice(0, 1000)
+        })
+        messages.push({
+          role: 'assistant',
+          content: 'Response captured from page'
+        })
+        return messages
+      }
+    }
+
+    // Collect, sort by DOM position, and return
+    const allTurns = []
+    humanTurns.forEach(el => {
+      const text = el.innerText?.trim()
+      if (text) allTurns.push({ role: 'human', el, text })
+    })
+    aiTurns.forEach(el => {
+      const text = el.innerText?.trim()
+      if (text) allTurns.push({ role: 'assistant', el, text })
+    })
+
+    allTurns.sort((a, b) => {
+      const pos = a.el.compareDocumentPosition(b.el)
+      return pos & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1
+    })
+
+    allTurns.forEach(turn => {
+      messages.push({ role: turn.role, content: turn.text.slice(0, 2000) })
+    })
   }
 
   if (hostname.includes('chatgpt.com')) {
-    // Strategy 1: data-message-author-role
-    const els = document.querySelectorAll(
-      '[data-message-author-role="user"], [data-message-author-role="assistant"]'
-    )
-    if (els.length > 0) {
-      els.forEach(el => {
-        const role = el.dataset.messageAuthorRole === 'user' ? 'human' : 'assistant'
-        const text = el.innerText?.trim().slice(0, 2000) || ''
-        if (text) messages.push({ role, content: text })
-      })
-      return messages
-    }
-
-    // Strategy 2: article elements (each article is one message turn)
-    const articles = document.querySelectorAll('article[data-testid]')
-    if (articles.length > 0) {
-      articles.forEach((el, i) => {
-        const role = i % 2 === 0 ? 'human' : 'assistant'
-        const text = el.innerText?.trim().slice(0, 2000) || ''
-        if (text) messages.push({ role, content: text })
-      })
-      return messages
-    }
-
-    // Strategy 3: generic articles
-    const genericArticles = document.querySelectorAll('article')
-    if (genericArticles.length > 0) {
-      genericArticles.forEach((el, i) => {
-        const role = i % 2 === 0 ? 'human' : 'assistant'
-        const text = el.innerText?.trim().slice(0, 2000) || ''
-        if (text) messages.push({ role, content: text })
-      })
-      return messages
-    }
+    const turns = document.querySelectorAll('[data-message-author-role]')
+    turns.forEach(el => {
+      const role = el.dataset.messageAuthorRole
+      const text = el.innerText?.trim()
+      if (text && (role === 'user' || role === 'assistant')) {
+        messages.push({ role, content: text.slice(0, 2000) })
+      }
+    })
   }
 
   if (hostname.includes('gemini.google.com')) {
-    // Strategy 1: data-chunk-index
-    const chunkEls = document.querySelectorAll('[data-chunk-index]')
-    if (chunkEls.length > 0) {
-      chunkEls.forEach((el, i) => {
-        const role = i % 2 === 0 ? 'human' : 'assistant'
-        const text = el.innerText?.trim().slice(0, 2000) || ''
-        if (text) messages.push({ role, content: text })
-      })
-      return messages
-    }
-
-    // Strategy 2: named query/response classes
-    const userEls = document.querySelectorAll('.user-query-text, [class*="user-query"]')
-    const modelEls = document.querySelectorAll('.model-response-text, [class*="model-response"]')
-    if (userEls.length > 0 || modelEls.length > 0) {
-      userEls.forEach(el => {
-        const text = el.innerText?.trim().slice(0, 2000) || ''
-        if (text) messages.push({ role: 'human', content: text })
-      })
-      modelEls.forEach(el => {
-        const text = el.innerText?.trim().slice(0, 2000) || ''
-        if (text) messages.push({ role: 'assistant', content: text })
-      })
-      return messages
-    }
-
-    // Strategy 3: partial class matching
-    const userClassEls = document.querySelectorAll('[class*="user-query"]')
-    const modelClassEls = document.querySelectorAll('[class*="model-response"], [class*="response-container"]')
-    if (userClassEls.length > 0) {
-      userClassEls.forEach(el => {
-        const text = el.innerText?.trim().slice(0, 2000) || ''
-        if (text) messages.push({ role: 'human', content: text })
-      })
-      modelClassEls.forEach(el => {
-        const text = el.innerText?.trim().slice(0, 2000) || ''
-        if (text) messages.push({ role: 'assistant', content: text })
-      })
-      return messages
-    }
+    const userTurns = document.querySelectorAll(
+      '.user-query-text, [class*="user-query"]'
+    )
+    const modelTurns = document.querySelectorAll(
+      '.model-response-text, [class*="model-response"]'
+    )
+    userTurns.forEach(el => {
+      const text = el.innerText?.trim()
+      if (text) messages.push({ role: 'human', content: text.slice(0, 2000) })
+    })
+    modelTurns.forEach(el => {
+      const text = el.innerText?.trim()
+      if (text) messages.push({ role: 'assistant', content: text.slice(0, 2000) })
+    })
   }
 
   return messages
@@ -719,11 +707,11 @@ async function tryAutoSave() {
       return
     }
 
-    const messages = extractMessages()
+    const messages = extractMessages(hostname)
     console.log('Mind World: extracted messages count', messages.length)
 
     if (messages.length < 1) {
-      console.log('Mind World: not enough messages, skipping')
+      console.log('Mind World: no messages found, skipping')
       return
     }
 
