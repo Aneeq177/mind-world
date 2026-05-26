@@ -728,12 +728,14 @@ async function tryAutoSave() {
       saved_at: new Date().toISOString()
     }
 
-    const response = await chrome.runtime.sendMessage({
-      type: 'SAVE_CONVERSATION',
-      conversation
-    })
+    // Write to storage queue instead of message passing
+    // More reliable with MV3 service workers that go to sleep mid-async
+    const queue = await chrome.storage.local.get('mw_save_queue')
+    const existing = queue.mw_save_queue || []
 
-    if (response?.success) {
+    if (!existing.find(c => c.id === conversation.id)) {
+      existing.push(conversation)
+      await chrome.storage.local.set({ mw_save_queue: existing })
       savedConversationIds.add(conversationId)
       showSaveToast()
     }

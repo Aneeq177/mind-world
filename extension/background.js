@@ -1,7 +1,22 @@
 const API_BASE = 'https://mind-world-app-mv4yv.ondigitalocean.app'
 
-// Track IDs we've already notified so we don't show duplicate toasts
-const notifiedConversationIds = new Set()
+// Keep service worker alive during operations
+let keepAliveInterval = null
+
+function startKeepAlive() {
+  keepAliveInterval = setInterval(() => {
+    chrome.storage.local.get('mw_keepalive', () => {})
+  }, 20000)
+}
+
+function stopKeepAlive() {
+  if (keepAliveInterval) {
+    clearInterval(keepAliveInterval)
+    keepAliveInterval = null
+  }
+}
+
+startKeepAlive()
 
 // Get credentials from Chrome storage
 async function getCredentials() {
@@ -28,11 +43,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'SEARCH') {
     handleSearch(message.query).then(sendResponse)
     return true // Keep channel open for async
-  }
-
-  if (message.type === 'SAVE_CONVERSATION') {
-    handleSaveConversation(message.conversation).then(sendResponse)
-    return true
   }
 
   if (message.type === 'SUMMARIZE') {
@@ -188,36 +198,49 @@ async function handleEngineerPrompt(userMessage, conversationIds) {
   }
 }
 
-async function handleSaveConversation(conversation) {
+// Process save queue when storage changes
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.mw_save_queue) {
+    const newQueue = changes.mw_save_queue.newValue || []
+    if (newQueue.length > 0) {
+      processSaveQueue()
+    }
+  }
+})
+
+async function processSaveQueue() {
   try {
+    const stored = await chrome.storage.local.get('mw_save_queue')
+    const queue = stored.mw_save_queue || []
+
+    if (queue.length === 0) return
+
+    // Clear queue immediately to prevent double processing
+    await chrome.storage.local.set({ mw_save_queue: [] })
+
     const { email } = await getCredentials()
-    if (!email) {
-      return { success: false, error: 'not_configured' }
+    if (!email) return
+
+    for (const conversation of queue) {
+      try {
+        const response = await fetch(`${API_BASE}/save_conversation`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, conversation })
+        })
+
+        if (response.ok) {
+          console.log('Mind World: saved conversation', conversation.id)
+        }
+      } catch (err) {
+        console.error('Mind World: save failed', err)
+      }
     }
-
-    // Skip if we already notified for this conversation this session
-    const alreadyNotified = notifiedConversationIds.has(conversation.id)
-
-    const response = await fetch(`${API_BASE}/save_conversation`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, conversation })
-    })
-
-    if (response.ok && !alreadyNotified) {
-      notifiedConversationIds.add(conversation.id)
-      chrome.notifications.create({
-        type: 'basic',
-        iconUrl: chrome.runtime.getURL('icons/icon48.png'),
-        title: 'Mind World',
-        message: 'Conversation saved to your memory',
-        requireInteraction: false
-      })
-    }
-
-    return { success: response.ok }
-  } catch (error) {
-    console.error('Mind World save error:', error)
-    return { success: false }
+  } catch (err) {
+    console.error('Mind World: queue processing failed', err)
   }
 }
+
+// Process any items queued while the service worker was asleep
+processSaveQueue()
+
