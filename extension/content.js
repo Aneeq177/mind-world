@@ -576,78 +576,108 @@ function extractMessages(hostname) {
 
   if (hostname.includes('claude.ai')) {
     const allDivs = Array.from(document.querySelectorAll('div'))
-    const container = allDivs.find(el => {
-      const style = window.getComputedStyle(el)
-      return (style.overflowY === 'auto' ||
-              style.overflowY === 'scroll') &&
-             el.scrollHeight > 3000
-    })
+    let container = null
+
+    for (const threshold of [1000, 500, 200]) {
+      container = allDivs.find(el => {
+        const style = window.getComputedStyle(el)
+        return (style.overflowY === 'auto' ||
+                style.overflowY === 'scroll') &&
+               el.scrollHeight > threshold &&
+               el.querySelectorAll('h2').length > 0
+      })
+      if (container) break
+    }
+
+    if (!container) {
+      const h2s = Array.from(document.querySelectorAll('h2'))
+      const messageH2 = h2s.find(h =>
+        h.innerText?.includes('You said:') ||
+        h.innerText?.includes('Claude responded:')
+      )
+      if (messageH2) {
+        container = document.body
+      }
+    }
 
     if (!container) return messages
 
     const h2s = Array.from(container.querySelectorAll('h2'))
+    const messageH2s = h2s.filter(h =>
+      h.innerText?.includes('You said:') ||
+      h.innerText?.includes('Claude responded:')
+    )
 
-    h2s.forEach(h2 => {
+    messageH2s.forEach(h2 => {
       const text = h2.innerText?.trim()
       if (!text) return
 
-      if (text.startsWith('You said:')) {
-        const parent = h2.closest('[class*="mb-1"]') ||
-                       h2.closest('[class*="mt-6"]') ||
-                       h2.parentElement
-        if (parent) {
-          const bubble = parent.querySelector(
-            '[class*="bg-bg-300"], [class*="rounded-xl"]'
+      if (text.includes('You said:')) {
+        let el = h2.parentElement
+        for (let i = 0; i < 5; i++) {
+          if (!el) break
+          const bubble = el.querySelector(
+            '[class*="bg-bg-300"], [class*="rounded-xl"][class*="pl-"]'
           )
-          const msgText = bubble?.innerText?.trim() ||
-                         text.replace('You said:', '').trim()
-          if (msgText && msgText.length > 0) {
-            messages.push({
-              role: 'human',
-              content: msgText.slice(0, 2000)
-            })
+          if (bubble) {
+            const msgText = bubble.innerText?.trim()
+            if (msgText && msgText.length > 0) {
+              messages.push({
+                role: 'human',
+                content: msgText.slice(0, 2000)
+              })
+              return
+            }
           }
+          el = el.parentElement
+        }
+        const fallback = text.replace('You said:', '').trim()
+        if (fallback.length > 0) {
+          messages.push({ role: 'human', content: fallback.slice(0, 2000) })
         }
       }
 
-      if (text.startsWith('Claude responded:')) {
-        const parent = h2.closest('[class*="pb-3"]') ||
-                       h2.closest('[class*="group"]') ||
-                       h2.parentElement
-        if (parent) {
-          const response = parent.querySelector(
+      if (text.includes('Claude responded:')) {
+        let el = h2.parentElement
+        for (let i = 0; i < 5; i++) {
+          if (!el) break
+          const response = el.querySelector(
             '[class*="font-claude-response"]'
           )
-          const msgText = response?.innerText?.trim()
-          if (msgText && msgText.length > 0) {
-            messages.push({
-              role: 'assistant',
-              content: msgText.slice(0, 2000)
-            })
+          if (response) {
+            const msgText = response.innerText?.trim()
+            if (msgText && msgText.length > 0) {
+              messages.push({
+                role: 'assistant',
+                content: msgText.slice(0, 2000)
+              })
+              return
+            }
           }
+          el = el.parentElement
         }
       }
     })
 
     if (messages.length === 0) {
-      const humanBubbles = container.querySelectorAll(
-        '[class*="bg-bg-300"][class*="rounded-xl"]'
+      const humanBubbles = document.querySelectorAll(
+        '[class*="bg-bg-300"][class*="rounded"]'
       )
-      const aiBubbles = container.querySelectorAll(
+      const aiResponses = document.querySelectorAll(
         '[class*="font-claude-response"]'
       )
 
       humanBubbles.forEach(el => {
         const text = el.innerText?.trim()
-        if (text && text.length > 5) {
-          messages.push({ role: 'human', content: text.slice(0, 2000) })
+        if (text && text.length > 5 && text.length < 2000) {
+          messages.push({ role: 'human', content: text })
         }
       })
 
-      aiBubbles.forEach(el => {
+      aiResponses.forEach(el => {
         const text = el.innerText?.trim()
-        if (text && text.length > 5) {
-          messages.push({ role: 'assistant', content: text.slice(0, 2000) })
+        if (text && text.length > 5 && text.length < 2000) {
+          messages.push({ role: 'assistant', content: text })
         }
       })
     }
