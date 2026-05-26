@@ -13,7 +13,7 @@ const FEATURES = [
   {
     icon: '🌍',
     title: 'Your mind in 2D',
-    desc: 'Upload your Claude and ChatGPT history and see every conversation mapped as a glowing orb in a 2D universe, clustered by topic.'
+    desc: 'Upload your Claude and ChatGPT history and see every conversation mapped on a 2D canvas, clustered by topic.'
   },
   {
     icon: '⚡',
@@ -27,7 +27,7 @@ const LOADING_MESSAGES = [
   'Generating embeddings...',
   'Mapping your mind in 2D...',
   'Identifying your unique topics...',
-  'Building your universe...'
+  'Building your map...'
 ]
 
 export default function Landing() {
@@ -148,7 +148,7 @@ export default function Landing() {
           <div style={{ textAlign: 'center', marginBottom: '40px' }}>
             <div style={{ fontSize: '3rem', marginBottom: '12px' }}>🌍</div>
             <h1 style={{ fontSize: '1.8rem', fontWeight: '700', marginBottom: '8px' }}>
-              Build your universe
+              Build your map
             </h1>
             <p style={{ color: '#888', fontSize: '0.9rem', lineHeight: '1.6' }}>
               Upload your conversation exports and Mind World<br />
@@ -348,7 +348,7 @@ export default function Landing() {
           maxWidth: '560px', margin: '0 auto 48px'
         }}>
           Mind World gives Claude and ChatGPT memory across sessions — surfaces what you already know,
-          maps your entire AI history in 3D, and engineers better prompts from your own past.
+          maps your entire AI history on a 2D canvas, and engineers better prompts from your own past.
         </p>
 
         <div style={{ display: 'flex', gap: '16px', justifyContent: 'center', flexWrap: 'wrap' }}>
