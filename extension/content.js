@@ -10,8 +10,9 @@ let currentResults = []      // last auto-search results
 let currentQuery = ''
 
 // Auto-save state
-const lastSavedAt = new Map() // conversationId -> timestamp
-const SAVE_COOLDOWN_MS = 30000 // save at most every 30 seconds
+const lastSavedAt = new Map()
+const lastSavedMessageCount = new Map()
+const minTimeBetweenSaves = 3000 // minimum 3s to avoid rapid duplicate saves
 let saveDebounceTimer = null
 let autoSaveObserver = null
 
@@ -722,8 +723,8 @@ async function tryAutoSave() {
       console.log('Mind World: no conversation ID found, skipping')
       return
     }
-    const lastSave = lastSavedAt.get(conversationId)
-    if (lastSave && Date.now() - lastSave < SAVE_COOLDOWN_MS) {
+    const lastSaveTime = lastSavedAt.get(conversationId) || 0
+    if (Date.now() - lastSaveTime < minTimeBetweenSaves) {
       console.log('Mind World: saved too recently, skipping')
       return
     }
@@ -733,6 +734,12 @@ async function tryAutoSave() {
 
     if (messages.length < 1) {
       console.log('Mind World: no messages found, skipping')
+      return
+    }
+
+    const lastCount = lastSavedMessageCount.get(conversationId) || 0
+    if (messages.length <= lastCount) {
+      console.log('Mind World: no new messages since last save, skipping')
       return
     }
 
@@ -763,6 +770,7 @@ async function tryAutoSave() {
       await chrome.storage.local.set({ mw_save_queue: existing })
       console.log('Mind World: added to queue, new length', existing.length)
       lastSavedAt.set(conversationId, Date.now())
+      lastSavedMessageCount.set(conversationId, messages.length)
       showSaveToast()
     }
   } catch (err) {
