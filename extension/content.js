@@ -554,11 +554,7 @@ function startAutoSave() {
     if (streamingTimeout) clearTimeout(streamingTimeout)
     streamingTimeout = setTimeout(() => {
       const hostname = window.location.hostname
-      const convId = extractConversationId(hostname)
-      if (convId) {
-        console.log('Mind World: stream ended, triggering save')
-        tryAutoSave()
-      }
+      tryAutoSave()
     }, 3000)
   })
 
@@ -599,46 +595,6 @@ function extractMessages(hostname) {
     if (humanTurns.length === 0) {
       humanTurns = document.querySelectorAll('[data-role="user"]')
       aiTurns = document.querySelectorAll('[data-role="assistant"]')
-    }
-
-    // Strategy 4: paragraphs inside main content area
-    if (humanTurns.length === 0) {
-      const mainContent = document.querySelector(
-        'main, [role="main"], .conversation, #conversation'
-      )
-      if (mainContent) {
-        const allDivs = mainContent.querySelectorAll(
-          'div > div > div > p, div > div > div > pre'
-        )
-        if (allDivs.length > 0) {
-          allDivs.forEach((el, i) => {
-            const text = el.innerText?.trim()
-            if (text && text.length > 10) {
-              messages.push({
-                role: i % 2 === 0 ? 'human' : 'assistant',
-                content: text.slice(0, 2000)
-              })
-            }
-          })
-          return messages
-        }
-      }
-    }
-
-    // Strategy 5: fall back to capturing visible page text
-    if (humanTurns.length === 0 && aiTurns.length === 0) {
-      const bodyText = document.body.innerText
-      if (bodyText.length > 100) {
-        messages.push({
-          role: 'human',
-          content: 'Conversation content: ' + bodyText.slice(0, 1000)
-        })
-        messages.push({
-          role: 'assistant',
-          content: 'Response captured from page'
-        })
-        return messages
-      }
     }
 
     // Collect, sort by DOM position, and return
