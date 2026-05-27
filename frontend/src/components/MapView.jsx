@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { useStore } from '../store'
 import MapPlot from './MapPlot'
 import BlenderPanel from './BlenderPanel'
@@ -8,24 +8,35 @@ import DetailPanel from './DetailPanel'
 
 const BORDER = '1px solid rgba(255,255,255,0.07)'
 const PANEL_BG = 'rgba(8,8,18,0.96)'
+const SIDEBAR_BG = 'rgba(10, 10, 20, 0.92)'
 
 export default function MapView() {
-  const conversations  = useStore(s => s.conversations)
-  const email          = useStore(s => s.email)
-  const selectedId     = useStore(s => s.selectedId)
-  const blendIds       = useStore(s => s.blendIds)
-  const filterSource   = useStore(s => s.filterSource)
-  const filterRegion   = useStore(s => s.filterRegion)
-  const setPhase       = useStore(s => s.setPhase)
-  const setSelected    = useStore(s => s.setSelected)
-  const toggleBlend    = useStore(s => s.toggleBlend)
-  const clearBlend     = useStore(s => s.clearBlend)
+  const conversations   = useStore(s => s.conversations)
+  const email           = useStore(s => s.email)
+  const selectedId      = useStore(s => s.selectedId)
+  const blendIds        = useStore(s => s.blendIds)
+  const filterSource    = useStore(s => s.filterSource)
+  const filterRegion    = useStore(s => s.filterRegion)
+  const setPhase        = useStore(s => s.setPhase)
+  const setSelected     = useStore(s => s.setSelected)
+  const toggleBlend     = useStore(s => s.toggleBlend)
+  const clearBlend      = useStore(s => s.clearBlend)
   const setFilterSource = useStore(s => s.setFilterSource)
   const setFilterRegion = useStore(s => s.setFilterRegion)
 
   const [sortBy, setSortBy] = useState('recent')
+  const [leftOpen, setLeftOpen] = useState(false)
+  const [rightOpen, setRightOpen] = useState(false)
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
 
-  // Derived totals
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768)
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
+  const sidebarWidth = isMobile ? '100%' : '300px'
+
   const totalMessages = conversations.reduce((a, c) => a + (c.num_messages || 0), 0)
   const claudeCount   = conversations.filter(c => c.source === 'claude').length
   const chatgptCount  = conversations.filter(c => c.source === 'chatgpt').length
@@ -49,7 +60,6 @@ export default function MapView() {
     setSelected(id === selectedId ? null : id)
   }
 
-  // Pill button for platform filter
   function PillBtn({ label, value }) {
     const active = filterSource === value
     return (
@@ -72,22 +82,164 @@ export default function MapView() {
     )
   }
 
+  const toggleBtnBase = {
+    position: 'absolute',
+    zIndex: 11,
+    background: 'rgba(10, 10, 20, 0.85)',
+    border: '1px solid rgba(255,255,255,0.1)',
+    color: 'white',
+    padding: '12px 6px',
+    cursor: 'pointer',
+    fontSize: '0.75rem',
+    lineHeight: 1,
+  }
+
   return (
     <div style={{
+      position: 'relative',
       width: '100vw',
       height: '100vh',
       background: '#0a0a0f',
       color: 'white',
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-      display: 'flex',
-      flexDirection: 'column',
       overflow: 'hidden',
     }}>
 
-      {/* ── Header ── */}
+      {/* ── Map fills entire viewport (behind controls) ── */}
+      <div style={{ position: 'absolute', inset: 0, paddingTop: '48px' }}>
+        <MapPlot
+          conversations={filtered}
+          selectedId={selectedId}
+          blendIds={blendIds}
+          onSelect={handleSelect}
+        />
+        <div style={{
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          padding: '4px 16px',
+          fontSize: '0.68rem',
+          color: '#333',
+          background: 'rgba(10,10,15,0.6)',
+          borderTop: BORDER,
+        }}>
+          ● Circle = Claude &nbsp;◆ Diamond = ChatGPT &nbsp;★ Star = selected for blend · Scroll to zoom · Drag to pan
+        </div>
+      </div>
+
+      {/* ── Left sidebar overlay (Context Blender + Time Machine) ── */}
       <div style={{
-        height: '52px',
-        flexShrink: 0,
+        position: 'absolute',
+        left: 0,
+        top: '48px',
+        bottom: 0,
+        width: sidebarWidth,
+        zIndex: 10,
+        transform: leftOpen ? 'translateX(0)' : 'translateX(-100%)',
+        transition: 'transform 0.3s ease',
+        background: SIDEBAR_BG,
+        backdropFilter: 'blur(12px)',
+        borderRight: '1px solid rgba(255,255,255,0.08)',
+        overflowY: 'auto',
+        display: 'flex',
+        flexDirection: 'column',
+      }}>
+        <BlenderPanel
+          blendIds={blendIds}
+          conversations={conversations}
+          email={email}
+          onRemove={id => toggleBlend(id)}
+          onClear={clearBlend}
+        />
+        <div style={{ borderTop: BORDER, padding: '20px 20px 32px', background: 'rgba(5,5,15,0.6)' }}>
+          <TimeMachine conversations={filtered} />
+        </div>
+      </div>
+
+      {/* ── Left toggle button ── */}
+      <button
+        onClick={() => setLeftOpen(o => !o)}
+        style={{
+          ...toggleBtnBase,
+          left: leftOpen ? sidebarWidth : 0,
+          top: isMobile ? '58px' : '50%',
+          transform: isMobile ? 'none' : 'translateY(-50%)',
+          borderRadius: '0 8px 8px 0',
+          transition: 'left 0.3s ease',
+        }}
+      >
+        {leftOpen ? '◀' : '▶'}
+      </button>
+
+      {/* ── Right sidebar overlay (Conversation List + Detail Panel) ── */}
+      <div style={{
+        position: 'absolute',
+        right: 0,
+        top: '48px',
+        bottom: 0,
+        width: sidebarWidth,
+        zIndex: 10,
+        transform: rightOpen ? 'translateX(0)' : 'translateX(100%)',
+        transition: 'transform 0.3s ease',
+        background: SIDEBAR_BG,
+        backdropFilter: 'blur(12px)',
+        borderLeft: '1px solid rgba(255,255,255,0.08)',
+        overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column',
+      }}>
+        <ConvoList
+          conversations={filtered}
+          selectedId={selectedId}
+          blendIds={blendIds}
+          sortBy={sortBy}
+          onSortChange={setSortBy}
+          onSelect={handleSelect}
+        />
+        {selectedConvo && (
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            background: PANEL_BG,
+            backdropFilter: 'blur(10px)',
+            padding: '16px',
+            zIndex: 10,
+            overflow: 'auto',
+          }}>
+            <DetailPanel
+              conversation={selectedConvo}
+              isBlended={blendIds.includes(selectedConvo.id)}
+              onClose={() => setSelected(null)}
+              onToggleBlend={() => toggleBlend(selectedConvo.id)}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* ── Right toggle button ── */}
+      <button
+        onClick={() => setRightOpen(o => !o)}
+        style={{
+          ...toggleBtnBase,
+          right: rightOpen ? sidebarWidth : 0,
+          top: isMobile ? '58px' : '50%',
+          transform: isMobile ? 'none' : 'translateY(-50%)',
+          borderRadius: '8px 0 0 8px',
+          transition: 'right 0.3s ease',
+        }}
+      >
+        {rightOpen ? '▶' : '◀'}
+      </button>
+
+      {/* ── Top controls bar (always on top) ── */}
+      <div style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        height: '48px',
+        zIndex: 20,
         display: 'flex',
         alignItems: 'center',
         gap: '16px',
@@ -114,7 +266,6 @@ export default function MapView() {
           <PillBtn label="All" value="all" />
           <PillBtn label="Claude" value="claude" />
           <PillBtn label="ChatGPT" value="chatgpt" />
-
           <select
             value={filterRegion}
             onChange={e => setFilterRegion(e.target.value)}
@@ -157,101 +308,6 @@ export default function MapView() {
         >
           ← New Upload
         </button>
-      </div>
-
-      {/* ── Body ── */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-
-        {/* Left: Blender */}
-        <div style={{
-          width: '272px',
-          flexShrink: 0,
-          borderRight: BORDER,
-          background: PANEL_BG,
-          overflowY: 'auto',
-        }}>
-          <BlenderPanel
-            blendIds={blendIds}
-            conversations={conversations}
-            email={email}
-            onRemove={id => toggleBlend(id)}
-            onClear={clearBlend}
-          />
-        </div>
-
-        {/* Center: Map + Time Machine (scrolls vertically) */}
-        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-          {/* Map */}
-          <div style={{ height: 'clamp(260px, 40vh, 460px)', flexShrink: 0 }}>
-            <MapPlot
-              conversations={filtered}
-              selectedId={selectedId}
-              blendIds={blendIds}
-              onSelect={handleSelect}
-            />
-          </div>
-
-          {/* Caption */}
-          <div style={{
-            padding: '6px 16px',
-            fontSize: '0.68rem',
-            color: '#333',
-            borderTop: BORDER,
-            flexShrink: 0,
-          }}>
-            ● Circle = Claude &nbsp;◆ Diamond = ChatGPT &nbsp;★ Star = selected for blend · Scroll to zoom · Drag to pan
-          </div>
-
-          {/* Time Machine */}
-          <div style={{
-            padding: '20px 20px 32px',
-            borderTop: BORDER,
-            background: 'rgba(5,5,15,0.6)',
-          }}>
-            <TimeMachine conversations={filtered} />
-          </div>
-        </div>
-
-        {/* Right: ConvoList + detail overlay */}
-        <div style={{
-          width: '272px',
-          flexShrink: 0,
-          borderLeft: BORDER,
-          background: PANEL_BG,
-          position: 'relative',
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column',
-        }}>
-          <ConvoList
-            conversations={filtered}
-            selectedId={selectedId}
-            blendIds={blendIds}
-            sortBy={sortBy}
-            onSortChange={setSortBy}
-            onSelect={handleSelect}
-          />
-
-          {/* Detail panel slides over the list */}
-          {selectedConvo && (
-            <div style={{
-              position: 'absolute',
-              inset: 0,
-              background: PANEL_BG,
-              backdropFilter: 'blur(10px)',
-              padding: '16px',
-              zIndex: 10,
-              overflow: 'auto',
-            }}>
-              <DetailPanel
-                conversation={selectedConvo}
-                isBlended={blendIds.includes(selectedConvo.id)}
-                onClose={() => setSelected(null)}
-                onToggleBlend={() => toggleBlend(selectedConvo.id)}
-              />
-            </div>
-          )}
-        </div>
       </div>
     </div>
   )

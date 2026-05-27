@@ -1,10 +1,13 @@
-import { useMemo } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import Plotly from 'plotly.js-dist-min'
 import createPlotlyComponent from 'react-plotly.js/factory'
 
 const Plot = createPlotlyComponent(Plotly)
 
 export default function MapPlot({ conversations, selectedId, blendIds, onSelect }) {
+  const plotRef = useRef(null)
+  const [agentTraces, setAgentTraces] = useState([])
+
   const { traces, annotations } = useMemo(() => {
     if (!conversations.length) return { traces: [], annotations: [] }
 
@@ -24,21 +27,18 @@ export default function MapPlot({ conversations, selectedId, blendIds, onSelect 
       const msgSize = Math.max(8, Math.min(25, Math.floor((c.num_messages || 4) / 4) + 6))
 
       regionMap[r].x.push(c.x)
-      regionMap[r].y.push(1000 - c.y) // invert Y to match plotly convention
+      regionMap[r].y.push(1000 - c.y)
       regionMap[r].size.push(msgSize + (isBlend ? 6 : 0) + (isFocused ? 4 : 0))
       regionMap[r].color.push(isBlend ? 'white' : (c.color || '#666666'))
       regionMap[r].symbol.push(isBlend ? 'star' : (c.source === 'chatgpt' ? 'diamond' : 'circle'))
       regionMap[r].customdata.push(c.id)
 
-      const emoji = c.source === 'claude' ? '🟣' : '🟢'
+      const truncated = c.title.length > 35
+        ? c.title.slice(0, 35) + '...'
+        : c.title
       regionMap[r].text.push(
-        `<b>${c.title}</b><br>` +
-        `${emoji} ${(c.source || 'claude').toUpperCase()}<br>` +
-        `Region: ${c.region || 'Other'}<br>` +
-        `Messages: ${c.num_messages || 0}<br>` +
-        `Date: ${(c.created_at || '').slice(0, 10)}<br>` +
-        (isBlend ? '⭐ Selected for blend<br>' : '') +
-        `<i>${(c.preview || '').slice(0, 120)}…</i>`
+        `<b>${truncated}</b><br>` +
+        `${c.region || 'Other'} · ${c.num_messages || 0} msgs`
       )
     }
 
@@ -60,7 +60,6 @@ export default function MapPlot({ conversations, selectedId, blendIds, onSelect 
       customdata: d.customdata,
     }))
 
-    // Cluster label annotations — only for regions with 2+ conversations
     const regionCenters = {}
     for (const c of conversations) {
       const r = c.region || 'Other'
@@ -90,12 +89,20 @@ export default function MapPlot({ conversations, selectedId, blendIds, onSelect 
     plot_bgcolor: '#0a0a0f',
     xaxis: { range: [0, 1000], showgrid: true, gridcolor: '#1a1a2e', zeroline: false, showticklabels: false },
     yaxis: { range: [0, 1000], showgrid: true, gridcolor: '#1a1a2e', zeroline: false, showticklabels: false },
-    margin: { l: 0, r: 0, t: 10, b: 0 },
+    margin: { l: 0, r: 0, t: 40, b: 0 },
+    showlegend: true,
     legend: { bgcolor: '#111', bordercolor: '#333', font: { color: '#aaa', size: 10 }, x: 0.01, y: 0.99 },
-    hoverlabel: { bgcolor: '#1a1a2e', font: { size: 12, family: 'monospace' } },
+    hoverlabel: {
+      bgcolor: 'rgba(10,10,20,0.9)',
+      bordercolor: 'rgba(255,255,255,0.15)',
+      font: { size: 11, color: 'white', family: 'monospace' },
+      align: 'left',
+      namelength: 0,
+    },
     annotations,
     autosize: true,
     dragmode: 'pan',
+    uirevision: 'true',
   }), [annotations])
 
   if (!conversations.length) {
@@ -112,7 +119,8 @@ export default function MapPlot({ conversations, selectedId, blendIds, onSelect 
 
   return (
     <Plot
-      data={traces}
+      ref={plotRef}
+      data={[...traces, ...agentTraces]}
       layout={layout}
       style={{ width: '100%', height: '100%' }}
       useResizeHandler
