@@ -89,7 +89,7 @@ export default function MapPlot({ conversations, selectedId, blendIds, onSelect 
     plot_bgcolor: '#0a0a0f',
     xaxis: { range: [0, 1000], showgrid: true, gridcolor: '#1a1a2e', zeroline: false, showticklabels: false },
     yaxis: { range: [0, 1000], showgrid: true, gridcolor: '#1a1a2e', zeroline: false, showticklabels: false },
-    margin: { l: 0, r: 0, t: 40, b: 0 },
+    margin: { l: 20, r: 20, t: 20, b: 20 },
     showlegend: true,
     legend: { bgcolor: '#111', bordercolor: '#333', font: { color: '#aaa', size: 10 }, x: 0.01, y: 0.99 },
     hoverlabel: {

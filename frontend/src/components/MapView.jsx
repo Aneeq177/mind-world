@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState } from 'react'
 import { useStore } from '../store'
 import MapPlot from './MapPlot'
 import BlenderPanel from './BlenderPanel'
@@ -27,15 +27,6 @@ export default function MapView() {
   const [sortBy, setSortBy] = useState('recent')
   const [leftOpen, setLeftOpen] = useState(false)
   const [rightOpen, setRightOpen] = useState(false)
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
-
-  useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < 768)
-    window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
-  }, [])
-
-  const sidebarWidth = isMobile ? '100%' : '300px'
 
   const totalMessages = conversations.reduce((a, c) => a + (c.num_messages || 0), 0)
   const claudeCount   = conversations.filter(c => c.source === 'claude').length
@@ -83,15 +74,15 @@ export default function MapView() {
   }
 
   const toggleBtnBase = {
-    position: 'absolute',
-    zIndex: 11,
-    background: 'rgba(10, 10, 20, 0.85)',
-    border: '1px solid rgba(255,255,255,0.1)',
+    position: 'fixed',
+    zIndex: 101,
+    background: 'rgba(124, 58, 237, 0.8)',
+    border: 'none',
     color: 'white',
-    padding: '12px 6px',
+    padding: '16px 8px',
     cursor: 'pointer',
-    fontSize: '0.75rem',
-    lineHeight: 1,
+    fontSize: '14px',
+    backdropFilter: 'blur(8px)',
   }
 
   return (
@@ -130,16 +121,16 @@ export default function MapView() {
 
       {/* ── Left sidebar overlay (Context Blender + Time Machine) ── */}
       <div style={{
-        position: 'absolute',
+        position: 'fixed',
         left: 0,
         top: '48px',
         bottom: 0,
-        width: sidebarWidth,
-        zIndex: 10,
+        width: '320px',
+        zIndex: 100,
         transform: leftOpen ? 'translateX(0)' : 'translateX(-100%)',
-        transition: 'transform 0.3s ease',
-        background: SIDEBAR_BG,
-        backdropFilter: 'blur(12px)',
+        transition: 'transform 0.25s ease',
+        background: 'rgba(8, 8, 18, 0.95)',
+        backdropFilter: 'blur(16px)',
         borderRight: '1px solid rgba(255,255,255,0.08)',
         overflowY: 'auto',
         display: 'flex',
@@ -162,11 +153,11 @@ export default function MapView() {
         onClick={() => setLeftOpen(o => !o)}
         style={{
           ...toggleBtnBase,
-          left: leftOpen ? sidebarWidth : 0,
-          top: isMobile ? '58px' : '50%',
-          transform: isMobile ? 'none' : 'translateY(-50%)',
+          left: leftOpen ? '320px' : '0px',
+          top: '50%',
+          transform: 'translateY(-50%)',
           borderRadius: '0 8px 8px 0',
-          transition: 'left 0.3s ease',
+          transition: 'left 0.25s ease',
         }}
       >
         {leftOpen ? '◀' : '▶'}
@@ -174,16 +165,16 @@ export default function MapView() {
 
       {/* ── Right sidebar overlay (Conversation List + Detail Panel) ── */}
       <div style={{
-        position: 'absolute',
+        position: 'fixed',
         right: 0,
         top: '48px',
         bottom: 0,
-        width: sidebarWidth,
-        zIndex: 10,
+        width: '320px',
+        zIndex: 100,
         transform: rightOpen ? 'translateX(0)' : 'translateX(100%)',
-        transition: 'transform 0.3s ease',
-        background: SIDEBAR_BG,
-        backdropFilter: 'blur(12px)',
+        transition: 'transform 0.25s ease',
+        background: 'rgba(8, 8, 18, 0.95)',
+        backdropFilter: 'blur(16px)',
         borderLeft: '1px solid rgba(255,255,255,0.08)',
         overflow: 'hidden',
         display: 'flex',
@@ -222,11 +213,11 @@ export default function MapView() {
         onClick={() => setRightOpen(o => !o)}
         style={{
           ...toggleBtnBase,
-          right: rightOpen ? sidebarWidth : 0,
-          top: isMobile ? '58px' : '50%',
-          transform: isMobile ? 'none' : 'translateY(-50%)',
+          right: rightOpen ? '320px' : '0px',
+          top: '50%',
+          transform: 'translateY(-50%)',
           borderRadius: '8px 0 0 8px',
-          transition: 'right 0.3s ease',
+          transition: 'right 0.25s ease',
         }}
       >
         {rightOpen ? '▶' : '◀'}
@@ -234,19 +225,19 @@ export default function MapView() {
 
       {/* ── Top controls bar (always on top) ── */}
       <div style={{
-        position: 'absolute',
+        position: 'fixed',
         top: 0,
         left: 0,
         right: 0,
         height: '48px',
-        zIndex: 20,
+        zIndex: 200,
         display: 'flex',
         alignItems: 'center',
         gap: '16px',
-        padding: '0 14px',
-        borderBottom: BORDER,
-        background: 'rgba(8,8,18,0.92)',
-        backdropFilter: 'blur(8px)',
+        padding: '0 16px',
+        borderBottom: '1px solid rgba(255,255,255,0.08)',
+        background: 'rgba(8, 8, 18, 0.95)',
+        backdropFilter: 'blur(12px)',
       }}>
         {/* Logo + stats */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexShrink: 0 }}>
