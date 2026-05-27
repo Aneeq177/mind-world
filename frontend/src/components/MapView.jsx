@@ -37,6 +37,14 @@ export default function MapView() {
     return Array.from(set).sort()
   }, [conversations])
 
+  const regionColors = useMemo(() => {
+    const map = {}
+    for (const c of filtered) {
+      if (c.region && !map[c.region]) map[c.region] = c.color || '#666666'
+    }
+    return map
+  }, [filtered])
+
   const filtered = useMemo(() => conversations.filter(c => {
     if (filterSource !== 'all' && c.source !== filterSource) return false
     if (filterRegion !== 'all' && c.region !== filterRegion) return false
@@ -96,28 +104,39 @@ export default function MapView() {
       overflow: 'hidden',
     }}>
 
-      {/* ── Map fills entire viewport (behind controls) ── */}
-      <div style={{ position: 'absolute', inset: 0, paddingTop: '48px' }}>
+      {/* ── Map: fills between top bar and bottom bar ── */}
+      <div style={{ position: 'absolute', top: '48px', left: 0, right: 0, bottom: '180px' }}>
         <MapPlot
           conversations={filtered}
           selectedId={selectedId}
           blendIds={blendIds}
           onSelect={handleSelect}
         />
-        <div style={{
-          position: 'absolute',
-          bottom: 0,
-          left: 0,
-          right: 0,
-          padding: '4px 16px',
-          fontSize: '0.68rem',
-          color: '#333',
-          background: 'rgba(10,10,15,0.6)',
-          borderTop: BORDER,
-        }}>
-          ● Circle = Claude &nbsp;◆ Diamond = ChatGPT &nbsp;★ Star = selected for blend · Scroll to zoom · Drag to pan
-        </div>
       </div>
+
+      {/* ── Legend overlay (bottom-left of map) ── */}
+      {Object.keys(regionColors).length > 0 && (
+        <div style={{
+          position: 'fixed',
+          bottom: 190,
+          left: 16,
+          background: 'rgba(8, 8, 18, 0.85)',
+          backdropFilter: 'blur(8px)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          borderRadius: '8px',
+          padding: '8px 12px',
+          zIndex: 50,
+          maxHeight: '200px',
+          overflowY: 'auto',
+        }}>
+          {Object.entries(regionColors).map(([region, color]) => (
+            <div key={region} style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px', fontSize: '0.7rem', color: '#aaa' }}>
+              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: color, flexShrink: 0 }} />
+              {region}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* ── Left sidebar overlay (Context Blender + Time Machine) ── */}
       <div style={{
@@ -143,9 +162,6 @@ export default function MapView() {
           onRemove={id => toggleBlend(id)}
           onClear={clearBlend}
         />
-        <div style={{ borderTop: BORDER, padding: '20px 20px 32px', background: 'rgba(5,5,15,0.6)' }}>
-          <TimeMachine conversations={filtered} />
-        </div>
       </div>
 
       {/* ── Left toggle button ── */}
@@ -299,6 +315,24 @@ export default function MapView() {
         >
           ← New Upload
         </button>
+      </div>
+
+      {/* ── Time Machine bottom bar ── */}
+      <div style={{
+        position: 'fixed',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        height: 'auto',
+        maxHeight: '180px',
+        background: 'rgba(8, 8, 18, 0.92)',
+        backdropFilter: 'blur(12px)',
+        borderTop: '1px solid rgba(255,255,255,0.08)',
+        padding: '12px 24px',
+        zIndex: 50,
+        overflowY: 'auto',
+      }}>
+        <TimeMachine conversations={filtered} />
       </div>
     </div>
   )
