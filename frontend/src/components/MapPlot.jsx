@@ -4,9 +4,10 @@ import createPlotlyComponent from 'react-plotly.js/factory'
 
 const Plot = createPlotlyComponent(Plotly)
 
-export default function MapPlot({ conversations, selectedId, blendIds, onSelect }) {
+export default function MapPlot({ conversations, newIds = new Set(), selectedId, blendIds, onSelect }) {
   const plotRef = useRef(null)
   const [agentTraces, setAgentTraces] = useState([])
+  const isTimeFiltered = newIds.size > 0
 
   const { traces, annotations } = useMemo(() => {
     if (!conversations.length) return { traces: [], annotations: [] }
@@ -17,25 +18,25 @@ export default function MapPlot({ conversations, selectedId, blendIds, onSelect 
       if (!regionMap[r]) {
         regionMap[r] = {
           x: [], y: [], text: [], customdata: [],
-          size: [], color: [], symbol: [],
+          size: [], color: [], symbol: [], opacity: [],
           regionColor: c.color || '#666666'
         }
       }
 
       const isBlend = blendIds.includes(c.id)
       const isFocused = c.id === selectedId
+      const isNew = newIds.has(c.id)
       const msgSize = Math.max(8, Math.min(25, Math.floor((c.num_messages || 4) / 4) + 6))
 
       regionMap[r].x.push(c.x)
       regionMap[r].y.push(1000 - c.y)
-      regionMap[r].size.push(msgSize + (isBlend ? 6 : 0) + (isFocused ? 4 : 0))
+      regionMap[r].size.push(msgSize + (isBlend ? 6 : 0) + (isFocused ? 4 : 0) + (isNew ? 2 : 0))
       regionMap[r].color.push(isBlend ? 'white' : (c.color || '#666666'))
       regionMap[r].symbol.push(isBlend ? 'star' : (c.source === 'chatgpt' ? 'diamond' : 'circle'))
+      regionMap[r].opacity.push(isTimeFiltered ? (isNew ? 1.0 : 0.4) : 0.9)
       regionMap[r].customdata.push(c.id)
 
-      const truncated = c.title.length > 35
-        ? c.title.slice(0, 35) + '...'
-        : c.title
+      const truncated = c.title.length > 35 ? c.title.slice(0, 35) + '...' : c.title
       regionMap[r].text.push(
         `<b>${truncated}</b><br>` +
         `${c.region || 'Other'} · ${c.num_messages || 0} msgs`
@@ -52,13 +53,28 @@ export default function MapPlot({ conversations, selectedId, blendIds, onSelect 
         size: d.size,
         color: d.color,
         symbol: d.symbol,
-        opacity: 0.9,
+        opacity: d.opacity,
         line: { width: 1.5, color: 'rgba(255,255,255,0.25)' }
       },
       hovertemplate: '%{text}<extra></extra>',
       text: d.text,
       customdata: d.customdata,
     }))
+
+    // White halo rings for new conversations
+    for (const c of conversations) {
+      if (!newIds.has(c.id)) continue
+      const sz = Math.max(8, Math.min(25, Math.floor((c.num_messages || 4) / 4) + 6))
+      traces.push({
+        type: 'scattergl',
+        x: [c.x],
+        y: [1000 - c.y],
+        mode: 'markers',
+        showlegend: false,
+        hoverinfo: 'skip',
+        marker: { size: sz + 14, color: 'rgba(0,0,0,0)', line: { width: 2, color: 'white' } },
+      })
+    }
 
     const regionCenters = {}
     for (const c of conversations) {
@@ -82,17 +98,16 @@ export default function MapPlot({ conversations, selectedId, blendIds, onSelect 
       }))
 
     return { traces, annotations }
-  }, [conversations, selectedId, blendIds])
+  }, [conversations, selectedId, blendIds, newIds, isTimeFiltered])
 
   const layout = useMemo(() => ({
     paper_bgcolor: '#0a0a0f',
     plot_bgcolor: '#0a0a0f',
     xaxis: { range: [0, 1000], showgrid: true, gridcolor: '#1a1a2e', zeroline: false, showticklabels: false },
     yaxis: { range: [0, 1000], showgrid: true, gridcolor: '#1a1a2e', zeroline: false, showticklabels: false },
-    margin: { l: 40, r: 40, t: 40, b: 40 },
+    margin: { l: 40, r: 40, t: 20, b: 20 },
     height: undefined,
     showlegend: false,
-    legend: { bgcolor: '#111', bordercolor: '#333', font: { color: '#aaa', size: 10 }, x: 0.01, y: 0.99 },
     hoverlabel: {
       bgcolor: 'rgba(10,10,20,0.9)',
       bordercolor: 'rgba(255,255,255,0.15)',

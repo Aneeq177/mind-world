@@ -3,12 +3,34 @@ import { useStore } from '../store'
 import MapPlot from './MapPlot'
 import BlenderPanel from './BlenderPanel'
 import ConvoList from './ConvoList'
-import TimeMachine from './TimeMachine'
 import DetailPanel from './DetailPanel'
 
-const BORDER = '1px solid rgba(255,255,255,0.07)'
 const PANEL_BG = 'rgba(8,8,18,0.96)'
-const SIDEBAR_BG = 'rgba(10, 10, 20, 0.92)'
+
+function buildMonths(conversations) {
+  const dates = conversations.flatMap(c => {
+    try {
+      const d = new Date(c.created_at)
+      return isNaN(d.getTime()) ? [] : [d.getTime()]
+    } catch { return [] }
+  })
+  if (!dates.length) return []
+
+  const minD = new Date(Math.min(...dates))
+  const maxD = new Date(Math.max(...dates))
+  const months = []
+  let cur = new Date(minD.getFullYear(), minD.getMonth(), 1)
+  const end = new Date(maxD.getFullYear(), maxD.getMonth(), 1)
+  while (cur <= end) {
+    months.push(new Date(cur))
+    cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1)
+  }
+  return months
+}
+
+function fmt(d) {
+  return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+}
 
 export default function MapView() {
   const conversations   = useStore(s => s.conversations)
@@ -27,6 +49,8 @@ export default function MapView() {
   const [sortBy, setSortBy] = useState('recent')
   const [leftOpen, setLeftOpen] = useState(false)
   const [rightOpen, setRightOpen] = useState(false)
+  // Start at MAX so safeIdx always resolves to months.length-1 on first render
+  const [timeIdx, setTimeIdx] = useState(Number.MAX_SAFE_INTEGER)
 
   const totalMessages = conversations.reduce((a, c) => a + (c.num_messages || 0), 0)
   const claudeCount   = conversations.filter(c => c.source === 'claude').length
@@ -50,6 +74,35 @@ export default function MapView() {
     }
     return map
   }, [filtered])
+
+  const months = useMemo(() => buildMonths(filtered), [filtered])
+
+  const safeIdx = Math.min(timeIdx, Math.max(0, months.length - 1))
+  const isAtMax = months.length === 0 || safeIdx === months.length - 1
+
+  const { timeFiltered, newThisMonth } = useMemo(() => {
+    if (!months.length || safeIdx === months.length - 1) {
+      return { timeFiltered: filtered, newThisMonth: [] }
+    }
+    const cutoff = months[safeIdx]
+    const cutoffEnd = new Date(cutoff.getFullYear(), cutoff.getMonth() + 1, 1)
+    const timeFiltered = filtered.filter(c => {
+      try { return new Date(c.created_at) < cutoffEnd } catch { return false }
+    })
+    const newThisMonth = timeFiltered.filter(c => {
+      try {
+        const d = new Date(c.created_at)
+        return d >= cutoff && d < cutoffEnd
+      } catch { return false }
+    })
+    return { timeFiltered, newThisMonth }
+  }, [filtered, months, safeIdx])
+
+  const newIds = useMemo(() => new Set(newThisMonth.map(c => c.id)), [newThisMonth])
+
+  const displayCount  = timeFiltered.length
+  const newCount      = newThisMonth.length
+  const totalMsgCount = timeFiltered.reduce((a, c) => a + (c.num_messages || 0), 0)
 
   const selectedConvo = useMemo(() => (
     selectedId ? conversations.find(c => c.id === selectedId) || null : null
@@ -104,28 +157,29 @@ export default function MapView() {
       overflow: 'hidden',
     }}>
 
-      {/* ── Map: fills between top bar and bottom bar ── */}
-      <div style={{ position: 'absolute', top: '48px', left: 0, right: 0, bottom: '180px' }}>
+      {/* ── Map: fills between top bar and time machine bar ── */}
+      <div style={{ position: 'fixed', top: '48px', left: 0, right: 0, bottom: '52px', overflow: 'hidden' }}>
         <MapPlot
-          conversations={filtered}
+          conversations={timeFiltered}
+          newIds={newIds}
           selectedId={selectedId}
           blendIds={blendIds}
           onSelect={handleSelect}
         />
       </div>
 
-      {/* ── Legend overlay (bottom-left of map) ── */}
+      {/* ── Legend overlay (above time machine bar) ── */}
       {Object.keys(regionColors).length > 0 && (
         <div style={{
           position: 'fixed',
-          bottom: 190,
+          bottom: 62,
           left: 16,
           background: 'rgba(8, 8, 18, 0.85)',
           backdropFilter: 'blur(8px)',
           border: '1px solid rgba(255,255,255,0.08)',
           borderRadius: '8px',
           padding: '8px 12px',
-          zIndex: 50,
+          zIndex: 49,
           maxHeight: '200px',
           overflowY: 'auto',
         }}>
@@ -138,12 +192,12 @@ export default function MapView() {
         </div>
       )}
 
-      {/* ── Left sidebar overlay (Context Blender + Time Machine) ── */}
+      {/* ── Left sidebar overlay (Context Blender) ── */}
       <div style={{
         position: 'fixed',
         left: 0,
         top: '48px',
-        bottom: 0,
+        bottom: '52px',
         width: '320px',
         zIndex: 100,
         transform: leftOpen ? 'translateX(0)' : 'translateX(-100%)',
@@ -184,7 +238,7 @@ export default function MapView() {
         position: 'fixed',
         right: 0,
         top: '48px',
-        bottom: 0,
+        bottom: '52px',
         width: '320px',
         zIndex: 100,
         transform: rightOpen ? 'translateX(0)' : 'translateX(100%)',
@@ -239,7 +293,7 @@ export default function MapView() {
         {rightOpen ? '▶' : '◀'}
       </button>
 
-      {/* ── Top controls bar (always on top) ── */}
+      {/* ── Top controls bar ── */}
       <div style={{
         position: 'fixed',
         top: 0,
@@ -255,7 +309,6 @@ export default function MapView() {
         background: 'rgba(8, 8, 18, 0.95)',
         backdropFilter: 'blur(12px)',
       }}>
-        {/* Logo + stats */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexShrink: 0 }}>
           <div style={{ fontWeight: '700', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
             <span>🌍</span><span>Mind World</span>
@@ -268,7 +321,6 @@ export default function MapView() {
           </div>
         </div>
 
-        {/* Filters — centered */}
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', flexWrap: 'wrap' }}>
           <PillBtn label="All" value="all" />
           <PillBtn label="Claude" value="claude" />
@@ -292,7 +344,6 @@ export default function MapView() {
           </select>
         </div>
 
-        {/* New upload */}
         <button
           onClick={() => {
             setSelected(null)
@@ -318,22 +369,59 @@ export default function MapView() {
       </div>
 
       {/* ── Time Machine bottom bar ── */}
-      <div style={{
-        position: 'fixed',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        height: 'auto',
-        maxHeight: '180px',
-        background: 'rgba(8, 8, 18, 0.92)',
-        backdropFilter: 'blur(12px)',
-        borderTop: '1px solid rgba(255,255,255,0.08)',
-        padding: '12px 24px',
-        zIndex: 50,
-        overflowY: 'auto',
-      }}>
-        <TimeMachine conversations={filtered} />
-      </div>
+      {months.length > 0 && (
+        <div style={{
+          position: 'fixed',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          height: '52px',
+          zIndex: 50,
+          background: 'rgba(8, 8, 18, 0.95)',
+          backdropFilter: 'blur(12px)',
+          borderTop: '1px solid rgba(255,255,255,0.08)',
+          padding: '0 24px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '16px',
+        }}>
+          <span style={{ fontSize: '0.85rem', flexShrink: 0 }}>⏳</span>
+          <span style={{ fontSize: '0.72rem', color: '#555', flexShrink: 0, whiteSpace: 'nowrap' }}>
+            {fmt(months[0])} →{' '}
+            <span style={{ color: isAtMax ? '#555' : '#a78bfa' }}>{fmt(months[safeIdx])}</span>
+          </span>
+          <input
+            type="range"
+            min={0}
+            max={months.length - 1}
+            value={safeIdx}
+            onChange={e => setTimeIdx(Number(e.target.value))}
+            style={{ flex: 1, accentColor: '#7c3aed', cursor: 'pointer' }}
+          />
+          <span style={{ fontSize: '0.72rem', color: '#555', flexShrink: 0, whiteSpace: 'nowrap' }}>
+            <b style={{ color: 'white' }}>{displayCount}</b>{' conversations'}
+            {!isAtMax && <> · <b style={{ color: '#a78bfa' }}>{newCount}</b>{' new'}</>}
+            {' · '}<b style={{ color: 'white' }}>{totalMsgCount.toLocaleString()}</b>{' messages'}
+          </span>
+          {!isAtMax && (
+            <button
+              onClick={() => setTimeIdx(Number.MAX_SAFE_INTEGER)}
+              style={{
+                background: 'none',
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: '4px',
+                color: '#888',
+                fontSize: '0.7rem',
+                padding: '2px 6px',
+                cursor: 'pointer',
+                flexShrink: 0,
+              }}
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      )}
     </div>
   )
 }
