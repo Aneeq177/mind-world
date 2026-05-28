@@ -90,7 +90,7 @@ export default function MapPlot({ conversations, selectedId, blendIds, onSelect 
     xaxis: { range: [0, 1000], showgrid: true, gridcolor: '#1a1a2e', zeroline: false, showticklabels: false },
     yaxis: { range: [0, 1000], showgrid: true, gridcolor: '#1a1a2e', zeroline: false, showticklabels: false },
     margin: { l: 20, r: 20, t: 20, b: 20 },
-    showlegend: true,
+    showlegend: false,
     legend: { bgcolor: '#111', bordercolor: '#333', font: { color: '#aaa', size: 10 }, x: 0.01, y: 0.99 },
     hoverlabel: {
       bgcolor: 'rgba(10,10,20,0.9)',
