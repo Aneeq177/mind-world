@@ -83,6 +83,7 @@ async def process_files(
         chats = label_clusters(chats, api_key)
 
         try:
+            email = email.lower().strip()
             user_id = get_or_create_user(email)
             store_conversations(user_id, chats, embeddings)
         except Exception as db_error:
@@ -124,7 +125,8 @@ async def search(request: SearchRequest):
         from services.database import search_conversations
         from sentence_transformers import SentenceTransformer
 
-        user_id = get_or_create_user(request.email)
+        email = request.email.lower().strip()
+        user_id = get_or_create_user(email)
 
         model = SentenceTransformer('all-MiniLM-L6-v2')
         query_embedding = model.encode([request.query])[0]
@@ -165,7 +167,8 @@ async def summarize(request: SummarizeRequest):
                 detail="Anthropic API key required — add one in the extension or configure the server.",
             )
 
-        user_id = get_or_create_user(request.email)
+        email = request.email.lower().strip()
+        user_id = get_or_create_user(email)
 
         # Get all user conversations from DB
         all_convos = get_user_conversations(user_id)
@@ -258,7 +261,8 @@ async def engineer_prompt(request: EngineerPromptRequest):
                 detail="Anthropic API key required — add one in the extension or configure the server."
             )
 
-        user_id = get_or_create_user(request.email)
+        email = request.email.lower().strip()
+        user_id = get_or_create_user(email)
 
         if request.conversation_ids:
             print(f"[engineer_prompt] Looking for conversation IDs: {request.conversation_ids}")
@@ -371,7 +375,8 @@ async def user_stats(request: UserStatsRequest):
         from services.database import get_supabase
 
         supabase = get_supabase()
-        user_id = get_or_create_user(request.email)
+        email = request.email.lower().strip()
+        user_id = get_or_create_user(email)
 
         # Count conversations
         conv_result = supabase.table("conversations")\
@@ -405,7 +410,8 @@ async def blend(request: BlendRequest):
 
     from services.database import get_user_conversations, get_or_create_user
     try:
-        user_id = get_or_create_user(request.email)
+        email = request.email.lower().strip()
+        user_id = get_or_create_user(email)
         all_convos = get_user_conversations(user_id)
         selected = [c for c in all_convos if c['id'] in request.conversation_ids]
         
@@ -428,7 +434,8 @@ async def save_conversation(request: SaveConversationRequest):
         from services.embedder import embed_single
 
         supabase = get_supabase()
-        user_id = get_or_create_user(request.email)
+        email = request.email.lower().strip()
+        user_id = get_or_create_user(email)
         convo = request.conversation
 
         messages = convo.get('messages', [])
@@ -501,7 +508,8 @@ async def load_map(request: LoadMapRequest):
         from services.database import get_supabase
 
         supabase = get_supabase()
-        user_id = get_or_create_user(request.email)
+        email = request.email.lower().strip()
+        user_id = get_or_create_user(email)
 
         result = supabase.table("conversations")\
             .select("*")\

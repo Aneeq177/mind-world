@@ -11,6 +11,7 @@ def get_supabase() -> Client:
 
 def get_or_create_user(email: str) -> str:
     supabase = get_supabase()
+    email = email.lower().strip()
 
     result = supabase.table("users")\
         .select("id")\
@@ -20,11 +21,14 @@ def get_or_create_user(email: str) -> str:
     if result.data:
         return result.data[0]["id"]
 
-    result = supabase.table("users")\
-        .insert({"email": email})\
-        .execute()
+    import uuid
+    new_id = str(uuid.uuid4())
+    supabase.table("users").insert({
+        "id": new_id,
+        "email": email
+    }).execute()
 
-    return result.data[0]["id"]
+    return new_id
 
 def store_conversations(
     user_id: str,
