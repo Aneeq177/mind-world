@@ -261,17 +261,53 @@ async def engineer_prompt(request: EngineerPromptRequest):
         user_id = get_or_create_user(request.email)
 
         if request.conversation_ids:
+            print(f"[engineer_prompt] Looking for conversation IDs: {request.conversation_ids}")
             all_convos = get_user_conversations(user_id)
             selected = [c for c in all_convos if c["id"] in request.conversation_ids]
+            print(f"[engineer_prompt] Found {len(selected)} conversations with user_id filter")
+            for c in selected:
+                print(f"  - {c.get('id')} | title: {c.get('title')} | text_length: {len(c.get('full_text') or '')}")
+
+            # Fallback: try fetching by ID without user_id filter
+            if not selected:
+                print("[engineer_prompt] Retrying without user_id filter")
+                from services.database import get_supabase
+                supabase = get_supabase()
+                result = supabase.table("conversations")\
+                    .select("id, title, full_text, preview, created_at, num_messages, source")\
+                    .in_("id", request.conversation_ids)\
+                    .execute()
+                selected = result.data or []
+                print(f"[engineer_prompt] Found {len(selected)} conversations without user_id filter")
+                for c in selected:
+                    print(f"  - {c.get('id')} | title: {c.get('title')} | text_length: {len(c.get('full_text') or '')}")
         else:
             model = SentenceTransformer("all-MiniLM-L6-v2")
             embedding = model.encode([request.message])[0]
             selected = search_conversations(user_id, embedding, limit=5)
 
-        conv_context = "\n\n".join([
-            f"[{c.get('source', '').upper()} | {c.get('title', 'Untitled')} | {str(c.get('created_at', ''))[:10]}]\n{str(c.get('full_text', ''))[:2000]}"
-            for c in selected
-        ]) if selected else "No relevant past conversations found."
+        context_parts = []
+        for conv in selected:
+            full_text = conv.get('full_text') or conv.get('preview') or ''
+            if full_text:
+                context_parts.append(
+                    f"Conversation: {conv.get('title', 'Untitled')}\n"
+                    f"Date: {str(conv.get('created_at', ''))[:10]}\n"
+                    f"Messages: {conv.get('num_messages', 0)}\n"
+                    f"Content:\n{full_text[:3000]}"
+                )
+        conv_context = "\n\n---\n\n".join(context_parts) if context_parts else ""
+
+        if not conv_context.strip():
+            print(f"[engineer_prompt] No context content — selected={len(selected)}, context_parts={len(context_parts)}")
+            return {
+                "engineered_prompt": (
+                    f"I need help with: {request.message}\n\n"
+                    "(Note: Could not load context from selected conversations. "
+                    "Please try re-uploading your conversation history at mind-world.app)"
+                ),
+                "conversations_used": 0
+            }
 
         system_prompt = """You are an expert prompt engineer. Transform the user's rough message into a complete, well-structured prompt that will get the best possible response from an AI assistant.
 
