@@ -37,6 +37,12 @@ export default function MapView() {
     return Array.from(set).sort()
   }, [conversations])
 
+  const filtered = useMemo(() => conversations.filter(c => {
+    if (filterSource !== 'all' && c.source !== filterSource) return false
+    if (filterRegion !== 'all' && c.region !== filterRegion) return false
+    return true
+  }), [conversations, filterSource, filterRegion])
+
   const regionColors = useMemo(() => {
     const map = {}
     for (const c of filtered) {
@@ -44,12 +50,6 @@ export default function MapView() {
     }
     return map
   }, [filtered])
-
-  const filtered = useMemo(() => conversations.filter(c => {
-    if (filterSource !== 'all' && c.source !== filterSource) return false
-    if (filterRegion !== 'all' && c.region !== filterRegion) return false
-    return true
-  }), [conversations, filterSource, filterRegion])
 
   const selectedConvo = useMemo(() => (
     selectedId ? conversations.find(c => c.id === selectedId) || null : null
