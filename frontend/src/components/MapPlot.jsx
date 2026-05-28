@@ -89,7 +89,8 @@ export default function MapPlot({ conversations, selectedId, blendIds, onSelect 
     plot_bgcolor: '#0a0a0f',
     xaxis: { range: [0, 1000], showgrid: true, gridcolor: '#1a1a2e', zeroline: false, showticklabels: false },
     yaxis: { range: [0, 1000], showgrid: true, gridcolor: '#1a1a2e', zeroline: false, showticklabels: false },
-    margin: { l: 20, r: 20, t: 20, b: 20 },
+    margin: { l: 40, r: 40, t: 40, b: 40 },
+    height: undefined,
     showlegend: false,
     legend: { bgcolor: '#111', bordercolor: '#333', font: { color: '#aaa', size: 10 }, x: 0.01, y: 0.99 },
     hoverlabel: {
@@ -118,18 +119,20 @@ export default function MapPlot({ conversations, selectedId, blendIds, onSelect 
   }
 
   return (
-    <Plot
-      ref={plotRef}
-      data={[...traces, ...agentTraces]}
-      layout={layout}
-      style={{ width: '100%', height: '100%' }}
-      useResizeHandler
-      config={{ displayModeBar: false, scrollZoom: true }}
-      onClick={(evt) => {
-        if (evt.points && evt.points[0] && evt.points[0].customdata) {
-          onSelect(evt.points[0].customdata)
-        }
-      }}
-    />
+    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%' }}>
+      <Plot
+        ref={plotRef}
+        data={[...traces, ...agentTraces]}
+        layout={layout}
+        style={{ width: '100%', height: '100%' }}
+        useResizeHandler={true}
+        config={{ displayModeBar: false, scrollZoom: true }}
+        onClick={(evt) => {
+          if (evt.points && evt.points[0] && evt.points[0].customdata) {
+            onSelect(evt.points[0].customdata)
+          }
+        }}
+      />
+    </div>
   )
 }
