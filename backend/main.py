@@ -387,16 +387,40 @@ async def user_stats(request: UserStatsRequest):
         conversations = conv_result.data or []
         sources = set(c.get('source', '') for c in conversations)
 
+        # Fetch company info
+        company_info = None
+        user_result = supabase.table("users")\
+            .select("company_id")\
+            .eq("id", user_id)\
+            .execute()
+        if user_result.data and user_result.data[0].get("company_id"):
+            company_id = user_result.data[0]["company_id"]
+            company_result = supabase.table("companies")\
+                .select("name, domain")\
+                .eq("id", company_id)\
+                .execute()
+            if company_result.data:
+                company_info = company_result.data[0]
+            members_result = supabase.table("users")\
+                .select("id")\
+                .eq("company_id", company_id)\
+                .execute()
+            if company_info:
+                company_info["member_count"] = len(members_result.data or [])
+
         return {
             "conversation_count": len(conversations),
             "platform_count": len(sources),
-            "sources": list(sources)
+            "sources": list(sources),
+            "user_id": user_id,
+            "company": company_info
         }
     except Exception as e:
         return {
             "conversation_count": 0,
             "platform_count": 0,
-            "sources": []
+            "sources": [],
+            "company": None
         }
 
 @app.post("/blend")
@@ -562,6 +586,115 @@ async def load_map(request: LoadMapRequest):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class CompanySearchRequest(BaseModel):
+    email: str
+    query: str
+    limit: int = 5
+
+@app.post("/company_search")
+async def company_search(request: CompanySearchRequest):
+    try:
+        from services.database import get_or_create_user, get_supabase
+        from sentence_transformers import SentenceTransformer
+
+        supabase = get_supabase()
+        email = request.email.lower().strip()
+        user_id = get_or_create_user(email)
+
+        user_result = supabase.table("users")\
+            .select("company_id")\
+            .eq("id", user_id)\
+            .execute()
+
+        if not user_result.data or not user_result.data[0].get("company_id"):
+            return {"results": [], "message": "No company workspace found for this email"}
+
+        company_id = user_result.data[0]["company_id"]
+
+        company_users = supabase.table("users")\
+            .select("id, email")\
+            .eq("company_id", company_id)\
+            .execute()
+
+        company_user_ids = [u["id"] for u in (company_users.data or [])]
+        company_user_emails = {u["id"]: u["email"] for u in (company_users.data or [])}
+
+        if not company_user_ids:
+            return {"results": [], "message": "No company members found"}
+
+        model = SentenceTransformer('all-MiniLM-L6-v2')
+        query_embedding = model.encode([request.query])[0]
+
+        search_result = supabase.rpc(
+            'match_company_conversations',
+            {
+                'query_embedding': query_embedding.tolist(),
+                'company_user_ids': company_user_ids,
+                'exclude_user_id': user_id,
+                'match_count': request.limit
+            }
+        ).execute()
+
+        results = []
+        for item in (search_result.data or []):
+            owner_email = company_user_emails.get(item.get('user_id'), 'unknown')
+            owner_initials = ''.join(
+                p[0].upper() for p in owner_email.split('@')[0].split('.')[:2]
+            )
+            results.append({
+                'id': item.get('id'),
+                'title': item.get('title'),
+                'preview': item.get('preview'),
+                'similarity': item.get('similarity'),
+                'owner_email': owner_email,
+                'owner_initials': owner_initials,
+                'created_at': item.get('created_at')
+            })
+
+        return {
+            "results": results,
+            "company_members": len(company_user_ids),
+            "searched_conversations": "company-visible only"
+        }
+
+    except Exception as e:
+        import traceback
+        return {
+            "results": [],
+            "error": str(e),
+            "trace": traceback.format_exc()
+        }
+
+
+class SetVisibilityRequest(BaseModel):
+    email: str
+    conversation_id: str
+    visibility: str
+
+@app.post("/set_visibility")
+async def set_visibility(request: SetVisibilityRequest):
+    try:
+        from services.database import get_or_create_user, get_supabase
+
+        if request.visibility not in ['private', 'company']:
+            return {"success": False, "reason": "Invalid visibility value"}
+
+        supabase = get_supabase()
+        email = request.email.lower().strip()
+        user_id = get_or_create_user(email)
+
+        supabase.table("conversations")\
+            .update({"visibility": request.visibility})\
+            .eq("id", request.conversation_id)\
+            .eq("user_id", user_id)\
+            .execute()
+
+        return {"success": True, "visibility": request.visibility}
+
+    except Exception as e:
+        return {"success": False, "reason": str(e)}
 
 
 class ReclusterRequest(BaseModel):
