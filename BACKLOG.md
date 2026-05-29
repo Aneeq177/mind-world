@@ -76,7 +76,7 @@ ID: MW-002
 Title: Trigger auto-recluster on new conversation save
 Agent: Backend
 Priority: P0 Critical
-Status: To Do
+Status: ✅ Complete
 Blocked by: nothing
 
 Description:
