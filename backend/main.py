@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, Form
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import json
@@ -452,7 +452,7 @@ class SaveConversationRequest(BaseModel):
     visibility: str = 'private'
 
 @app.post("/save_conversation")
-async def save_conversation(request: SaveConversationRequest):
+async def save_conversation(request: SaveConversationRequest, background_tasks: BackgroundTasks):
     try:
         from services.database import get_or_create_user
         from services.database import get_supabase
@@ -518,6 +518,8 @@ async def save_conversation(request: SaveConversationRequest):
             "user_id": user_id,
             "embedding": embedding.tolist()
         }, on_conflict="conversation_id,user_id").execute()
+
+        background_tasks.add_task(run_recluster, email)
 
         return {"success": True, "id": conv_id}
 
@@ -630,6 +632,8 @@ async def company_search(request: CompanySearchRequest):
         model = SentenceTransformer('all-MiniLM-L6-v2')
         query_embedding = model.encode([request.query])[0]
 
+        print(f"[/company_search] Calling match_company_conversations with exclude_user_id={user_id}, company_user_ids={company_user_ids}")
+
         search_result = supabase.rpc(
             'match_company_conversations',
             {
@@ -705,96 +709,99 @@ async def set_visibility(request: SetVisibilityRequest):
 class ReclusterRequest(BaseModel):
     email: str
 
+async def run_recluster(email: str):
+    from services.database import get_or_create_user
+    from services.database import get_supabase
+    import numpy as np
+
+    supabase = get_supabase()
+    email = email.lower().strip()
+    user_id = get_or_create_user(email)
+
+    # Get all conversations for this user
+    result = supabase.table("conversations")\
+        .select("id, title, full_text, x, y")\
+        .eq("user_id", user_id)\
+        .execute()
+
+    all_convos = result.data or []
+
+    if not all_convos:
+        # Try without user_id filter
+        result = supabase.table("conversations")\
+            .select("id, title, full_text, x, y")\
+            .execute()
+        all_convos = result.data or []
+
+    if not all_convos:
+        return {"success": False, "reason": "no conversations found"}
+
+    # Separate positioned and unpositioned
+    unpositioned = [c for c in all_convos
+                    if c.get('x', 0) == 0 and c.get('y', 0) == 0]
+
+    if not unpositioned:
+        return {
+            "success": True,
+            "message": "All conversations already positioned",
+            "repositioned": 0
+        }
+
+    # Build texts for all conversations
+    all_texts = []
+    for c in all_convos:
+        title = c.get('title', 'Untitled')
+        text = (c.get('full_text') or '')[:500]
+        all_texts.append(f"{title}. {text}")
+
+    # Embed all texts
+    from sentence_transformers import SentenceTransformer
+    model = SentenceTransformer('all-MiniLM-L6-v2')
+    embeddings = model.encode(all_texts, show_progress_bar=False)
+
+    # Run UMAP on all embeddings together
+    import umap
+    n_neighbors = min(10, len(all_convos) - 1)
+    reducer = umap.UMAP(
+        n_components=2,
+        n_neighbors=n_neighbors,
+        min_dist=0.3,
+        metric='cosine',
+        random_state=42
+    )
+    coords = reducer.fit_transform(embeddings)
+
+    # Normalize to 0-1000 range
+    x_min, x_max = coords[:, 0].min(), coords[:, 0].max()
+    y_min, y_max = coords[:, 1].min(), coords[:, 1].max()
+
+    coords_norm = np.zeros_like(coords)
+    coords_norm[:, 0] = (coords[:, 0] - x_min) / (x_max - x_min + 1e-8) * 900 + 50
+    coords_norm[:, 1] = (coords[:, 1] - y_min) / (y_max - y_min + 1e-8) * 900 + 50
+
+    # Update only the unpositioned conversations
+    updated = 0
+    for i, conv in enumerate(all_convos):
+        if conv.get('x', 0) == 0 and conv.get('y', 0) == 0:
+            supabase.table("conversations")\
+                .update({
+                    "x": float(coords_norm[i, 0]),
+                    "y": float(coords_norm[i, 1])
+                })\
+                .eq("id", conv["id"])\
+                .execute()
+            updated += 1
+
+    return {
+        "success": True,
+        "repositioned": updated,
+        "total": len(all_convos)
+    }
+
 @app.post("/recluster")
 async def recluster(request: ReclusterRequest):
     try:
-        from services.database import get_or_create_user
-        from services.database import get_supabase
-        import numpy as np
-
-        supabase = get_supabase()
-        email = request.email.lower().strip()
-        user_id = get_or_create_user(email)
-
-        # Get all conversations for this user
-        result = supabase.table("conversations")\
-            .select("id, title, full_text, x, y")\
-            .eq("user_id", user_id)\
-            .execute()
-
-        all_convos = result.data or []
-
-        if not all_convos:
-            # Try without user_id filter
-            result = supabase.table("conversations")\
-                .select("id, title, full_text, x, y")\
-                .execute()
-            all_convos = result.data or []
-
-        if not all_convos:
-            return {"success": False, "reason": "no conversations found"}
-
-        # Separate positioned and unpositioned
-        unpositioned = [c for c in all_convos
-                        if c.get('x', 0) == 0 and c.get('y', 0) == 0]
-
-        if not unpositioned:
-            return {
-                "success": True,
-                "message": "All conversations already positioned",
-                "repositioned": 0
-            }
-
-        # Build texts for all conversations
-        all_texts = []
-        for c in all_convos:
-            title = c.get('title', 'Untitled')
-            text = (c.get('full_text') or '')[:500]
-            all_texts.append(f"{title}. {text}")
-
-        # Embed all texts
-        from sentence_transformers import SentenceTransformer
-        model = SentenceTransformer('all-MiniLM-L6-v2')
-        embeddings = model.encode(all_texts, show_progress_bar=False)
-
-        # Run UMAP on all embeddings together
-        import umap
-        n_neighbors = min(10, len(all_convos) - 1)
-        reducer = umap.UMAP(
-            n_components=2,
-            n_neighbors=n_neighbors,
-            min_dist=0.3,
-            metric='cosine',
-            random_state=42
-        )
-        coords = reducer.fit_transform(embeddings)
-
-        # Normalize to 0-1000 range
-        x_min, x_max = coords[:, 0].min(), coords[:, 0].max()
-        y_min, y_max = coords[:, 1].min(), coords[:, 1].max()
-
-        coords_norm = np.zeros_like(coords)
-        coords_norm[:, 0] = (coords[:, 0] - x_min) / (x_max - x_min + 1e-8) * 900 + 50
-        coords_norm[:, 1] = (coords[:, 1] - y_min) / (y_max - y_min + 1e-8) * 900 + 50
-
-        # Update only the unpositioned conversations
-        updated = 0
-        for i, conv in enumerate(all_convos):
-            if conv.get('x', 0) == 0 and conv.get('y', 0) == 0:
-                supabase.table("conversations")\
-                    .update({
-                        "x": float(coords_norm[i, 0]),
-                        "y": float(coords_norm[i, 1])
-                    })\
-                    .eq("id", conv["id"])\
-                    .execute()
-                updated += 1
-
-        return {
-            "success": True,
-            "repositioned": updated,
-            "total": len(all_convos)
-        }
+        return await run_recluster(request.email)
 
     except Exception as e:
         import traceback
