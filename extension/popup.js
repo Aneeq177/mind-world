@@ -197,6 +197,31 @@ document.addEventListener('DOMContentLoaded', async () => {
     showWorkspaceState('none')
   })
 
+  document.getElementById('btn-share-all')?.addEventListener('click', async () => {
+    const confirmed = confirm(
+      'Share all your conversations with your team? ' +
+      'They will be searchable by workspace members.'
+    )
+    if (!confirmed) return
+
+    try {
+      const response = await fetch(`${API_BASE}/share_conversations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: currentEmail, visibility: 'team' })
+      })
+      const data = await response.json()
+      const status = document.getElementById('share-status')
+      if (data.success) {
+        status.textContent = '✓ Conversations shared with team'
+        status.style.display = 'block'
+        setTimeout(() => { status.style.display = 'none' }, 3000)
+      }
+    } catch (err) {
+      console.error('Share failed:', err)
+    }
+  })
+
   // Upload button opens the app with email pre-filled
   uploadBtn.addEventListener('click', () => {
     if (currentEmail) {

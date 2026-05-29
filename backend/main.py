@@ -798,6 +798,47 @@ async def recluster(request: ReclusterRequest):
                 "trace": traceback.format_exc()}
 
 
+class ShareConversationsRequest(BaseModel):
+    email: str
+    visibility: str = 'team'
+    conversation_ids: list = []
+
+@app.post("/share_conversations")
+async def share_conversations(request: ShareConversationsRequest):
+    try:
+        from services.database import get_supabase
+
+        supabase = get_supabase()
+        email = request.email.lower().strip()
+        user_id = get_or_create_user(email)
+
+        if request.visibility not in ['private', 'team', 'company']:
+            return {"success": False, "reason": "Invalid visibility"}
+
+        if request.conversation_ids:
+            for conv_id in request.conversation_ids:
+                supabase.table("conversations")\
+                    .update({"visibility": request.visibility})\
+                    .eq("id", conv_id)\
+                    .execute()
+            updated = len(request.conversation_ids)
+        else:
+            supabase.table("conversations")\
+                .update({"visibility": request.visibility})\
+                .eq("user_id", user_id)\
+                .execute()
+            count_result = supabase.table("conversations")\
+                .select("id", count="exact")\
+                .eq("user_id", user_id)\
+                .execute()
+            updated = count_result.count or 0
+
+        return {"success": True, "updated": updated, "visibility": request.visibility}
+
+    except Exception as e:
+        return {"success": False, "reason": str(e)}
+
+
 class CreateWorkspaceRequest(BaseModel):
     email: str
     workspace_name: str

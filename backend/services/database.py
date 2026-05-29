@@ -9,63 +9,25 @@ def get_supabase() -> Client:
         raise ValueError("Supabase credentials not configured")
     return create_client(url, key)
 
-def get_or_create_company(email: str):
-    """Returns company_id for work emails, None for personal emails."""
-    personal_domains = {
-        'gmail.com', 'yahoo.com', 'outlook.com', 'hotmail.com',
-        'icloud.com', 'live.com', 'msn.com', 'aol.com',
-        'protonmail.com', 'me.com', 'mac.com', 'googlemail.com'
-    }
-    domain = email.split('@')[-1].lower()
-    if domain in personal_domains:
-        return None
-
-    supabase = get_supabase()
-    result = supabase.table("companies")\
-        .select("id")\
-        .eq("domain", domain)\
-        .execute()
-    if result.data:
-        return result.data[0]["id"]
-
-    import uuid
-    company_id = str(uuid.uuid4())
-    supabase.table("companies").insert({
-        "id": company_id,
-        "name": domain,
-        "domain": domain
-    }).execute()
-    return company_id
-
-
 def get_or_create_user(email: str) -> str:
     supabase = get_supabase()
     email = email.lower().strip()
 
     result = supabase.table("users")\
-        .select("id, company_id")\
+        .select("id")\
         .eq("email", email)\
         .execute()
 
     if result.data:
-        user = result.data[0]
-        user_id = user["id"]
-        if not user.get("company_id"):
-            company_id = get_or_create_company(email)
-            if company_id:
-                supabase.table("users")\
-                    .update({"company_id": company_id})\
-                    .eq("id", user_id)\
-                    .execute()
-        return user_id
+        return result.data[0]["id"]
 
     import uuid
     new_id = str(uuid.uuid4())
-    company_id = get_or_create_company(email)
-    user_data = {"id": new_id, "email": email, "role": "member"}
-    if company_id:
-        user_data["company_id"] = company_id
-    supabase.table("users").insert(user_data).execute()
+    supabase.table("users").insert({
+        "id": new_id,
+        "email": email,
+        "role": "member"
+    }).execute()
     return new_id
 
 def store_conversations(
