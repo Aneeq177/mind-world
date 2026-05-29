@@ -1,7 +1,5 @@
 import anthropic
 import urllib.parse
-import os
-
 PALETTE = [
     "#FF4444", "#FFD700", "#00BFFF", "#00FF88", "#FF8C00",
     "#DA70D6", "#FF69B4", "#7CFC00", "#FF6347", "#40E0D0",

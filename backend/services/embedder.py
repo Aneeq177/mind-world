@@ -63,7 +63,6 @@ def embed_and_position(df: pd.DataFrame) -> tuple[list[dict], np.ndarray]:
     return result, embeddings
 
 def embed_single(text: str):
-    from sentence_transformers import SentenceTransformer
     model = SentenceTransformer('all-MiniLM-L6-v2')
     embedding = model.encode([text])[0]
     return embedding

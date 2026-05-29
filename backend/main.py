@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from typing import Optional
 
 from pydantic import BaseModel
-from models import ProcessResponse, BlendRequest, BlendResponse
+from models import BlendRequest
 from services.parser import parse_claude, parse_chatgpt
 from services.embedder import embed_and_position
 from services.blender import label_clusters, blend_conversations
@@ -506,7 +506,7 @@ async def save_conversation(request: SaveConversationRequest):
             "x": 0.0,
             "y": 0.0,
             "z": 0.0,
-            "visibility": request.visibility if request.visibility in ('private', 'company') else 'private'
+            "visibility": request.visibility if request.visibility in ('private', 'team') else 'private'
         }
 
         supabase.table("conversations").upsert(
@@ -603,6 +603,7 @@ async def company_search(request: CompanySearchRequest):
         supabase = get_supabase()
         email = request.email.lower().strip()
         user_id = get_or_create_user(email)
+        print(f"[/company_search] email: {email}, user_id: {user_id}")
 
         user_result = supabase.table("users")\
             .select("company_id")\
@@ -621,6 +622,7 @@ async def company_search(request: CompanySearchRequest):
 
         company_user_ids = [u["id"] for u in (company_users.data or [])]
         company_user_emails = {u["id"]: u["email"] for u in (company_users.data or [])}
+        print(f"[/company_search] Found {len(company_user_ids)} members in company {company_id}: {company_user_emails}")
 
         if not company_user_ids:
             return {"results": [], "message": "No company members found"}
@@ -637,6 +639,8 @@ async def company_search(request: CompanySearchRequest):
                 'match_count': request.limit
             }
         ).execute()
+        
+        print(f"[/company_search] match_company_conversations RPC returned {len(search_result.data or [])} results")
 
         results = []
         for item in (search_result.data or []):
@@ -679,7 +683,7 @@ async def set_visibility(request: SetVisibilityRequest):
     try:
         from services.database import get_or_create_user, get_supabase
 
-        if request.visibility not in ['private', 'company']:
+        if request.visibility not in ['private', 'team']:
             return {"success": False, "reason": "Invalid visibility value"}
 
         supabase = get_supabase()

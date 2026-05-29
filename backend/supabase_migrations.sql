@@ -34,7 +34,7 @@ BEGIN
     JOIN embeddings e ON e.conversation_id = c.id
     WHERE c.user_id = ANY(company_user_ids)
         AND c.user_id != exclude_user_id
-        AND c.visibility = 'company'
+        AND c.visibility = 'team'
     ORDER BY e.embedding <=> query_embedding
     LIMIT match_count;
 END;

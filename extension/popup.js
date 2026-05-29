@@ -1,5 +1,5 @@
-const API_BASE = 'https://mind-world-app-mv4yv.ondigitalocean.app'
-const UPLOAD_BASE = 'https://mind-world.app'
+const API_BASE = CONFIG.API_BASE
+const UPLOAD_BASE = CONFIG.UPLOAD_BASE
 
 document.addEventListener('DOMContentLoaded', async () => {
   const loginView = document.getElementById('login-view')
@@ -218,7 +218,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         setTimeout(() => { status.style.display = 'none' }, 3000)
       }
     } catch (err) {
-      console.error('Share failed:', err)
+      // do nothing
     }
   })
 

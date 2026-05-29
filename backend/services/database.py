@@ -35,7 +35,6 @@ def store_conversations(
     chats: list[dict],
     embeddings
 ):
-    import numpy as np
     supabase = get_supabase()
 
     # Store conversations in batches of 50
