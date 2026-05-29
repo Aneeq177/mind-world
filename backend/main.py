@@ -798,6 +798,196 @@ async def recluster(request: ReclusterRequest):
                 "trace": traceback.format_exc()}
 
 
+class CreateWorkspaceRequest(BaseModel):
+    email: str
+    workspace_name: str
+
+@app.post("/create_workspace")
+async def create_workspace(request: CreateWorkspaceRequest):
+    try:
+        from services.database import get_supabase
+        import uuid
+        import random
+        import string
+
+        supabase = get_supabase()
+        email = request.email.lower().strip()
+        user_id = get_or_create_user(email)
+
+        user_result = supabase.table("users")\
+            .select("company_id")\
+            .eq("id", user_id)\
+            .execute()
+
+        if user_result.data and user_result.data[0].get("company_id"):
+            return {"success": False, "reason": "You are already in a workspace. Leave it first."}
+
+        def generate_invite_code():
+            chars = string.ascii_uppercase + string.digits
+            part1 = ''.join(random.choices(chars, k=4))
+            part2 = ''.join(random.choices(chars, k=4))
+            return f"MW-{part1}-{part2}"
+
+        invite_code = generate_invite_code()
+        while True:
+            existing = supabase.table("companies").select("id").eq("invite_code", invite_code).execute()
+            if not existing.data:
+                break
+            invite_code = generate_invite_code()
+
+        company_id = str(uuid.uuid4())
+        supabase.table("companies").insert({
+            "id": company_id,
+            "name": request.workspace_name,
+            "domain": company_id,
+            "invite_code": invite_code,
+            "created_by": user_id
+        }).execute()
+
+        supabase.table("users").update({
+            "company_id": company_id,
+            "role": "admin"
+        }).eq("id", user_id).execute()
+
+        return {
+            "success": True,
+            "workspace_name": request.workspace_name,
+            "invite_code": invite_code,
+            "company_id": company_id
+        }
+
+    except Exception as e:
+        return {"success": False, "reason": str(e)}
+
+
+class JoinWorkspaceRequest(BaseModel):
+    email: str
+    invite_code: str
+
+@app.post("/join_workspace")
+async def join_workspace(request: JoinWorkspaceRequest):
+    try:
+        from services.database import get_supabase
+
+        supabase = get_supabase()
+        email = request.email.lower().strip()
+        user_id = get_or_create_user(email)
+
+        user_result = supabase.table("users")\
+            .select("company_id")\
+            .eq("id", user_id)\
+            .execute()
+
+        if user_result.data and user_result.data[0].get("company_id"):
+            return {"success": False, "reason": "You are already in a workspace. Leave it first."}
+
+        invite_code = request.invite_code.upper().strip()
+        company_result = supabase.table("companies")\
+            .select("id, name")\
+            .eq("invite_code", invite_code)\
+            .execute()
+
+        if not company_result.data:
+            return {"success": False, "reason": "Invalid invite code. Please check and try again."}
+
+        company = company_result.data[0]
+
+        supabase.table("users").update({
+            "company_id": company["id"],
+            "role": "member"
+        }).eq("id", user_id).execute()
+
+        members = supabase.table("users").select("id").eq("company_id", company["id"]).execute()
+
+        return {
+            "success": True,
+            "workspace_name": company["name"],
+            "company_id": company["id"],
+            "member_count": len(members.data or [])
+        }
+
+    except Exception as e:
+        return {"success": False, "reason": str(e)}
+
+
+class WorkspaceInfoRequest(BaseModel):
+    email: str
+
+@app.post("/workspace_info")
+async def workspace_info(request: WorkspaceInfoRequest):
+    try:
+        from services.database import get_supabase
+
+        supabase = get_supabase()
+        email = request.email.lower().strip()
+        user_id = get_or_create_user(email)
+
+        user_result = supabase.table("users")\
+            .select("company_id, role")\
+            .eq("id", user_id)\
+            .execute()
+
+        if not user_result.data or not user_result.data[0].get("company_id"):
+            return {"workspace": None}
+
+        company_id = user_result.data[0]["company_id"]
+        user_role = user_result.data[0]["role"]
+
+        company_result = supabase.table("companies")\
+            .select("name, invite_code, created_by")\
+            .eq("id", company_id)\
+            .execute()
+
+        if not company_result.data:
+            return {"workspace": None}
+
+        company = company_result.data[0]
+
+        members_result = supabase.table("users")\
+            .select("id, email, role")\
+            .eq("company_id", company_id)\
+            .execute()
+
+        members = members_result.data or []
+
+        return {
+            "workspace": {
+                "name": company["name"],
+                "invite_code": company["invite_code"],
+                "member_count": len(members),
+                "members": [{"email": m["email"], "role": m["role"]} for m in members],
+                "user_role": user_role,
+                "is_admin": user_role == "admin"
+            }
+        }
+
+    except Exception as e:
+        return {"workspace": None, "error": str(e)}
+
+
+class LeaveWorkspaceRequest(BaseModel):
+    email: str
+
+@app.post("/leave_workspace")
+async def leave_workspace(request: LeaveWorkspaceRequest):
+    try:
+        from services.database import get_supabase
+
+        supabase = get_supabase()
+        email = request.email.lower().strip()
+        user_id = get_or_create_user(email)
+
+        supabase.table("users").update({
+            "company_id": None,
+            "role": "member"
+        }).eq("id", user_id).execute()
+
+        return {"success": True}
+
+    except Exception as e:
+        return {"success": False, "reason": str(e)}
+
+
 @app.get("/")
 def root():
     return {

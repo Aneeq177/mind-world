@@ -18,10 +18,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   const apikeyInputConnected = document.getElementById('apikey-input-connected')
   const saveApikeyBtn = document.getElementById('save-apikey-btn')
   const apikeyStatus = document.getElementById('apikey-status')
-  const visPrivateBtn = document.getElementById('vis-private')
-  const visCompanyBtn = document.getElementById('vis-company')
-  const visDescription = document.getElementById('vis-description')
-  const visibilitySection = document.getElementById('visibility-section')
 
   let currentEmail = null
 
@@ -39,37 +35,167 @@ document.addEventListener('DOMContentLoaded', async () => {
     connectedView.style.display = 'none'
   }
 
-  // Visibility toggle handlers
-  visPrivateBtn.addEventListener('click', async () => {
+  // Visibility toggle (inside has-workspace panel)
+  document.getElementById('vis-private').addEventListener('click', async () => {
     await chrome.storage.local.set({ mw_default_visibility: 'private' })
     applyVisibilityState('private')
   })
 
-  visCompanyBtn.addEventListener('click', async () => {
-    await chrome.storage.local.set({ mw_default_visibility: 'company' })
-    applyVisibilityState('company')
+  document.getElementById('vis-team').addEventListener('click', async () => {
+    await chrome.storage.local.set({ mw_default_visibility: 'team' })
+    applyVisibilityState('team')
   })
 
   function applyVisibilityState(visibility) {
-    if (!visPrivateBtn || !visCompanyBtn) return
-    if (visibility === 'company') {
-      visCompanyBtn.style.background = 'rgba(124,58,237,0.3)'
-      visCompanyBtn.style.border = '1px solid rgba(124,58,237,0.5)'
-      visCompanyBtn.style.color = 'white'
-      visPrivateBtn.style.background = 'transparent'
-      visPrivateBtn.style.border = '1px solid rgba(255,255,255,0.1)'
-      visPrivateBtn.style.color = '#888'
-      if (visDescription) visDescription.textContent = 'Your team can search these conversations'
+    const privateBtn = document.getElementById('vis-private')
+    const teamBtn = document.getElementById('vis-team')
+    if (!privateBtn || !teamBtn) return
+    if (visibility === 'team') {
+      teamBtn.style.background = 'rgba(124,58,237,0.3)'
+      teamBtn.style.border = '1px solid rgba(124,58,237,0.5)'
+      teamBtn.style.color = 'white'
+      privateBtn.style.background = 'transparent'
+      privateBtn.style.border = '1px solid rgba(255,255,255,0.1)'
+      privateBtn.style.color = '#888'
     } else {
-      visPrivateBtn.style.background = 'rgba(124,58,237,0.3)'
-      visPrivateBtn.style.border = '1px solid rgba(124,58,237,0.5)'
-      visPrivateBtn.style.color = 'white'
-      visCompanyBtn.style.background = 'transparent'
-      visCompanyBtn.style.border = '1px solid rgba(255,255,255,0.1)'
-      visCompanyBtn.style.color = '#888'
-      if (visDescription) visDescription.textContent = 'Only you can see your conversations'
+      privateBtn.style.background = 'rgba(124,58,237,0.3)'
+      privateBtn.style.border = '1px solid rgba(124,58,237,0.5)'
+      privateBtn.style.color = 'white'
+      teamBtn.style.background = 'transparent'
+      teamBtn.style.border = '1px solid rgba(255,255,255,0.1)'
+      teamBtn.style.color = '#888'
     }
   }
+
+  // Workspace UI helpers
+  function showWorkspaceState(state) {
+    document.getElementById('no-workspace').style.display = state === 'none' ? 'block' : 'none'
+    document.getElementById('create-workspace-form').style.display = state === 'create' ? 'block' : 'none'
+    document.getElementById('join-workspace-form').style.display = state === 'join' ? 'block' : 'none'
+    document.getElementById('has-workspace').style.display = state === 'has' ? 'block' : 'none'
+  }
+
+  function populateWorkspace(ws) {
+    document.getElementById('workspace-name-display').textContent = ws.name
+    document.getElementById('workspace-members-display').textContent = `${ws.member_count} member${ws.member_count !== 1 ? 's' : ''}`
+    document.getElementById('workspace-code-display').textContent = ws.invite_code
+    chrome.storage.local.set({
+      mw_has_workspace: true,
+      mw_workspace_name: ws.name,
+      mw_workspace_code: ws.invite_code
+    })
+  }
+
+  // Workspace button handlers
+  document.getElementById('btn-create-workspace').addEventListener('click', () => {
+    showWorkspaceState('create')
+  })
+
+  document.getElementById('btn-create-cancel').addEventListener('click', () => {
+    showWorkspaceState('none')
+  })
+
+  document.getElementById('btn-join-workspace').addEventListener('click', () => {
+    showWorkspaceState('join')
+  })
+
+  document.getElementById('btn-join-cancel').addEventListener('click', () => {
+    showWorkspaceState('none')
+  })
+
+  document.getElementById('btn-create-confirm').addEventListener('click', async () => {
+    const name = document.getElementById('workspace-name-input').value.trim()
+    const errEl = document.getElementById('create-error')
+    errEl.style.display = 'none'
+    if (!name) { errEl.textContent = 'Please enter a workspace name.'; errEl.style.display = 'block'; return }
+
+    const btn = document.getElementById('btn-create-confirm')
+    btn.disabled = true
+    btn.textContent = 'Creating...'
+
+    try {
+      const res = await fetch(`${API_BASE}/create_workspace`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: currentEmail, workspace_name: name })
+      })
+      const data = await res.json()
+      if (data.success) {
+        populateWorkspace({ name: data.workspace_name, invite_code: data.invite_code, member_count: 1 })
+        showWorkspaceState('has')
+        applyVisibilityState(stored.mw_default_visibility || 'private')
+        await chrome.storage.local.set({ mw_has_company: true })
+      } else {
+        errEl.textContent = data.reason || 'Failed to create workspace.'
+        errEl.style.display = 'block'
+      }
+    } catch (e) {
+      errEl.textContent = 'Network error. Try again.'
+      errEl.style.display = 'block'
+    }
+
+    btn.disabled = false
+    btn.textContent = 'Create'
+  })
+
+  document.getElementById('btn-join-confirm').addEventListener('click', async () => {
+    const code = document.getElementById('invite-code-input').value.trim()
+    const errEl = document.getElementById('join-error')
+    errEl.style.display = 'none'
+    if (!code) { errEl.textContent = 'Please enter an invite code.'; errEl.style.display = 'block'; return }
+
+    const btn = document.getElementById('btn-join-confirm')
+    btn.disabled = true
+    btn.textContent = 'Joining...'
+
+    try {
+      const res = await fetch(`${API_BASE}/join_workspace`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: currentEmail, invite_code: code })
+      })
+      const data = await res.json()
+      if (data.success) {
+        populateWorkspace({ name: data.workspace_name, invite_code: code.toUpperCase(), member_count: data.member_count })
+        showWorkspaceState('has')
+        applyVisibilityState(stored.mw_default_visibility || 'private')
+        await chrome.storage.local.set({ mw_has_company: true })
+      } else {
+        errEl.textContent = data.reason || 'Failed to join workspace.'
+        errEl.style.display = 'block'
+      }
+    } catch (e) {
+      errEl.textContent = 'Network error. Try again.'
+      errEl.style.display = 'block'
+    }
+
+    btn.disabled = false
+    btn.textContent = 'Join'
+  })
+
+  document.getElementById('btn-copy-code').addEventListener('click', () => {
+    const code = document.getElementById('workspace-code-display').textContent
+    navigator.clipboard.writeText(code).catch(() => {})
+    const btn = document.getElementById('btn-copy-code')
+    btn.textContent = 'Copied!'
+    setTimeout(() => { btn.textContent = 'Copy' }, 2000)
+  })
+
+  document.getElementById('btn-leave-workspace').addEventListener('click', async () => {
+    const name = document.getElementById('workspace-name-display').textContent
+    if (!confirm(`Leave workspace "${name}"? You will lose access to team conversations.`)) return
+
+    try {
+      await fetch(`${API_BASE}/leave_workspace`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: currentEmail })
+      })
+    } catch (e) {}
+
+    await chrome.storage.local.set({ mw_has_workspace: false, mw_has_company: false, mw_workspace_name: '', mw_workspace_code: '' })
+    showWorkspaceState('none')
+  })
 
   // Upload button opens the app with email pre-filled
   uploadBtn.addEventListener('click', () => {
@@ -171,13 +297,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         convCount.textContent = count
         platformsCount.textContent = data.platform_count || '0'
 
-        // Store company status for content script, show/hide visibility section
-        const hasCompany = !!data.company
-        await chrome.storage.local.set({ mw_has_company: hasCompany })
-        if (visibilitySection) {
-          visibilitySection.style.display = hasCompany ? 'block' : 'none'
-        }
-
         const onboarding = document.getElementById('onboarding')
         const instructions = document.getElementById('instructions')
         const addMoreBanner = document.getElementById('add-more-banner')
@@ -206,6 +325,35 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch {
       convCount.textContent = '—'
       platformsCount.textContent = '—'
+    }
+
+    // Load workspace info separately
+    loadWorkspaceInfo(email)
+  }
+
+  async function loadWorkspaceInfo(email) {
+    try {
+      const res = await fetch(`${API_BASE}/workspace_info`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      })
+      if (!res.ok) { showWorkspaceState('none'); return }
+      const data = await res.json()
+
+      if (data.workspace) {
+        populateWorkspace(data.workspace)
+        showWorkspaceState('has')
+        applyVisibilityState(
+          (await chrome.storage.local.get('mw_default_visibility')).mw_default_visibility || 'private'
+        )
+        await chrome.storage.local.set({ mw_has_company: true })
+      } else {
+        await chrome.storage.local.set({ mw_has_workspace: false, mw_has_company: false })
+        showWorkspaceState('none')
+      }
+    } catch {
+      showWorkspaceState('none')
     }
   }
 })

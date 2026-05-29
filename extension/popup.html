@@ -76,14 +76,58 @@
         </div>
       </div>
 
-      <!-- Visibility toggle: only shown for company workspace users -->
-      <div id="visibility-section" style="display:none;margin-top:12px;padding:12px;background:rgba(255,255,255,0.05);border-radius:8px;border:1px solid rgba(255,255,255,0.08);">
-        <div style="font-size:0.75rem;color:#888;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em;">Default conversation visibility</div>
-        <div style="display:flex;gap:8px;">
-          <button id="vis-private" style="flex:1;padding:8px;border-radius:6px;border:1px solid rgba(124,58,237,0.5);background:rgba(124,58,237,0.3);color:white;font-size:0.8rem;cursor:pointer;">🔒 Private</button>
-          <button id="vis-company" style="flex:1;padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:transparent;color:#888;font-size:0.8rem;cursor:pointer;">🏢 Company</button>
+      <!-- Workspace section -->
+      <div id="workspace-section" style="margin-top:12px;">
+
+        <!-- No workspace state -->
+        <div id="no-workspace" style="padding:12px;background:rgba(255,255,255,0.03);border-radius:8px;border:1px solid rgba(255,255,255,0.06);">
+          <div style="font-size:0.75rem;color:#888;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.05em;">Team Workspace</div>
+          <div style="display:flex;gap:6px;">
+            <button id="btn-create-workspace" style="flex:1;padding:8px 4px;border-radius:6px;border:1px solid rgba(124,58,237,0.4);background:rgba(124,58,237,0.15);color:#a78bfa;font-size:0.78rem;cursor:pointer;">+ Create</button>
+            <button id="btn-join-workspace" style="flex:1;padding:8px 4px;border-radius:6px;border:1px solid rgba(255,255,255,0.08);background:transparent;color:#888;font-size:0.78rem;cursor:pointer;">Join</button>
+          </div>
         </div>
-        <div id="vis-description" style="font-size:0.72rem;color:#666;margin-top:8px;">Only you can see your conversations</div>
+
+        <!-- Create workspace form -->
+        <div id="create-workspace-form" style="display:none;padding:12px;background:rgba(255,255,255,0.03);border-radius:8px;border:1px solid rgba(255,255,255,0.06);">
+          <div style="font-size:0.8rem;color:white;margin-bottom:8px;">Create Workspace</div>
+          <input id="workspace-name-input" type="text" placeholder="e.g. Antigravity Team" style="width:100%;padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:white;font-size:0.82rem;margin-bottom:8px;box-sizing:border-box;" />
+          <div style="display:flex;gap:6px;">
+            <button id="btn-create-confirm" style="flex:1;padding:8px;border-radius:6px;border:none;background:#7c3aed;color:white;font-size:0.82rem;cursor:pointer;">Create</button>
+            <button id="btn-create-cancel" style="flex:1;padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:transparent;color:#888;font-size:0.82rem;cursor:pointer;">Cancel</button>
+          </div>
+          <div id="create-error" style="color:#ff4444;font-size:0.75rem;margin-top:6px;display:none;"></div>
+        </div>
+
+        <!-- Join workspace form -->
+        <div id="join-workspace-form" style="display:none;padding:12px;background:rgba(255,255,255,0.03);border-radius:8px;border:1px solid rgba(255,255,255,0.06);">
+          <div style="font-size:0.8rem;color:white;margin-bottom:8px;">Join Workspace</div>
+          <input id="invite-code-input" type="text" placeholder="MW-XXXX-XXXX" style="width:100%;padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:white;font-size:0.82rem;margin-bottom:8px;box-sizing:border-box;text-transform:uppercase;" />
+          <div style="display:flex;gap:6px;">
+            <button id="btn-join-confirm" style="flex:1;padding:8px;border-radius:6px;border:none;background:#7c3aed;color:white;font-size:0.82rem;cursor:pointer;">Join</button>
+            <button id="btn-join-cancel" style="flex:1;padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:transparent;color:#888;font-size:0.82rem;cursor:pointer;">Cancel</button>
+          </div>
+          <div id="join-error" style="color:#ff4444;font-size:0.75rem;margin-top:6px;display:none;"></div>
+        </div>
+
+        <!-- Has workspace state -->
+        <div id="has-workspace" style="display:none;padding:12px;background:rgba(124,58,237,0.08);border-radius:8px;border:1px solid rgba(124,58,237,0.2);">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <div style="font-size:0.85rem;color:white;font-weight:600;" id="workspace-name-display"></div>
+            <div style="font-size:0.75rem;color:#888;" id="workspace-members-display"></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;">
+            <div style="font-size:0.75rem;color:#888;font-family:monospace;" id="workspace-code-display"></div>
+            <button id="btn-copy-code" style="padding:3px 8px;border-radius:4px;border:1px solid rgba(255,255,255,0.1);background:transparent;color:#888;font-size:0.72rem;cursor:pointer;">Copy</button>
+          </div>
+          <div style="font-size:0.72rem;color:#666;margin-bottom:6px;">Save conversations as:</div>
+          <div style="display:flex;gap:6px;margin-bottom:10px;">
+            <button id="vis-private" style="flex:1;padding:6px;border-radius:5px;border:1px solid rgba(124,58,237,0.5);background:rgba(124,58,237,0.3);color:white;font-size:0.76rem;cursor:pointer;">🔒 Private</button>
+            <button id="vis-team" style="flex:1;padding:6px;border-radius:5px;border:1px solid rgba(255,255,255,0.1);background:transparent;color:#888;font-size:0.76rem;cursor:pointer;">🏢 Team</button>
+          </div>
+          <button id="btn-leave-workspace" style="width:100%;padding:6px;border-radius:5px;border:1px solid rgba(255,68,68,0.3);background:transparent;color:#ff6666;font-size:0.75rem;cursor:pointer;">Leave Workspace</button>
+        </div>
+
       </div>
 
       <!-- Add more history: shown when 1-49 conversations -->
