@@ -76,6 +76,16 @@
         </div>
       </div>
 
+      <!-- Visibility toggle: only shown for company workspace users -->
+      <div id="visibility-section" style="display:none;margin-top:12px;padding:12px;background:rgba(255,255,255,0.05);border-radius:8px;border:1px solid rgba(255,255,255,0.08);">
+        <div style="font-size:0.75rem;color:#888;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em;">Default conversation visibility</div>
+        <div style="display:flex;gap:8px;">
+          <button id="vis-private" style="flex:1;padding:8px;border-radius:6px;border:1px solid rgba(124,58,237,0.5);background:rgba(124,58,237,0.3);color:white;font-size:0.8rem;cursor:pointer;">🔒 Private</button>
+          <button id="vis-company" style="flex:1;padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:transparent;color:#888;font-size:0.8rem;cursor:pointer;">🏢 Company</button>
+        </div>
+        <div id="vis-description" style="font-size:0.72rem;color:#666;margin-top:8px;">Only you can see your conversations</div>
+      </div>
+
       <!-- Add more history: shown when 1-49 conversations -->
       <div id="add-more-banner" style="display:none">
         <span>💡 Add more history to improve your suggestions</span>

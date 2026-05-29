@@ -449,6 +449,7 @@ async def blend(request: BlendRequest):
 class SaveConversationRequest(BaseModel):
     email: str
     conversation: dict
+    visibility: str = 'private'
 
 @app.post("/save_conversation")
 async def save_conversation(request: SaveConversationRequest):
@@ -505,7 +506,7 @@ async def save_conversation(request: SaveConversationRequest):
             "x": 0.0,
             "y": 0.0,
             "z": 0.0,
-            "visibility": "private"
+            "visibility": request.visibility if request.visibility in ('private', 'company') else 'private'
         }
 
         supabase.table("conversations").upsert(

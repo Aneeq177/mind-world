@@ -18,11 +18,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   const apikeyInputConnected = document.getElementById('apikey-input-connected')
   const saveApikeyBtn = document.getElementById('save-apikey-btn')
   const apikeyStatus = document.getElementById('apikey-status')
+  const visPrivateBtn = document.getElementById('vis-private')
+  const visCompanyBtn = document.getElementById('vis-company')
+  const visDescription = document.getElementById('vis-description')
+  const visibilitySection = document.getElementById('visibility-section')
 
   let currentEmail = null
 
-  // Check if already logged in (email only required now)
-  const stored = await chrome.storage.local.get(['mw_email', 'mw_api_key'])
+  // Load saved credentials and visibility
+  const stored = await chrome.storage.local.get(['mw_email', 'mw_api_key', 'mw_default_visibility'])
+
+  // Apply saved visibility state on open
+  applyVisibilityState(stored.mw_default_visibility || 'private')
 
   if (stored.mw_email) {
     showConnectedView(stored.mw_email, stored.mw_api_key)
@@ -30,6 +37,38 @@ document.addEventListener('DOMContentLoaded', async () => {
   } else {
     loginView.style.display = 'block'
     connectedView.style.display = 'none'
+  }
+
+  // Visibility toggle handlers
+  visPrivateBtn.addEventListener('click', async () => {
+    await chrome.storage.local.set({ mw_default_visibility: 'private' })
+    applyVisibilityState('private')
+  })
+
+  visCompanyBtn.addEventListener('click', async () => {
+    await chrome.storage.local.set({ mw_default_visibility: 'company' })
+    applyVisibilityState('company')
+  })
+
+  function applyVisibilityState(visibility) {
+    if (!visPrivateBtn || !visCompanyBtn) return
+    if (visibility === 'company') {
+      visCompanyBtn.style.background = 'rgba(124,58,237,0.3)'
+      visCompanyBtn.style.border = '1px solid rgba(124,58,237,0.5)'
+      visCompanyBtn.style.color = 'white'
+      visPrivateBtn.style.background = 'transparent'
+      visPrivateBtn.style.border = '1px solid rgba(255,255,255,0.1)'
+      visPrivateBtn.style.color = '#888'
+      if (visDescription) visDescription.textContent = 'Your team can search these conversations'
+    } else {
+      visPrivateBtn.style.background = 'rgba(124,58,237,0.3)'
+      visPrivateBtn.style.border = '1px solid rgba(124,58,237,0.5)'
+      visPrivateBtn.style.color = 'white'
+      visCompanyBtn.style.background = 'transparent'
+      visCompanyBtn.style.border = '1px solid rgba(255,255,255,0.1)'
+      visCompanyBtn.style.color = '#888'
+      if (visDescription) visDescription.textContent = 'Only you can see your conversations'
+    }
   }
 
   // Upload button opens the app with email pre-filled
@@ -110,7 +149,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     connectedView.style.display = 'block'
     userEmail.textContent = email
 
-    // Show API key status if already configured
     if (existingApiKey && apikeyStatus) {
       apikeyStatus.textContent = '✓ API key configured'
       apikeyStatus.className = 'apikey-saved'
@@ -133,6 +171,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         convCount.textContent = count
         platformsCount.textContent = data.platform_count || '0'
 
+        // Store company status for content script, show/hide visibility section
+        const hasCompany = !!data.company
+        await chrome.storage.local.set({ mw_has_company: hasCompany })
+        if (visibilitySection) {
+          visibilitySection.style.display = hasCompany ? 'block' : 'none'
+        }
+
         const onboarding = document.getElementById('onboarding')
         const instructions = document.getElementById('instructions')
         const addMoreBanner = document.getElementById('add-more-banner')
@@ -142,19 +187,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (addMoreLink) addMoreLink.href = uploadUrl
 
         if (count === 0) {
-          // Full onboarding: no conversations yet
           if (onboarding) onboarding.style.display = 'block'
           if (addMoreBanner) addMoreBanner.style.display = 'none'
           if (instructions) instructions.style.display = 'none'
           if (openMap) openMap.style.display = 'none'
         } else if (count < 50) {
-          // Some conversations, but nudge to add more
           if (onboarding) onboarding.style.display = 'none'
           if (addMoreBanner) addMoreBanner.style.display = 'flex'
           if (instructions) instructions.style.display = 'block'
           if (openMap) openMap.style.display = 'block'
         } else {
-          // Enough conversations — clean view, no prompts
           if (onboarding) onboarding.style.display = 'none'
           if (addMoreBanner) addMoreBanner.style.display = 'none'
           if (instructions) instructions.style.display = 'block'

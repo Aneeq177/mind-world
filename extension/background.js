@@ -22,11 +22,13 @@ startKeepAlive()
 async function getCredentials() {
   const stored = await chrome.storage.local.get([
     'mw_email',
-    'mw_api_key'
+    'mw_api_key',
+    'mw_default_visibility'
   ])
   return {
     email: stored.mw_email || null,
-    apiKey: stored.mw_api_key || null
+    apiKey: stored.mw_api_key || null,
+    defaultVisibility: stored.mw_default_visibility || 'private'
   }
 }
 
@@ -55,6 +57,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === 'ENGINEER_PROMPT') {
     handleEngineerPrompt(message.message, message.conversationIds).then(sendResponse)
+    return true
+  }
+
+  if (message.type === 'COMPANY_SEARCH') {
+    handleCompanySearch(message.query, message.limit).then(sendResponse)
     return true
   }
 
@@ -135,6 +142,24 @@ function expandQuery(query) {
 
   // Otherwise wrap in a generic phrase
   return `conversations about ${query}`
+}
+
+async function handleCompanySearch(query, limit = 5) {
+  try {
+    if (!query || query.trim().length < 2) return { results: [] }
+    const { email } = await getCredentials()
+    if (!email) return { results: [], error: 'not_logged_in' }
+    const response = await fetch(`${API_BASE}/company_search`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, query: query.trim(), limit })
+    })
+    if (!response.ok) return { results: [] }
+    const data = await response.json()
+    return { results: data.results || [], company_members: data.company_members }
+  } catch (error) {
+    return { results: [] }
+  }
 }
 
 async function handleSummarize(conversationIds, currentQuery) {
@@ -220,7 +245,7 @@ async function processSaveQueue() {
     // Clear queue immediately to prevent double processing
     await chrome.storage.local.set({ mw_save_queue: [] })
 
-    const { email } = await getCredentials()
+    const { email, defaultVisibility } = await getCredentials()
     console.log('Mind World: saving for email', email)
 
     if (!email) {
@@ -234,7 +259,7 @@ async function processSaveQueue() {
         const response = await fetch(`${API_BASE}/save_conversation`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, conversation })
+          body: JSON.stringify({ email, conversation, visibility: defaultVisibility || 'private' })
         })
         console.log('Mind World: save response status', response.status)
 

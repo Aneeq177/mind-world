@@ -8,6 +8,7 @@ let isVisible = false
 let stagedConversations = [] // conversations staged for injection
 let currentResults = []      // last auto-search results
 let currentQuery = ''
+let currentScope = 'personal' // 'personal' | 'company'
 
 // Auto-save state
 const lastSavedAt = new Map()
@@ -182,6 +183,10 @@ function injectSidebar() {
       />
       <button id="mw-search-btn">→</button>
     </div>
+    <div id="mw-search-scope" style="display:none;gap:4px;margin-bottom:8px;">
+      <button id="mw-scope-personal" style="flex:1;padding:4px 8px;border-radius:4px;border:1px solid rgba(124,58,237,0.5);background:rgba(124,58,237,0.3);color:white;font-size:0.75rem;cursor:pointer;">My Memory</button>
+      <button id="mw-scope-company" style="flex:1;padding:4px 8px;border-radius:4px;border:1px solid rgba(255,255,255,0.1);background:transparent;color:#888;font-size:0.75rem;cursor:pointer;">🏢 Company</button>
+    </div>
     <div id="mw-status">Watching for relevant memories...</div>
     <div id="mw-results"></div>
     <div id="mw-auto-engineer" style="display:none">
@@ -251,6 +256,26 @@ function injectSidebar() {
     updateStatus('✓ Injected successfully')
   })
 
+  // Scope toggle
+  chrome.storage.local.get(['mw_has_company']).then(stored => {
+    const scopeDiv = document.getElementById('mw-search-scope')
+    if (scopeDiv && stored.mw_has_company) {
+      scopeDiv.style.display = 'flex'
+    }
+  })
+
+  document.getElementById('mw-scope-personal').addEventListener('click', () => {
+    currentScope = 'personal'
+    setActiveScope('personal')
+    if (currentQuery) performSearch(currentQuery)
+  })
+
+  document.getElementById('mw-scope-company').addEventListener('click', () => {
+    currentScope = 'company'
+    setActiveScope('company')
+    if (currentQuery) performSearch(currentQuery)
+  })
+
   // Manual search
   const searchInput = document.getElementById('mw-search-input')
   const searchBtn = document.getElementById('mw-search-btn')
@@ -272,6 +297,27 @@ function injectSidebar() {
       }
     }
   })
+}
+
+function setActiveScope(scope) {
+  const personalBtn = document.getElementById('mw-scope-personal')
+  const companyBtn = document.getElementById('mw-scope-company')
+  if (!personalBtn || !companyBtn) return
+  if (scope === 'company') {
+    companyBtn.style.background = 'rgba(124,58,237,0.3)'
+    companyBtn.style.border = '1px solid rgba(124,58,237,0.5)'
+    companyBtn.style.color = 'white'
+    personalBtn.style.background = 'transparent'
+    personalBtn.style.border = '1px solid rgba(255,255,255,0.1)'
+    personalBtn.style.color = '#888'
+  } else {
+    personalBtn.style.background = 'rgba(124,58,237,0.3)'
+    personalBtn.style.border = '1px solid rgba(124,58,237,0.5)'
+    personalBtn.style.color = 'white'
+    companyBtn.style.background = 'transparent'
+    companyBtn.style.border = '1px solid rgba(255,255,255,0.1)'
+    companyBtn.style.color = '#888'
+  }
 }
 
 function watchInputField() {
@@ -401,36 +447,39 @@ function handleInput(e) {
 }
 
 async function performSearch(query) {
-  // Check if logged in first
-  const response_status = await chrome.runtime.sendMessage({
-    type: 'GET_STATUS'
-  })
-
+  const response_status = await chrome.runtime.sendMessage({ type: 'GET_STATUS' })
   if (!response_status?.loggedIn) {
     updateStatus('⚠️ Please log in via the Mind World extension icon')
     showSidebar()
-    updateResults([])
+    updateResults([], false)
     return
   }
 
-  updateStatus('🔍 Searching your memories...')
-  showSidebar()
-
-  const response = await chrome.runtime.sendMessage({
-    type: 'SEARCH',
-    query: query
-  })
-
-  const results = response?.results || []
-
-  if (results.length === 0) {
-    updateStatus('No relevant memories found')
-    updateResults([])
-    return
+  if (currentScope === 'company') {
+    updateStatus('🏢 Searching company memory...')
+    showSidebar()
+    const response = await chrome.runtime.sendMessage({ type: 'COMPANY_SEARCH', query })
+    const results = response?.results || []
+    if (results.length === 0) {
+      updateStatus('No company conversations found')
+      updateResults([], true)
+      return
+    }
+    updateStatus(`🏢 ${results.length} company conversation${results.length > 1 ? 's' : ''} found`)
+    updateResults(results, true)
+  } else {
+    updateStatus('🔍 Searching your memories...')
+    showSidebar()
+    const response = await chrome.runtime.sendMessage({ type: 'SEARCH', query })
+    const results = response?.results || []
+    if (results.length === 0) {
+      updateStatus('No relevant memories found')
+      updateResults([], false)
+      return
+    }
+    updateStatus(`✨ ${results.length} relevant conversation${results.length > 1 ? 's' : ''} found`)
+    updateResults(results, false)
   }
-
-  updateStatus(`✨ ${results.length} relevant conversation${results.length > 1 ? 's' : ''} found`)
-  updateResults(results)
 }
 
 function showSidebar() {
@@ -444,11 +493,11 @@ function updateStatus(text) {
   if (el) el.textContent = text
 }
 
-function updateResults(results) {
+function updateResults(results, isCompany = false) {
   currentResults = results
   const autoEngineer = document.getElementById('mw-auto-engineer')
   if (autoEngineer) {
-    autoEngineer.style.display = results.length > 0 && stagedConversations.length === 0 ? 'block' : 'none'
+    autoEngineer.style.display = results.length > 0 && stagedConversations.length === 0 && !isCompany ? 'block' : 'none'
   }
 
   const container = document.getElementById('mw-results')
@@ -459,9 +508,33 @@ function updateResults(results) {
     return
   }
 
-  container.innerHTML = results.map((r, i) => {
+  if (isCompany) {
+    container.innerHTML = results.map(r => {
+      const cleanPreview = (r.preview || '')
+        .replace(/\[human\]/g, '')
+        .replace(/\[assistant\]/g, '')
+        .trim()
+        .slice(0, 120)
+      const initials = r.owner_initials || '??'
+      const similarity = r.similarity ? Math.round(r.similarity * 100) : '—'
+      return `
+        <div class="mw-result" data-id="${r.id}">
+          <div class="mw-result-header">
+            <span class="mw-source-badge" style="background:rgba(99,102,241,0.2);color:#818cf8;border-radius:4px;padding:1px 5px;font-size:0.7rem;font-weight:700;">${initials}</span>
+            <span class="mw-similarity">${similarity}% match</span>
+          </div>
+          <div class="mw-result-title">${escapeHtml(r.title)}</div>
+          <div class="mw-result-preview">${escapeHtml(cleanPreview)}...</div>
+          <div class="mw-result-meta">${r.owner_email || ''} · ${(r.created_at || '').slice(0, 10)}</div>
+        </div>
+      `
+    }).join('')
+    return
+  }
+
+  container.innerHTML = results.map(r => {
     const isStaged = stagedConversations.some(s => s.id === r.id)
-    const cleanPreview = r.preview
+    const cleanPreview = (r.preview || '')
       .replace(/\[human\]/g, '')
       .replace(/\[assistant\]/g, '')
       .trim()
@@ -503,7 +576,7 @@ function updateResults(results) {
         created_at: btn.dataset.created
       }
       toggleStaged(convo)
-      performSearch(lastQuery) // Re-render to show staged state
+      performSearch(lastQuery)
     })
   })
 }
