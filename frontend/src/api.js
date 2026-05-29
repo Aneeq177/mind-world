@@ -1,4 +1,4 @@
-const BASE_URL = 'https://mind-world-app-mv4yv.ondigitalocean.app'
+const BASE_URL = import.meta.env.VITE_API_URL || 'https://mind-world-app-mv4yv.ondigitalocean.app'
 
 export async function processFiles({ claudeFile, chatgptFile, apiKey, email }) {
   const formData = new FormData()

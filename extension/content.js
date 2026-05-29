@@ -35,7 +35,6 @@ async function addMessageToAccumulator(conversationId, message) {
   if (!isDuplicate) {
     existing.push(message)
     await chrome.storage.local.set({ [key]: existing })
-    console.log('Mind World: accumulated message count', existing.length)
   }
 
   return existing
@@ -919,7 +918,6 @@ async function triggerAccumulatedSave(conversationId, messages) {
   lastSavedMessageCount.set(conversationId, messages.length)
   lastSavedAt.set(conversationId, Date.now())
 
-  console.log('Mind World: queued accumulated save with', messages.length, 'messages')
   showSaveToast()
 }
 
@@ -928,7 +926,6 @@ async function tryAutoSave() {
     const url = window.location.href
     const hostname = window.location.hostname
     const path = window.location.pathname
-    console.log('Mind World: tryAutoSave triggered', hostname)
 
     let conversationId = null
     let source = null
@@ -947,12 +944,7 @@ async function tryAutoSave() {
       source = 'gemini'
     }
 
-    console.log('Mind World: conversationId', conversationId)
-
-    if (!conversationId) {
-      console.log('Mind World: no conversation ID found, skipping')
-      return
-    }
+    if (!conversationId) return
 
     // Try accumulated messages first (more reliable than DOM scraping)
     const accumulated = await getAccumulatedMessages(conversationId)
@@ -964,21 +956,17 @@ async function tryAutoSave() {
     // Fall back to DOM extraction (handles page reload of existing conversation)
     const lastSaveTime = lastSavedAt.get(conversationId) || 0
     if (Date.now() - lastSaveTime < minTimeBetweenSaves) {
-      console.log('Mind World: saved too recently, skipping')
       return
     }
 
     const messages = extractMessages(hostname)
-    console.log('Mind World: extracted messages count', messages.length)
 
     if (messages.length < 1) {
-      console.log('Mind World: no messages found, skipping')
       return
     }
 
     const lastCount = lastSavedMessageCount.get(conversationId) || 0
     if (messages.length <= lastCount) {
-      console.log('Mind World: no new messages since last save, skipping')
       return
     }
 
@@ -986,7 +974,6 @@ async function tryAutoSave() {
     const title = titleEl?.textContent
       ?.replace(/ - Claude| - ChatGPT| - Gemini/g, '')
       ?.trim() || 'Untitled'
-    console.log('Mind World: title', title)
 
     const conversation = {
       id: conversationId,
@@ -1002,18 +989,16 @@ async function tryAutoSave() {
     // More reliable with MV3 service workers that go to sleep mid-async
     const queue = await chrome.storage.local.get('mw_save_queue')
     const existing = queue.mw_save_queue || []
-    console.log('Mind World: current queue length', existing.length)
 
     if (!existing.find(c => c.id === conversation.id)) {
       existing.push(conversation)
       await chrome.storage.local.set({ mw_save_queue: existing })
-      console.log('Mind World: added to queue, new length', existing.length)
       lastSavedAt.set(conversationId, Date.now())
       lastSavedMessageCount.set(conversationId, messages.length)
       showSaveToast()
     }
   } catch (err) {
-    console.error('Mind World: tryAutoSave error', err)
+    // do nothing
   }
 }
 

@@ -1,4 +1,5 @@
-const API_BASE = 'https://mind-world-app-mv4yv.ondigitalocean.app'
+importScripts('config.js')
+const API_BASE = CONFIG.API_BASE
 
 // Keep service worker alive during operations
 let keepAliveInterval = null
@@ -234,11 +235,9 @@ chrome.storage.onChanged.addListener((changes, area) => {
 })
 
 async function processSaveQueue() {
-  console.log('Mind World: processSaveQueue triggered')
   try {
     const stored = await chrome.storage.local.get('mw_save_queue')
     const queue = stored.mw_save_queue || []
-    console.log('Mind World: queue has', queue.length, 'items')
 
     if (queue.length === 0) return
 
@@ -246,32 +245,22 @@ async function processSaveQueue() {
     await chrome.storage.local.set({ mw_save_queue: [] })
 
     const { email, defaultVisibility } = await getCredentials()
-    console.log('Mind World: saving for email', email)
 
-    if (!email) {
-      console.log('Mind World: no email found, skipping')
-      return
-    }
+    if (!email) return
 
     for (const conversation of queue) {
-      console.log('Mind World: saving conversation', conversation.id)
       try {
-        const response = await fetch(`${API_BASE}/save_conversation`, {
+        await fetch(`${API_BASE}/save_conversation`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, conversation, visibility: defaultVisibility || 'private' })
         })
-        console.log('Mind World: save response status', response.status)
-
-        if (response.ok) {
-          console.log('Mind World: saved successfully', conversation.id)
-        }
       } catch (err) {
-        console.error('Mind World: save failed', err)
+        // do nothing
       }
     }
   } catch (err) {
-    console.error('Mind World: queue processing failed', err)
+    // do nothing
   }
 }
 
