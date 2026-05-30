@@ -48,6 +48,19 @@ export async function healthCheck() {
   return response.json()
 }
 
+export async function searchConversations({ email, query }) {
+  const response = await fetch(`${BASE_URL}/search`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, query })
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(error.detail || 'Search failed')
+  }
+  return response.json()
+}
+
 export async function engineerPrompt({ email, message, conversationIds }) {
   const response = await fetch(`${BASE_URL}/engineer_prompt`, {
     method: 'POST',

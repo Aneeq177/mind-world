@@ -4,10 +4,11 @@ import createPlotlyComponent from 'react-plotly.js/factory'
 
 const Plot = createPlotlyComponent(Plotly)
 
-export default function MapPlot({ conversations, newIds = new Set(), selectedId, blendIds, onSelect }) {
+export default function MapPlot({ conversations, newIds = new Set(), selectedId, blendIds, searchMatchIds = new Set(), onSelect }) {
   const plotRef = useRef(null)
   const [agentTraces, setAgentTraces] = useState([])
   const isTimeFiltered = newIds.size > 0
+  const isSearchActive = searchMatchIds.size > 0
 
   const { traces, annotations } = useMemo(() => {
     if (!conversations.length) return { traces: [], annotations: [] }
@@ -33,7 +34,15 @@ export default function MapPlot({ conversations, newIds = new Set(), selectedId,
       regionMap[r].size.push(msgSize + (isBlend ? 6 : 0) + (isFocused ? 4 : 0) + (isNew ? 2 : 0))
       regionMap[r].color.push(isBlend ? 'white' : (c.color || '#666666'))
       regionMap[r].symbol.push(isBlend ? 'star' : (c.source === 'chatgpt' ? 'diamond' : 'circle'))
-      regionMap[r].opacity.push(isTimeFiltered ? (isNew ? 1.0 : 0.4) : 0.9)
+      let opacity
+      if (isSearchActive) {
+        opacity = searchMatchIds.has(c.id) ? 0.9 : 0.1
+      } else if (isTimeFiltered) {
+        opacity = isNew ? 1.0 : 0.4
+      } else {
+        opacity = 0.9
+      }
+      regionMap[r].opacity.push(opacity)
       regionMap[r].customdata.push(c.id)
 
       const truncated = c.title.length > 35 ? c.title.slice(0, 35) + '...' : c.title
@@ -98,7 +107,7 @@ export default function MapPlot({ conversations, newIds = new Set(), selectedId,
       }))
 
     return { traces, annotations }
-  }, [conversations, selectedId, blendIds, newIds, isTimeFiltered])
+  }, [conversations, selectedId, blendIds, newIds, isTimeFiltered, searchMatchIds, isSearchActive])
 
   const layout = useMemo(() => ({
     paper_bgcolor: '#0a0a0f',
