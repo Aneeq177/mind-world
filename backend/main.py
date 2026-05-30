@@ -607,6 +607,26 @@ async def company_search(request: CompanySearchRequest):
         user_id = get_or_create_user(email)
         print(f"[/company_search] email: {email}, user_id: {user_id}")
 
+        # SELF-HEALING: Verify and correct user_id mapping
+        try:
+            print("[/company_search] Running self-healing on user_ids and emails...")
+            # 1. Fix mixed-case emails that create duplicate user records
+            users_res = supabase.table("users").select("id, email").execute()
+            for u in (users_res.data or []):
+                if u["email"] and u["email"] != u["email"].lower():
+                    supabase.table("users").update({"email": u["email"].lower()}).eq("id", u["id"]).execute()
+            
+            # 2. Fix missing user_ids in team conversations
+            convs_res = supabase.table("conversations").select("id, user_id").eq("visibility", "team").execute()
+            for c in (convs_res.data or []):
+                if not c.get("user_id"):
+                    emb_res = supabase.table("embeddings").select("user_id").eq("conversation_id", c["id"]).execute()
+                    if emb_res.data and emb_res.data[0].get("user_id"):
+                        supabase.table("conversations").update({"user_id": emb_res.data[0]["user_id"]}).eq("id", c["id"]).execute()
+                        print(f"[/company_search] Healed conversation {c['id']} with user_id {emb_res.data[0]['user_id']}")
+        except Exception as heal_err:
+            print(f"[/company_search] Heal error: {heal_err}")
+
         user_result = supabase.table("users")\
             .select("company_id")\
             .eq("id", user_id)\
