@@ -8,6 +8,7 @@ export const useStore = create((set) => ({
   conversations: [],
   myConversations: null,
   teamConversations: null,
+  teamSources: null,
   totalConversations: 0,
   sources: { claude: 0, chatgpt: 0 },
   
@@ -37,6 +38,7 @@ export const useStore = create((set) => ({
   setWorldMode: (mode) => set({ worldMode: mode }),
   setTeamConversations: (conversations, sources) => set({
     teamConversations: conversations,
+    teamSources: sources,
     conversations,
     totalConversations: conversations.length,
     sources

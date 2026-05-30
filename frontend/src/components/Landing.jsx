@@ -84,6 +84,7 @@ export default function Landing() {
     setPhase('processing')
     try {
       const data = await loadExistingMap(email)
+      setCredentials(email, apiKey || '')
       setConversations(data.conversations, data.sources)
       setPhase('map')
     } catch (err) {

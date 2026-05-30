@@ -439,7 +439,7 @@ export default function MapView() {
               clearBlend()
               setSelected(null)
               if (teamConversations) {
-                setTeamConversations(teamConversations, useStore.getState().sources)
+                setTeamConversations(teamConversations, useStore.getState().teamSources || useStore.getState().sources)
               } else {
                 try {
                   const data = await loadTeamMap(email)
