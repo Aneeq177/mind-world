@@ -32,8 +32,8 @@ export default function MapPlot({ conversations, newIds = new Set(), selectedId,
       regionMap[r].x.push(c.x)
       regionMap[r].y.push(1000 - c.y)
       regionMap[r].size.push(msgSize + (isBlend ? 6 : 0) + (isFocused ? 4 : 0) + (isNew ? 2 : 0))
-      regionMap[r].color.push(isBlend ? 'white' : (c.color || '#666666'))
-      regionMap[r].symbol.push(isBlend ? 'star' : (c.source === 'chatgpt' ? 'diamond' : 'circle'))
+      regionMap[r].color.push(isBlend ? 'white' : (c.is_team ? '#14b8a6' : (c.color || '#666666')))
+      regionMap[r].symbol.push(isBlend ? 'star' : (c.is_team ? 'triangle-up' : (c.source === 'chatgpt' ? 'diamond' : 'circle')))
       let opacity
       if (isSearchActive) {
         opacity = searchMatchIds.has(c.id) ? 0.9 : 0.1
@@ -46,9 +46,10 @@ export default function MapPlot({ conversations, newIds = new Set(), selectedId,
       regionMap[r].customdata.push(c.id)
 
       const truncated = c.title.length > 35 ? c.title.slice(0, 35) + '...' : c.title
+      const teamLabel = c.is_team && c.owner_initials ? ` · Team (${c.owner_initials})` : ''
       regionMap[r].text.push(
         `<b>${truncated}</b><br>` +
-        `${c.region || 'Other'} · ${c.num_messages || 0} msgs`
+        `${c.region || 'Other'} · ${c.num_messages || 0} msgs${teamLabel}`
       )
     }
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '../store'
-import { searchConversations } from '../api'
+import { searchConversations, loadTeamMap } from '../api'
 import MapPlot from './MapPlot'
 import BlenderPanel from './BlenderPanel'
 import ConvoList from './ConvoList'
@@ -57,6 +57,12 @@ export default function MapView() {
   const clearBlend      = useStore(s => s.clearBlend)
   const setFilterSource = useStore(s => s.setFilterSource)
   const setFilterRegion = useStore(s => s.setFilterRegion)
+  
+  const worldMode = useStore(s => s.worldMode)
+  const teamConversations = useStore(s => s.teamConversations)
+  const setWorldMode = useStore(s => s.setWorldMode)
+  const setTeamConversations = useStore(s => s.setTeamConversations)
+  const restoreMyConversations = useStore(s => s.restoreMyConversations)
 
   const isMobile = useIsMobile()
 
@@ -401,6 +407,64 @@ export default function MapView() {
         <div style={{ fontWeight: '700', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0 }}>
           <span>🌍</span>
           {!isMobile && <span>Mind World</span>}
+        </div>
+
+        {/* Mode Toggle */}
+        <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', padding: '2px', flexShrink: 0 }}>
+          <button
+            onClick={() => {
+              setWorldMode('my')
+              restoreMyConversations()
+              clearBlend()
+              setSelected(null)
+            }}
+            style={{
+              padding: '4px 12px',
+              background: worldMode === 'my' ? 'rgba(124,58,237,0.3)' : 'transparent',
+              border: 'none',
+              borderRadius: '6px',
+              color: worldMode === 'my' ? '#fff' : '#888',
+              fontSize: '0.75rem',
+              cursor: 'pointer',
+              fontWeight: worldMode === 'my' ? '600' : '400',
+              transition: 'all 0.2s'
+            }}
+          >
+            My World
+          </button>
+          <button
+            onClick={async () => {
+              if (worldMode === 'team') return;
+              setWorldMode('team')
+              clearBlend()
+              setSelected(null)
+              if (teamConversations) {
+                setTeamConversations(teamConversations, useStore.getState().sources)
+              } else {
+                try {
+                  const data = await loadTeamMap(email)
+                  setTeamConversations(data.conversations, data.sources)
+                } catch (e) {
+                  console.error(e)
+                  setWorldMode('my')
+                  restoreMyConversations()
+                }
+              }
+            }}
+            style={{
+              padding: '4px 12px',
+              background: worldMode === 'team' ? 'rgba(52,211,153,0.3)' : 'transparent',
+              border: 'none',
+              borderRadius: '6px',
+              color: worldMode === 'team' ? '#fff' : '#888',
+              fontSize: '0.75rem',
+              cursor: 'pointer',
+              fontWeight: worldMode === 'team' ? '600' : '400',
+              transition: 'all 0.2s'
+            }}
+          >
+            Team World
+          </button>
         </div>
 
         {/* Stats — hidden on mobile */}

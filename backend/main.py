@@ -591,6 +591,82 @@ async def load_map(request: LoadMapRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/load_team_map")
+async def load_team_map(request: LoadMapRequest):
+    try:
+        from services.database import get_supabase
+
+        supabase = get_supabase()
+        email = request.email.lower().strip()
+        user_id = get_or_create_user(email)
+
+        user_result = supabase.table("users").select("company_id").eq("id", user_id).execute()
+        company_id = user_result.data[0].get("company_id") if user_result.data else None
+
+        company_user_emails = {}
+        all_convos = []
+
+        if company_id:
+            company_users = supabase.table("users").select("id, email").eq("company_id", company_id).execute()
+            company_user_ids = [u["id"] for u in (company_users.data or [])]
+            company_user_emails = {u["id"]: u["email"] for u in (company_users.data or [])}
+
+            my_convos = supabase.table("conversations").select("*").eq("user_id", user_id).execute().data or []
+            
+            other_team_convos = []
+            other_team_user_ids = [uid for uid in company_user_ids if uid != user_id]
+            if other_team_user_ids:
+                team_res = supabase.table("conversations").select("*").in_("user_id", other_team_user_ids).eq("visibility", "team").execute()
+                other_team_convos = team_res.data or []
+                
+            all_convos = my_convos + other_team_convos
+        else:
+            all_convos = supabase.table("conversations").select("*").eq("user_id", user_id).execute().data or []
+
+        formatted = []
+        for c in all_convos:
+            owner_email = company_user_emails.get(c.get("user_id"), "")
+            owner_initials = ""
+            if owner_email:
+                owner_initials = ''.join(p[0].upper() for p in owner_email.split('@')[0].split('.')[:2])
+            
+            formatted.append({
+                "id": c.get("id", ""),
+                "title": c.get("title", "Untitled"),
+                "source": c.get("source", "claude"),
+                "x": c.get("x", 0.0),
+                "y": c.get("y", 0.0),
+                "z": c.get("z", 0.0),
+                "color": c.get("color", "#888888"),
+                "region": c.get("region", "Other"),
+                "num_messages": c.get("num_messages", 0),
+                "char_count": c.get("char_count", 0),
+                "preview": c.get("preview", ""),
+                "created_at": c.get("created_at", ""),
+                "updated_at": c.get("updated_at", ""),
+                "cluster_id": c.get("cluster_id", -1),
+                "visibility": c.get("visibility", "private"),
+                "is_team": c.get("user_id") != user_id,
+                "owner_initials": owner_initials
+            })
+
+        sources = {
+            "claude": sum(1 for c in formatted if c["source"] == "claude"),
+            "chatgpt": sum(1 for c in formatted if c["source"] == "chatgpt")
+        }
+
+        return {
+            "conversations": formatted,
+            "total": len(formatted),
+            "sources": sources,
+            "user_id": user_id,
+            "has_data": len(formatted) > 0
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 class CompanySearchRequest(BaseModel):
     email: str
     query: str

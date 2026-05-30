@@ -57,7 +57,7 @@ ID: MW-001
 Title: Fix Company Search filtering logic and user_id mapping
 Agent: Backend
 Priority: P0 Critical
-Status: To Do
+Status: ✅ Complete
 Blocked by: nothing
 
 Description:
@@ -137,8 +137,8 @@ ID: MW-005
 Title: Implement Company World / My World toggle on map
 Agent: Frontend
 Priority: P2 Medium
-Status: To Do
-Blocked by: MW-001
+Status: ✅ Complete
+Blocked by: nothing
 
 Description:
 Add My World / Team World toggle to map top bar. Team World shows team members' shared conversations with initials labels.

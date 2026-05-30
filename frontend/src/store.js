@@ -6,8 +6,12 @@ export const useStore = create((set) => ({
 
   // Data from /process
   conversations: [],
+  myConversations: null,
+  teamConversations: null,
   totalConversations: 0,
   sources: { claude: 0, chatgpt: 0 },
+  
+  worldMode: 'my', // 'my' | 'team'
 
   // Selection
   selectedId: null,
@@ -26,9 +30,21 @@ export const useStore = create((set) => ({
   setPhase: (phase) => set({ phase }),
   setConversations: (conversations, sources) => set({
     conversations,
+    myConversations: conversations,
     totalConversations: conversations.length,
     sources
   }),
+  setWorldMode: (mode) => set({ worldMode: mode }),
+  setTeamConversations: (conversations, sources) => set({
+    teamConversations: conversations,
+    conversations,
+    totalConversations: conversations.length,
+    sources
+  }),
+  restoreMyConversations: () => set(state => ({
+    conversations: state.myConversations || [],
+    totalConversations: (state.myConversations || []).length
+  })),
   setSelected: (id) => set({ selectedId: id }),
   toggleBlend: (id) => set((state) => {
     const exists = state.blendIds.includes(id)
