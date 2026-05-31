@@ -68,6 +68,8 @@ def migrate():
         
         # 4. Update RPCs
         update_rpcs_sql = """
+        DROP FUNCTION IF EXISTS match_company_conversations(vector, uuid[], uuid, integer);
+        
         CREATE OR REPLACE FUNCTION match_company_conversations(
             query_embedding vector(384),
             company_user_ids uuid[],
@@ -102,6 +104,8 @@ def migrate():
             LIMIT match_count;
         END;
         $$;
+
+        DROP FUNCTION IF EXISTS match_conversations(vector, uuid, integer);
 
         CREATE OR REPLACE FUNCTION match_conversations(
             query_embedding vector(384),
