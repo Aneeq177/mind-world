@@ -41,4 +41,4 @@ def migrate():
 
 if __name__ == "__main__":
     print("WARNING: This script will execute against the live database if DATABASE_URL is set.")
-    # migrate() # Uncomment to run
+    migrate()

@@ -1198,12 +1198,16 @@ async def notion_callback(code: str, state: str, background_tasks: BackgroundTas
         background_tasks.add_task(sync_notion_workspace, user_id, email)
         
         # 4. Redirect user back to the frontend main app and trigger auto-load
-        return RedirectResponse(url=f"https://mind-world.app/?email={email}&autoLoad=true")
+        import os
+        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173").rstrip('/')
+        return RedirectResponse(url=f"{frontend_url}/?email={email}&autoLoad=true")
         
     except Exception as e:
         print(f"[Notion Auth] Error during callback: {e}")
         # Redirect back with an error query param
-        return RedirectResponse(url="https://mind-world.app/?error=notion_auth_failed")
+        import os
+        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173").rstrip('/')
+        return RedirectResponse(url=f"{frontend_url}/?error=notion_auth_failed")
 
 class AuthNotionRequest(BaseModel):
     code: str
@@ -1254,8 +1258,12 @@ async def google_callback(code: str, state: str, background_tasks: BackgroundTas
         background_tasks.add_task(sync_google_workspace, user_id, email)
         
         # 4. Redirect user back to the frontend main app and trigger auto-load
-        return RedirectResponse(url=f"https://mind-world.app/?email={email}&autoLoad=true")
+        import os
+        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173").rstrip('/')
+        return RedirectResponse(url=f"{frontend_url}/?email={email}&autoLoad=true")
         
     except Exception as e:
         print(f"[Google Auth] Error during callback: {e}")
-        return RedirectResponse(url="https://mind-world.app/?error=google_auth_failed")
+        import os
+        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173").rstrip('/')
+        return RedirectResponse(url=f"{frontend_url}/?error=google_auth_failed")
