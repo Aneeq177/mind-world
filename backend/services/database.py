@@ -120,3 +120,25 @@ def get_user_conversations(user_id: str) -> list[dict]:
         .execute()
 
     return result.data
+
+def save_user_integration(user_id: str, provider: str, token: str, metadata: dict = None) -> dict:
+    supabase = get_supabase()
+    row = {
+        "user_id": user_id,
+        "provider": provider,
+        "access_token": token,
+        "workspace_id": metadata.get("workspace_id") if metadata else None,
+        "workspace_name": metadata.get("workspace_name") if metadata else None,
+        "updated_at": "now()"
+    }
+    result = supabase.table("user_integrations").upsert(row, on_conflict="user_id,provider").execute()
+    return result.data[0] if result.data else {}
+
+def get_user_integration(user_id: str, provider: str) -> dict:
+    supabase = get_supabase()
+    result = supabase.table("user_integrations")\
+        .select("*")\
+        .eq("user_id", user_id)\
+        .eq("provider", provider)\
+        .execute()
+    return result.data[0] if result.data else None
