@@ -77,6 +77,8 @@ export default function MapView() {
   const [isSearching, setIsSearching] = useState(false)
   const searchTimerRef = useRef(null)
 
+  const [viewportTab, setViewportTab] = useState('all')
+
   useEffect(() => {
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
     const q = searchQuery.trim()
@@ -118,10 +120,14 @@ export default function MapView() {
   }, [conversations])
 
   const filtered = useMemo(() => conversations.filter(c => {
+    const cType = c.type || 'ai_chat'
+    if (viewportTab === 'ai_chat' && cType !== 'ai_chat') return false
+    if (viewportTab === 'document' && cType !== 'document') return false
+
     if (filterSource !== 'all' && c.source !== filterSource) return false
     if (filterRegion !== 'all' && c.region !== filterRegion) return false
     return true
-  }), [conversations, filterSource, filterRegion])
+  }), [conversations, filterSource, filterRegion, viewportTab])
 
   const regionColors = useMemo(() => {
     const map = {}
@@ -208,7 +214,7 @@ export default function MapView() {
       }
     : {
         position: 'fixed',
-        top: '48px',
+        top: '88px',
         bottom: '52px',
         width: '320px',
         zIndex: 100,
@@ -274,7 +280,7 @@ export default function MapView() {
     }}>
 
       {/* ── Map: fills between top bar and time machine bar ── */}
-      <div style={{ position: 'fixed', top: '48px', left: 0, right: 0, bottom: '52px', overflow: 'hidden' }}>
+      <div style={{ position: 'fixed', top: '88px', left: 0, right: 0, bottom: '52px', overflow: 'hidden' }}>
         <MapPlot
           conversations={timeFiltered}
           newIds={newIds}
@@ -558,6 +564,7 @@ export default function MapView() {
             setFilterSource('all')
             setFilterRegion('all')
             setSearchQuery('')
+            setViewportTab('all')
             setPhase('landing')
           }}
           style={{
@@ -575,6 +582,46 @@ export default function MapView() {
         >
           {isMobile ? '↩' : '← New Upload'}
         </button>
+      </div>
+
+      {/* ── Tabbed Viewports ── */}
+      <div style={{
+        position: 'fixed',
+        top: '48px',
+        left: 0,
+        right: 0,
+        height: '40px',
+        zIndex: 198,
+        background: 'rgba(8, 8, 18, 0.85)',
+        backdropFilter: 'blur(8px)',
+        borderBottom: '1px solid rgba(255,255,255,0.05)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '24px',
+      }}>
+        {['ai_chat', 'document', 'all'].map(tab => {
+          const labels = { ai_chat: 'AI Memory Map', document: 'Static Knowledge', all: 'Unified View' }
+          const active = viewportTab === tab
+          return (
+            <button
+              key={tab}
+              onClick={() => setViewportTab(tab)}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: active ? 'white' : '#666',
+                fontWeight: active ? '600' : '400',
+                fontSize: '0.8rem',
+                cursor: 'pointer',
+                position: 'relative',
+              }}
+            >
+              {labels[tab]}
+              {active && <div style={{ position: 'absolute', bottom: '-10px', left: 0, right: 0, height: '2px', background: '#7c3aed' }} />}
+            </button>
+          )
+        })}
       </div>
 
       {/* ── Search result count badge ── */}

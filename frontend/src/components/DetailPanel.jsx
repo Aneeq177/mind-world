@@ -2,21 +2,36 @@ export default function DetailPanel({ conversation: c, isBlended, onClose, onTog
   if (!c) return null
 
   const isClaude = c.source === 'claude'
+  const isDocument = c.type === 'document'
 
   const badgeStyle = {
     fontSize: '0.68rem',
     padding: '3px 10px',
-    background: isClaude ? 'rgba(124,58,237,0.18)' : 'rgba(16,185,129,0.18)',
-    border: `1px solid ${isClaude ? 'rgba(124,58,237,0.4)' : 'rgba(16,185,129,0.4)'}`,
+    background: isDocument ? 'rgba(192,132,252,0.18)' : (isClaude ? 'rgba(124,58,237,0.18)' : 'rgba(16,185,129,0.18)'),
+    border: `1px solid ${isDocument ? 'rgba(192,132,252,0.4)' : (isClaude ? 'rgba(124,58,237,0.4)' : 'rgba(16,185,129,0.4)')}`,
     borderRadius: '10px',
-    color: isClaude ? '#a78bfa' : '#34d399',
+    color: isDocument ? '#c084fc' : (isClaude ? '#a78bfa' : '#34d399'),
     fontWeight: '600',
   }
+
+  const badgeText = isDocument ? `📄 Document (${c.source_app || 'Unknown'})` : (isClaude ? '🟣 Claude' : '🟢 ChatGPT')
+
+  const metaItems = isDocument 
+    ? [
+        { label: 'Source App', value: c.source_app || 'Unknown' },
+        { label: 'Topic', value: (c.region || 'Other').slice(0, 14) },
+        { label: 'Date', value: (c.created_at || '').slice(0, 10) },
+      ]
+    : [
+        { label: 'Messages', value: c.num_messages || 0 },
+        { label: 'Topic', value: (c.region || 'Other').slice(0, 14) },
+        { label: 'Date', value: (c.created_at || '').slice(0, 10) },
+      ]
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '12px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={badgeStyle}>{isClaude ? '🟣 Claude' : '🟢 ChatGPT'}</span>
+        <span style={badgeStyle}>{badgeText}</span>
         <button
           onClick={onClose}
           style={{ background: 'none', border: 'none', color: '#555', cursor: 'pointer', fontSize: '1.3rem', lineHeight: 1 }}
@@ -30,11 +45,7 @@ export default function DetailPanel({ conversation: c, isBlended, onClose, onTog
       </div>
 
       <div style={{ display: 'flex', gap: '8px' }}>
-        {[
-          { label: 'Messages', value: c.num_messages || 0 },
-          { label: 'Topic', value: (c.region || 'Other').slice(0, 14) },
-          { label: 'Date', value: (c.created_at || '').slice(0, 10) },
-        ].map(({ label, value }) => (
+        {metaItems.map(({ label, value }) => (
           <div key={label} style={{
             flex: 1,
             padding: '8px 4px',
@@ -59,8 +70,9 @@ export default function DetailPanel({ conversation: c, isBlended, onClose, onTog
         background: 'rgba(255,255,255,0.02)',
         border: '1px solid rgba(255,255,255,0.05)',
         borderRadius: '7px',
+        whiteSpace: 'pre-wrap',
       }}>
-        {(c.preview || '').slice(0, 400)}{(c.preview || '').length > 400 ? '…' : ''}
+        {isDocument ? c.preview : `${(c.preview || '').slice(0, 400)}${(c.preview || '').length > 400 ? '…' : ''}`}
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flexShrink: 0 }}>

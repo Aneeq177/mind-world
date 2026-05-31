@@ -27,13 +27,26 @@ export default function MapPlot({ conversations, newIds = new Set(), selectedId,
       const isBlend = blendIds.includes(c.id)
       const isFocused = c.id === selectedId
       const isNew = newIds.has(c.id)
-      const msgSize = Math.max(8, Math.min(25, Math.floor((c.num_messages || 4) / 4) + 6))
+      const isDocument = c.type === 'document'
+      const msgSize = isDocument ? 16 : Math.max(8, Math.min(25, Math.floor((c.num_messages || 4) / 4) + 6))
 
       regionMap[r].x.push(c.x)
       regionMap[r].y.push(1000 - c.y)
       regionMap[r].size.push(msgSize + (isBlend ? 6 : 0) + (isFocused ? 4 : 0) + (isNew ? 2 : 0))
-      regionMap[r].color.push(isBlend ? 'white' : (c.is_team ? '#14b8a6' : (c.color || '#666666')))
-      regionMap[r].symbol.push(isBlend ? 'star' : (c.is_team ? 'triangle-up' : (c.source === 'chatgpt' ? 'diamond' : 'circle')))
+      
+      let nodeColor = c.color || '#666666'
+      if (isBlend) nodeColor = 'white'
+      else if (isDocument) nodeColor = '#c084fc'
+      else if (c.is_team) nodeColor = '#14b8a6'
+      regionMap[r].color.push(nodeColor)
+      
+      let nodeSymbol = 'circle'
+      if (isBlend) nodeSymbol = 'star'
+      else if (isDocument) nodeSymbol = 'square'
+      else if (c.is_team) nodeSymbol = 'triangle-up'
+      else if (c.source === 'chatgpt') nodeSymbol = 'diamond'
+      regionMap[r].symbol.push(nodeSymbol)
+      
       let opacity
       if (isSearchActive) {
         opacity = searchMatchIds.has(c.id) ? 0.9 : 0.1
@@ -47,10 +60,18 @@ export default function MapPlot({ conversations, newIds = new Set(), selectedId,
 
       const truncated = c.title.length > 35 ? c.title.slice(0, 35) + '...' : c.title
       const teamLabel = c.is_team && c.owner_initials ? ` · Team (${c.owner_initials})` : ''
-      regionMap[r].text.push(
-        `<b>${truncated}</b><br>` +
-        `${c.region || 'Other'} · ${c.num_messages || 0} msgs${teamLabel}`
-      )
+      
+      if (isDocument) {
+        regionMap[r].text.push(
+          `<b>${truncated}</b><br>` +
+          `${c.region || 'Other'} · Document (${c.source_app || 'Unknown'})${teamLabel}`
+        )
+      } else {
+        regionMap[r].text.push(
+          `<b>${truncated}</b><br>` +
+          `${c.region || 'Other'} · ${c.num_messages || 0} msgs${teamLabel}`
+        )
+      }
     }
 
     const traces = Object.entries(regionMap).map(([region, d]) => ({
