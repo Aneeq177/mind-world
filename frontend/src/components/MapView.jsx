@@ -5,6 +5,7 @@ import MapPlot from './MapPlot'
 import BlenderPanel from './BlenderPanel'
 import ConvoList from './ConvoList'
 import DetailPanel from './DetailPanel'
+import IntegrationsModal from './IntegrationsModal'
 
 const PANEL_BG = 'rgba(8,8,18,0.96)'
 
@@ -70,6 +71,7 @@ export default function MapView() {
   const [leftOpen, setLeftOpen] = useState(false)
   const [rightOpen, setRightOpen] = useState(false)
   const [timeIdx, setTimeIdx] = useState(Number.MAX_SAFE_INTEGER)
+  const [showIntegrations, setShowIntegrations] = useState(false)
 
   // MW-006: Semantic search
   const [searchQuery, setSearchQuery] = useState('')
@@ -557,31 +559,54 @@ export default function MapView() {
           )}
         </div>
 
-        <button
-          onClick={() => {
-            setSelected(null)
-            clearBlend()
-            setFilterSource('all')
-            setFilterRegion('all')
-            setSearchQuery('')
-            setViewportTab('all')
-            setPhase('landing')
-          }}
-          style={{
-            padding: isMobile ? '5px 8px' : '5px 14px',
-            background: 'none',
-            border: '1px solid rgba(255,255,255,0.1)',
-            borderRadius: '7px',
-            color: '#555',
-            fontSize: isMobile ? '0.7rem' : '0.75rem',
-            cursor: 'pointer',
-            flexShrink: 0,
-            transition: 'all 0.15s',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {isMobile ? '↩' : '← New Upload'}
-        </button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            onClick={() => setShowIntegrations(true)}
+            style={{
+              padding: isMobile ? '5px 8px' : '5px 14px',
+              background: 'none',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: '7px',
+              color: '#555',
+              fontSize: isMobile ? '0.7rem' : '0.75rem',
+              cursor: 'pointer',
+              flexShrink: 0,
+              transition: 'all 0.15s',
+              whiteSpace: 'nowrap',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            ⚙ Integrations
+          </button>
+          
+          <button
+            onClick={() => {
+              setSelected(null)
+              clearBlend()
+              setFilterSource('all')
+              setFilterRegion('all')
+              setSearchQuery('')
+              setViewportTab('all')
+              setPhase('landing')
+            }}
+            style={{
+              padding: isMobile ? '5px 8px' : '5px 14px',
+              background: 'none',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: '7px',
+              color: '#555',
+              fontSize: isMobile ? '0.7rem' : '0.75rem',
+              cursor: 'pointer',
+              flexShrink: 0,
+              transition: 'all 0.15s',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {isMobile ? '↩' : '← New Upload'}
+          </button>
+        </div>
       </div>
 
       {/* ── Tabbed Viewports ── */}
@@ -701,6 +726,8 @@ export default function MapView() {
           )}
         </div>
       )}
+
+      <IntegrationsModal isOpen={showIntegrations} onClose={() => setShowIntegrations(false)} />
     </div>
   )
 }
