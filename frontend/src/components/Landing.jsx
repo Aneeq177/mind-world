@@ -51,12 +51,34 @@ export default function Landing() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const emailParam = params.get('email')
+    const autoLoad = params.get('autoLoad')
+    
     if (emailParam) {
       setEmail(emailParam)
       setView('upload')
-      checkExistingData(emailParam)
+      
+      if (autoLoad === 'true') {
+        autoLoadMap(emailParam)
+      } else {
+        checkExistingData(emailParam)
+      }
     }
   }, [])
+
+  async function autoLoadMap(emailValue) {
+    setError('')
+    setLoadingMsg('Loading your map...')
+    setPhase('processing')
+    try {
+      const data = await loadExistingMap(emailValue)
+      setCredentials(emailValue, apiKey || '')
+      setConversations(data.conversations, data.sources)
+      setPhase('map')
+    } catch (err) {
+      setError(err.message || 'Failed to load map')
+      setPhase('landing')
+    }
+  }
 
   async function checkExistingData(emailValue) {
     if (!emailValue || !emailValue.includes('@')) return

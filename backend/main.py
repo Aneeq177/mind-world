@@ -1197,9 +1197,8 @@ async def notion_callback(code: str, state: str, background_tasks: BackgroundTas
         # 3. Trigger background sync
         background_tasks.add_task(sync_notion_workspace, user_id, email)
         
-        # 4. Redirect user back to the frontend main app
-        # The user requested to be dropped back on the main page.
-        return RedirectResponse(url="https://mind-world.app/")
+        # 4. Redirect user back to the frontend main app and trigger auto-load
+        return RedirectResponse(url=f"https://mind-world.app/?email={email}&autoLoad=true")
         
     except Exception as e:
         print(f"[Notion Auth] Error during callback: {e}")
@@ -1254,8 +1253,8 @@ async def google_callback(code: str, state: str, background_tasks: BackgroundTas
         # 3. Trigger background sync
         background_tasks.add_task(sync_google_workspace, user_id, email)
         
-        # 4. Redirect user back to the frontend main app
-        return RedirectResponse(url="https://mind-world.app/")
+        # 4. Redirect user back to the frontend main app and trigger auto-load
+        return RedirectResponse(url=f"https://mind-world.app/?email={email}&autoLoad=true")
         
     except Exception as e:
         print(f"[Google Auth] Error during callback: {e}")
