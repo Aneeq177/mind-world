@@ -68,3 +68,30 @@ None. Layout offsets correctly adjust relative positions and preserve sidebar al
 
 ### Verdict
 APPROVED — ready to merge
+
+---
+
+## QA Report — MW-014
+Date: 2026-05-31T04:32:00-05:00
+Status: PASS
+Tested by: QA Agent
+
+### What Was Tested
+1. **Frontend Compilation Check**: Ran `npm run build` inside `/frontend` to ensure the new Integrations components compile cleanly.
+2. **Integrations Settings UI Logic Inspection**:
+   - **`IntegrationsModal.jsx`**: Audited React component structure including title, description, Notion connection card with icon, connection state ('Connected' / 'Not Connected'), connection trigger action (`handleConnectNotion`), and click backdrop wrapper events.
+   - **`MapView.jsx`**: Audited modal state management (`showIntegrations` hook), UI settings button addition inside the top action bar next to "New Upload", and clean rendering of `IntegrationsModal` overlay.
+
+### Results
+- **Frontend Compilation**: PASS — Vite build successfully compiles with the new `IntegrationsModal.jsx` file added.
+- **Integrations Modal UI**: PASS — Implements connection actions, connection state display (Connected vs Disconnected) with clean glassmorphic overlay matching styling patterns.
+- **Integration Button**: PASS — Correctly renders the "⚙ Integrations" action button in the top action bar.
+
+### Failures Found
+None.
+
+### Regression Check
+None. The modal mounts dynamically without affecting active canvas rendering, side panels, or search logic.
+
+### Verdict
+APPROVED — ready to merge
