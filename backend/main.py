@@ -1145,6 +1145,67 @@ def root():
         "endpoints": ["/health", "/process", "/blend", "/recluster"]
     }
 
+from fastapi.responses import RedirectResponse
+import uuid
+
+@app.get("/auth/notion/login")
+async def notion_login(email: str):
+    """
+    Redirects the user to the Notion OAuth page.
+    In this mock implementation, we just redirect directly to our callback 
+    with a fake code, since we don't have a real Notion Developer App yet.
+    """
+    if not email:
+        raise HTTPException(status_code=400, detail="Email is required")
+        
+    # In a real app, we would redirect to:
+    # https://api.notion.com/v1/oauth/authorize?client_id=...&response_type=code&owner=user&redirect_uri=...&state=email
+    
+    # Mock redirect straight to callback
+    fake_code = f"mock_code_{uuid.uuid4().hex[:8]}"
+    return RedirectResponse(url=f"/auth/notion/callback?code={fake_code}&state={email}")
+
+@app.get("/auth/notion/callback")
+async def notion_callback(code: str, state: str, background_tasks: BackgroundTasks):
+    """
+    Handles the Notion OAuth callback, exchanges code for token, and starts background sync.
+    """
+    try:
+        from services.database import get_or_create_user, save_user_integration
+        from services.notion import sync_notion_workspace
+        
+        email = state.lower().strip()
+        user_id = get_or_create_user(email)
+        
+        # 1. Exchange code for token (Mocked)
+        # In a real app, we would make a POST to https://api.notion.com/v1/oauth/token
+        mock_access_token = f"secret_mock_token_{uuid.uuid4().hex}"
+        mock_workspace_id = f"workspace_{uuid.uuid4().hex[:8]}"
+        mock_workspace_name = "My Mock Workspace"
+        
+        # 2. Save integration to database
+        save_user_integration(
+            user_id=user_id,
+            provider="notion",
+            token=mock_access_token,
+            metadata={
+                "workspace_id": mock_workspace_id,
+                "workspace_name": mock_workspace_name
+            }
+        )
+        
+        # 3. Trigger background sync
+        background_tasks.add_task(sync_notion_workspace, user_id, email)
+        
+        # 4. Redirect user back to the frontend main app
+        # The user requested to be dropped back on the main page.
+        return RedirectResponse(url="https://mind-world.app/")
+        
+    except Exception as e:
+        print(f"[Notion Auth] Error during callback: {e}")
+        # Redirect back with an error query param
+        return RedirectResponse(url="https://mind-world.app/?error=notion_auth_failed")
+
 class AuthNotionRequest(BaseModel):
     code: str
 
