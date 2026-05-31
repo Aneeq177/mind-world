@@ -95,3 +95,57 @@ None. The modal mounts dynamically without affecting active canvas rendering, si
 
 ### Verdict
 APPROVED — ready to merge
+
+---
+
+## QA Report — MW-013
+Date: 2026-05-31T04:45:00-05:00
+Status: FAIL
+Tested by: QA Agent
+
+### What Was Tested
+1. **Backend Integration Logic Audit**:
+   - Inspected `backend/main.py` callback route `/auth/notion/callback` and `backend/services/notion.py` Notion sync workspace logic.
+   - Verified implementation of mock data fetching and database upserts to the `knowledge_nodes` table.
+   - Checked top-level import statement safety.
+
+### Results
+- **Backend Import Check**: PASS — App syntax is valid and top-level modules resolve imports.
+- **Integration Helper Functionality**: FAIL — Critical missing helper function definitions in database module.
+
+### Failures Found
+- File: `backend/services/database.py`
+- Line: N/A
+- Issue: `save_user_integration` and `get_user_integration` are imported and called at runtime but are completely undefined in `database.py`.
+- Expected: Integration database helper functions should be defined to store and retrieve OAuth credentials from the `user_integrations` table.
+- Actual: Calling the `/auth/notion/callback` endpoint or launching the background Notion sync results in an immediate runtime `ImportError`.
+- Suggested fix: Define the missing helper functions at the end of `backend/services/database.py`:
+  ```python
+  def save_user_integration(user_id: str, provider: str, token: str, metadata: dict = None) -> dict:
+      supabase = get_supabase()
+      row = {
+          "user_id": user_id,
+          "provider": provider,
+          "access_token": token,
+          "workspace_id": metadata.get("workspace_id") if metadata else None,
+          "workspace_name": metadata.get("workspace_name") if metadata else None,
+          "updated_at": "now()"
+      }
+      result = supabase.table("user_integrations").upsert(row, on_conflict="user_id,provider").execute()
+      return result.data[0] if result.data else {}
+
+  def get_user_integration(user_id: str, provider: str) -> dict:
+      supabase = get_supabase()
+      result = supabase.table("user_integrations")\
+          .select("*")\
+          .eq("user_id", user_id)\
+          .eq("provider", provider)\
+          .execute()
+      return result.data[0] if result.data else None
+  ```
+
+### Regression Check
+None.
+
+### Verdict
+NEEDS WORK — send back to Backend Agent
