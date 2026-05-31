@@ -218,7 +218,7 @@ Be concise and specific. Focus on information that will help answer the current 
                 "id": convo['id'],
                 "title": convo['title'],
                 "summary": response.content[0].text.strip(),
-                "source": convo.get('source', 'claude'),
+                "source": convo.get('source_app', 'claude'),
                 "created_at": convo.get('created_at', '')
             })
 
@@ -277,8 +277,8 @@ async def engineer_prompt(request: EngineerPromptRequest):
                 print("[engineer_prompt] Retrying without user_id filter")
                 from services.database import get_supabase
                 supabase = get_supabase()
-                result = supabase.table("conversations")\
-                    .select("id, title, full_text, preview, created_at, num_messages, source")\
+                result = supabase.table("knowledge_nodes")\
+                    .select("id, title, full_text, preview, created_at, num_messages, source_app")\
                     .in_("id", request.conversation_ids)\
                     .execute()
                 selected = result.data or []
@@ -379,13 +379,13 @@ async def user_stats(request: UserStatsRequest):
         user_id = get_or_create_user(email)
 
         # Count conversations
-        conv_result = supabase.table("conversations")\
-            .select("id, source")\
+        conv_result = supabase.table("knowledge_nodes")\
+            .select("id, source_app")\
             .eq("user_id", user_id)\
             .execute()
 
         conversations = conv_result.data or []
-        sources = set(c.get('source', '') for c in conversations)
+        sources = set(c.get('source_app', '') for c in conversations)
 
         # Fetch company info
         company_info = None
@@ -493,7 +493,8 @@ async def save_conversation(request: SaveConversationRequest, background_tasks: 
             "id": conv_id,
             "user_id": user_id,
             "title": convo.get('title', 'Untitled'),
-            "source": source,
+            "type": "ai_chat",
+            "source_app": source,
             "created_at": convo.get('saved_at', ''),
             "updated_at": convo.get('saved_at', ''),
             "num_messages": len(messages),
@@ -509,7 +510,7 @@ async def save_conversation(request: SaveConversationRequest, background_tasks: 
             "visibility": request.visibility if request.visibility in ('private', 'team') else 'private'
         }
 
-        supabase.table("conversations").upsert(
+        supabase.table("knowledge_nodes").upsert(
             row, on_conflict="id"
         ).execute()
 
@@ -538,7 +539,7 @@ async def load_map(request: LoadMapRequest):
         email = request.email.lower().strip()
         user_id = get_or_create_user(email)
 
-        result = supabase.table("conversations")\
+        result = supabase.table("knowledge_nodes")\
             .select("*")\
             .eq("user_id", user_id)\
             .execute()
@@ -559,7 +560,7 @@ async def load_map(request: LoadMapRequest):
             formatted.append({
                 "id": c.get("id", ""),
                 "title": c.get("title", "Untitled"),
-                "source": c.get("source", "claude"),
+                "source": c.get("source_app", "claude"),
                 "x": c.get("x", 0.0),
                 "y": c.get("y", 0.0),
                 "z": c.get("z", 0.0),
@@ -611,17 +612,17 @@ async def load_team_map(request: LoadMapRequest):
             company_user_ids = [u["id"] for u in (company_users.data or [])]
             company_user_emails = {u["id"]: u["email"] for u in (company_users.data or [])}
 
-            my_convos = supabase.table("conversations").select("*").eq("user_id", user_id).execute().data or []
+            my_convos = supabase.table("knowledge_nodes").select("*").eq("user_id", user_id).execute().data or []
             
             other_team_convos = []
             other_team_user_ids = [uid for uid in company_user_ids if uid != user_id]
             if other_team_user_ids:
-                team_res = supabase.table("conversations").select("*").in_("user_id", other_team_user_ids).eq("visibility", "team").execute()
+                team_res = supabase.table("knowledge_nodes").select("*").in_("user_id", other_team_user_ids).eq("visibility", "team").execute()
                 other_team_convos = team_res.data or []
                 
             all_convos = my_convos + other_team_convos
         else:
-            all_convos = supabase.table("conversations").select("*").eq("user_id", user_id).execute().data or []
+            all_convos = supabase.table("knowledge_nodes").select("*").eq("user_id", user_id).execute().data or []
 
         formatted = []
         for c in all_convos:
@@ -633,7 +634,7 @@ async def load_team_map(request: LoadMapRequest):
             formatted.append({
                 "id": c.get("id", ""),
                 "title": c.get("title", "Untitled"),
-                "source": c.get("source", "claude"),
+                "source": c.get("source_app", "claude"),
                 "x": c.get("x", 0.0),
                 "y": c.get("y", 0.0),
                 "z": c.get("z", 0.0),
@@ -693,12 +694,12 @@ async def company_search(request: CompanySearchRequest):
                     supabase.table("users").update({"email": u["email"].lower()}).eq("id", u["id"]).execute()
             
             # 2. Fix missing user_ids in team conversations
-            convs_res = supabase.table("conversations").select("id, user_id").eq("visibility", "team").execute()
+            convs_res = supabase.table("knowledge_nodes").select("id, user_id").eq("visibility", "team").execute()
             for c in (convs_res.data or []):
                 if not c.get("user_id"):
                     emb_res = supabase.table("embeddings").select("user_id").eq("conversation_id", c["id"]).execute()
                     if emb_res.data and emb_res.data[0].get("user_id"):
-                        supabase.table("conversations").update({"user_id": emb_res.data[0]["user_id"]}).eq("id", c["id"]).execute()
+                        supabase.table("knowledge_nodes").update({"user_id": emb_res.data[0]["user_id"]}).eq("id", c["id"]).execute()
                         print(f"[/company_search] Healed conversation {c['id']} with user_id {emb_res.data[0]['user_id']}")
         except Exception as heal_err:
             print(f"[/company_search] Heal error: {heal_err}")
@@ -790,7 +791,7 @@ async def set_visibility(request: SetVisibilityRequest):
         email = request.email.lower().strip()
         user_id = get_or_create_user(email)
 
-        supabase.table("conversations")\
+        supabase.table("knowledge_nodes")\
             .update({"visibility": request.visibility})\
             .eq("id", request.conversation_id)\
             .eq("user_id", user_id)\
@@ -815,7 +816,7 @@ async def run_recluster(email: str):
     user_id = get_or_create_user(email)
 
     # Get all conversations for this user
-    result = supabase.table("conversations")\
+    result = supabase.table("knowledge_nodes")\
         .select("id, title, full_text, x, y")\
         .eq("user_id", user_id)\
         .execute()
@@ -824,7 +825,7 @@ async def run_recluster(email: str):
 
     if not all_convos:
         # Try without user_id filter
-        result = supabase.table("conversations")\
+        result = supabase.table("knowledge_nodes")\
             .select("id, title, full_text, x, y")\
             .execute()
         all_convos = result.data or []
@@ -879,7 +880,7 @@ async def run_recluster(email: str):
     updated = 0
     for i, conv in enumerate(all_convos):
         if conv.get('x', 0) == 0 and conv.get('y', 0) == 0:
-            supabase.table("conversations")\
+            supabase.table("knowledge_nodes")\
                 .update({
                     "x": float(coords_norm[i, 0]),
                     "y": float(coords_norm[i, 1])
@@ -924,17 +925,17 @@ async def share_conversations(request: ShareConversationsRequest):
 
         if request.conversation_ids:
             for conv_id in request.conversation_ids:
-                supabase.table("conversations")\
+                supabase.table("knowledge_nodes")\
                     .update({"visibility": request.visibility})\
                     .eq("id", conv_id)\
                     .execute()
             updated = len(request.conversation_ids)
         else:
-            supabase.table("conversations")\
+            supabase.table("knowledge_nodes")\
                 .update({"visibility": request.visibility})\
                 .eq("user_id", user_id)\
                 .execute()
-            count_result = supabase.table("conversations")\
+            count_result = supabase.table("knowledge_nodes")\
                 .select("id", count="exact")\
                 .eq("user_id", user_id)\
                 .execute()
@@ -1143,3 +1144,17 @@ def root():
         "version": "1.0.0",
         "endpoints": ["/health", "/process", "/blend", "/recluster"]
     }
+
+class AuthNotionRequest(BaseModel):
+    code: str
+
+@app.post("/auth/notion")
+async def auth_notion(request: AuthNotionRequest):
+    return {"success": True, "provider": "notion", "message": "Notion auth stub"}
+
+class AuthGoogleRequest(BaseModel):
+    code: str
+
+@app.post("/auth/google")
+async def auth_google(request: AuthGoogleRequest):
+    return {"success": True, "provider": "google", "message": "Google auth stub"}

@@ -47,7 +47,8 @@ def store_conversations(
                 "id": chat["id"],
                 "user_id": user_id,
                 "title": chat["title"],
-                "source": chat["source"],
+                "type": "ai_chat",
+                "source_app": chat["source"],
                 "created_at": chat["created_at"],
                 "updated_at": chat["updated_at"],
                 "num_messages": chat["num_messages"],
@@ -62,7 +63,7 @@ def store_conversations(
                 "z": chat["z"]
             })
         try:
-            supabase.table("conversations")\
+            supabase.table("knowledge_nodes")\
                 .upsert(rows, on_conflict="id")\
                 .execute()
         except Exception as e:
@@ -113,7 +114,7 @@ def search_conversations(
 def get_user_conversations(user_id: str) -> list[dict]:
     supabase = get_supabase()
 
-    result = supabase.table("conversations")\
+    result = supabase.table("knowledge_nodes")\
         .select("*")\
         .eq("user_id", user_id)\
         .execute()
