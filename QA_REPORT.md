@@ -124,3 +124,31 @@ None.
 
 ### Verdict
 APPROVED — ready to merge
+
+---
+
+## QA Report — MW-016
+Date: 2026-05-31T05:05:00-05:00
+Status: PASS
+Tested by: QA Agent
+
+### What Was Tested
+1. **Frontend Compilation Check**: Ran `npm run build` inside `/frontend` to verify that the changes in `IntegrationsModal.jsx` compile cleanly.
+2. **Google Docs Integration UI Inspection**:
+   - Audited the implementation of the Google Docs connection card (lines 146-202) featuring the Google brand color styling and status markers.
+   - Verified that the Notion connect button redirect is properly updated to target the backend `/auth/notion/login?email=...` auth route.
+   - Verified that the new Google Docs connect button is wired to target the backend `/auth/google/login?email=...` auth route.
+
+### Results
+- **Frontend Compilation**: PASS — The production bundle compiled successfully with 76 modules transformed.
+- **OAuth Redirection Wiring**: PASS — Notion and Google Docs connection actions successfully trigger redirects to their corresponding backend login endpoints.
+- **Google Docs UI Display**: PASS — Status tags and brand assets display cleanly matching existing layout themes.
+
+### Failures Found
+None.
+
+### Regression Check
+None. Notion integration state remains decoupled from the new Google Docs card.
+
+### Verdict
+APPROVED — ready to merge
