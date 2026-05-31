@@ -1213,9 +1213,50 @@ class AuthNotionRequest(BaseModel):
 async def auth_notion(request: AuthNotionRequest):
     return {"success": True, "provider": "notion", "message": "Notion auth stub"}
 
-class AuthGoogleRequest(BaseModel):
-    code: str
+@app.get("/auth/google/login")
+async def google_login(email: str):
+    """
+    Redirects the user to the Google OAuth page.
+    In this mock implementation, we redirect directly to our callback.
+    """
+    if not email:
+        raise HTTPException(status_code=400, detail="Email is required")
+        
+    fake_code = f"google_mock_code_{uuid.uuid4().hex[:8]}"
+    return RedirectResponse(url=f"/auth/google/callback?code={fake_code}&state={email}")
 
-@app.post("/auth/google")
-async def auth_google(request: AuthGoogleRequest):
-    return {"success": True, "provider": "google", "message": "Google auth stub"}
+@app.get("/auth/google/callback")
+async def google_callback(code: str, state: str, background_tasks: BackgroundTasks):
+    """
+    Handles the Google OAuth callback, exchanges code for token, and starts background sync.
+    """
+    try:
+        from services.database import get_or_create_user, save_user_integration
+        from services.google import sync_google_workspace
+        
+        email = state.lower().strip()
+        user_id = get_or_create_user(email)
+        
+        # 1. Exchange code for token (Mocked)
+        mock_access_token = f"google_token_{uuid.uuid4().hex}"
+        
+        # 2. Save integration to database
+        save_user_integration(
+            user_id=user_id,
+            provider="google",
+            token=mock_access_token,
+            metadata={
+                "workspace_id": email,
+                "workspace_name": f"{email}'s Google Drive"
+            }
+        )
+        
+        # 3. Trigger background sync
+        background_tasks.add_task(sync_google_workspace, user_id, email)
+        
+        # 4. Redirect user back to the frontend main app
+        return RedirectResponse(url="https://mind-world.app/")
+        
+    except Exception as e:
+        print(f"[Google Auth] Error during callback: {e}")
+        return RedirectResponse(url="https://mind-world.app/?error=google_auth_failed")
