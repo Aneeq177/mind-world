@@ -181,3 +181,31 @@ None.
 
 ### Verdict
 APPROVED — ready to merge
+
+---
+
+## QA Report — MW-017
+Date: 2026-05-31T05:25:00-05:00
+Status: PASS
+Tested by: QA Agent
+
+### What Was Tested
+1. **Frontend Compilation Check**: Ran `npm run build` inside `/frontend` to verify that the additions in `Landing.jsx` compile cleanly.
+2. **OAuth Callback URL Mapping**:
+   - Verified that the hardcoded redirect URLs in `/auth/notion/callback` and `/auth/google/callback` in `backend/main.py` are replaced by dynamic URLs retrieved from the `FRONTEND_URL` environment variable.
+3. **Frontend Autoload Flow**:
+   - Verified that `Landing.jsx` parses the `autoLoad=true` parameter, checks the email from query parameters, and automatically fetches existing map details via `loadExistingMap` to transition directly to the map view.
+
+### Results
+- **Frontend Compilation**: PASS — Vite build successfully compiles with the new `autoLoad` logic added to `Landing.jsx`.
+- **Dynamic Redirection**: PASS — Backend correctly retrieves `FRONTEND_URL` from variables with clean fallback mapping.
+- **Auto-Load Transition**: PASS — Automatically bypasses landing page and drops the authenticated user onto the active map state.
+
+### Failures Found
+None.
+
+### Regression Check
+None. Default user email check and login flows remain unaffected if `autoLoad` parameter is missing.
+
+### Verdict
+APPROVED — ready to merge
