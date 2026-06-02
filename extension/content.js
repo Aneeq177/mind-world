@@ -160,6 +160,10 @@ function init() {
       }, 2000)
     }
   }).observe(document, { subtree: true, childList: true })
+
+  // Initialize DOM-Injected Prompt Builder
+  injectPromptBuilderWidget()
+  injectTriggerButton()
 }
 
 function injectSidebar() {
@@ -337,6 +341,7 @@ function watchInputField() {
       setTimeout(() => handleInput(e), 100)
     })
 
+    injectPromptBuilderButton(inputField)
   }
 
   // Watch for DOM changes to catch dynamically added inputs
@@ -798,6 +803,9 @@ function extractMessages(hostname) {
     }
 
     if (!container) return messages
+    
+    // ... [Original parsing logic would be here, assuming it continues. Note: the file was truncated at line 1022 so we don't touch the rest of it directly, we will append at the very bottom]
+
 
     const h2s = Array.from(container.querySelectorAll('h2'))
     const messageH2s = h2s.filter(h =>
@@ -1014,8 +1022,630 @@ function showSaveToast() {
   }, 2000)
 }
 
-function escapeHtml(text) {
   const div = document.createElement('div')
   div.appendChild(document.createTextNode(text || ''))
   return div.innerHTML
 }
+
+// ==========================================
+// MW-021: Prompt Builder Widget (Shadow DOM)
+// ==========================================
+
+let promptBuilderWidget = null;
+let shadowRoot = null;
+
+function injectPromptBuilderButton(inputField) {
+  if (document.getElementById('mw-pb-btn')) return;
+
+  const btn = document.createElement('div');
+  btn.id = 'mw-pb-btn';
+  btn.innerHTML = '✨ Mind World';
+  btn.style.cssText = `
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    background: #7c3aed;
+    color: white;
+    padding: 6px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-family: system-ui, sans-serif;
+    cursor: pointer;
+    z-index: 9999;
+    box-shadow: 0 4px 12px rgba(124,58,237,0.3);
+    user-select: none;
+    transition: all 0.2s ease;
+  `;
+  
+  btn.addEventListener('mouseenter', () => btn.style.transform = 'scale(1.05)');
+  btn.addEventListener('mouseleave', () => btn.style.transform = 'scale(1)');
+  
+  btn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    togglePromptBuilderWidget(inputField);
+  });
+
+  const parent = inputField.parentElement;
+  if (parent) {
+    parent.style.position = 'relative';
+    parent.appendChild(btn);
+  }
+}
+
+function togglePromptBuilderWidget(inputField) {
+  if (promptBuilderWidget) {
+    promptBuilderWidget.style.display = promptBuilderWidget.style.display === 'none' ? 'block' : 'none';
+    return;
+  }
+
+  promptBuilderWidget = document.createElement('div');
+  promptBuilderWidget.id = 'mw-prompt-builder-host';
+  promptBuilderWidget.style.cssText = `
+    position: absolute;
+    bottom: 50px;
+    right: 10px;
+    width: 350px;
+    max-height: 500px;
+    z-index: 10000;
+  `;
+
+  shadowRoot = promptBuilderWidget.attachShadow({ mode: 'open' });
+  
+  shadowRoot.innerHTML = `
+    <style>
+      :host {
+        display: block;
+        font-family: system-ui, sans-serif;
+      }
+      .container {
+        background: rgba(20, 20, 25, 0.95);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 16px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        color: #fff;
+      }
+      h3 { margin: 0; font-size: 16px; display: flex; justify-content: space-between; }
+      .close-btn { cursor: pointer; color: #888; }
+      .close-btn:hover { color: #fff; }
+      textarea, select, input {
+        background: rgba(0, 0, 0, 0.3);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        color: white;
+        padding: 8px;
+        font-size: 14px;
+        width: 100%;
+        box-sizing: border-box;
+      }
+      textarea { resize: none; min-height: 80px; }
+      button.primary {
+        background: #7c3aed;
+        color: white;
+        border: none;
+        padding: 10px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: 600;
+      }
+      button.primary:hover { background: #6d28d9; }
+      .chat-view { display: none; flex-direction: column; gap: 8px; max-height: 300px; overflow-y: auto; }
+      .msg { padding: 8px 12px; border-radius: 8px; font-size: 13px; margin-bottom: 4px; }
+      .msg.user { background: rgba(124, 58, 237, 0.3); border: 1px solid rgba(124, 58, 237, 0.5); align-self: flex-end; }
+      .msg.ai { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); }
+      .msg.sys { background: transparent; color: #aaa; font-style: italic; text-align: center; }
+      .reply-box { display: none; flex-direction: column; gap: 8px; }
+    </style>
+    <div class="container">
+      <h3>✨ Prompt Builder <span class="close-btn">✕</span></h3>
+      
+      <div id="input-view">
+        <textarea id="goal" placeholder="What do you want to achieve?"></textarea>
+        <select id="template">
+          <option value="none">No Template</option>
+          <option value="Academic Reviewer">Academic Reviewer</option>
+          <option value="Code Debugger">Code Debugger</option>
+          <option value="Creative Copywriter">Creative Copywriter</option>
+          <option value="Brainstorming Partner">Brainstorming Partner</option>
+        </select>
+        <button id="start-btn" class="primary">Engineer Prompt →</button>
+      </div>
+
+      <div id="chat-view" class="chat-view">
+        <div id="messages"></div>
+      </div>
+      
+      <div id="reply-box" class="reply-box">
+        <textarea id="reply-input" placeholder="Your answers..."></textarea>
+        <button id="send-reply-btn" class="primary">Generate Prompt</button>
+      </div>
+    </div>
+  `;
+
+  inputField.parentElement.appendChild(promptBuilderWidget);
+
+  // Logic
+  const closeBtn = shadowRoot.querySelector('.close-btn');
+  closeBtn.addEventListener('click', () => promptBuilderWidget.style.display = 'none');
+
+  const startBtn = shadowRoot.getElementById('start-btn');
+  const sendReplyBtn = shadowRoot.getElementById('send-reply-btn');
+  const inputView = shadowRoot.getElementById('input-view');
+  const chatView = shadowRoot.getElementById('chat-view');
+  const replyBox = shadowRoot.getElementById('reply-box');
+  const messages = shadowRoot.getElementById('messages');
+  const API_BASE = 'https://mind-world-app-mv4yv.ondigitalocean.app';
+
+  let currentGoal = '';
+  let currentTemplate = 'none';
+  let dynamicQuestions = [];
+
+  function appendMsg(role, text) {
+    const d = document.createElement('div');
+    d.className = 'msg ' + role;
+    d.innerText = text;
+    messages.appendChild(d);
+    chatView.scrollTop = chatView.scrollHeight;
+  }
+
+  startBtn.addEventListener('click', async () => {
+    const goal = shadowRoot.getElementById('goal').value.trim();
+    if (!goal) return;
+    
+    currentGoal = goal;
+    currentTemplate = shadowRoot.getElementById('template').value;
+
+    inputView.style.display = 'none';
+    chatView.style.display = 'flex';
+    
+    appendMsg('user', goal);
+    appendMsg('sys', 'Analyzing your goal...');
+
+    const stored = await chrome.storage.local.get('mw_api_key');
+    const apiKey = stored.mw_api_key || '';
+
+    try {
+      const res = await fetch(`${API_BASE}/generate_clarifying_questions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ goal: currentGoal, template: currentTemplate, api_key: apiKey })
+      });
+      if (!res.ok) throw new Error('Failed');
+      
+      const data = await res.json();
+      dynamicQuestions = data.questions || [];
+      
+      messages.lastChild.remove(); // remove 'Analyzing...'
+      appendMsg('ai', 'Clarifying Questions:\n' + dynamicQuestions.map((q,i) => `${i+1}. ${q}`).join('\n'));
+      replyBox.style.display = 'flex';
+    } catch (e) {
+      messages.lastChild.remove();
+      appendMsg('sys', 'Error generating questions.');
+    }
+  });
+
+  sendReplyBtn.addEventListener('click', async () => {
+    const reply = shadowRoot.getElementById('reply-input').value.trim();
+    if (!reply) return;
+
+    replyBox.style.display = 'none';
+    appendMsg('user', reply);
+    appendMsg('sys', 'Generating final prompt...');
+
+    const stored = await chrome.storage.local.get('mw_api_key');
+    const apiKey = stored.mw_api_key || '';
+
+    const combined = `Goal: ${currentGoal}\n\nQuestions:\n${dynamicQuestions.join('\n')}\n\nAnswers:\n${reply}`;
+
+    try {
+      const res = await fetch(`${API_BASE}/engineer_prompt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: combined, template: currentTemplate, api_key: apiKey })
+      });
+      if (!res.ok) throw new Error('Failed');
+
+      const data = await res.json();
+      messages.lastChild.remove(); // remove 'Generating...'
+      appendMsg('ai', 'Prompt generated and injected!');
+
+      populateHostTextarea(inputField, data.prompt);
+
+      setTimeout(() => {
+        promptBuilderWidget.style.display = 'none';
+        inputView.style.display = 'block';
+        chatView.style.display = 'none';
+        messages.innerHTML = '';
+        shadowRoot.getElementById('goal').value = '';
+        shadowRoot.getElementById('reply-input').value = '';
+      }, 3000);
+
+    } catch (e) {
+      messages.lastChild.remove();
+      appendMsg('sys', 'Error generating prompt.');
+      replyBox.style.display = 'flex';
+    }
+  });
+}
+
+function populateHostTextarea(inputField, text) {
+  inputField.focus();
+  
+  if (inputField.tagName === 'TEXTAREA') {
+    inputField.value = text;
+    inputField.dispatchEvent(new Event('input', { bubbles: true }));
+  } else if (inputField.isContentEditable) {
+    if (window.location.hostname.includes('claude.ai')) {
+      inputField.innerHTML = '';
+      document.execCommand('insertText', false, text);
+    } else {
+      inputField.innerText = text;
+      inputField.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  }
+}
+
+// --- DOM INJECTED PROMPT BUILDER ---
+
+let builderWidgetHost = null
+let builderShadow = null
+let currentGoal = ''
+let currentTemplate = 'none'
+let currentQuestions = []
+
+function injectPromptBuilderWidget() {
+  if (document.getElementById('mw-prompt-widget-host')) return
+  
+  builderWidgetHost = document.createElement('div')
+  builderWidgetHost.id = 'mw-prompt-widget-host'
+  
+  // Create shadow root
+  builderShadow = builderWidgetHost.attachShadow({ mode: 'open' })
+  
+  const style = document.createElement('style')
+  style.textContent = `
+    #mw-widget {
+      position: fixed;
+      bottom: 80px;
+      right: 20px;
+      width: 380px;
+      background: #111;
+      border: 1px solid rgba(124,58,237,0.3);
+      border-radius: 12px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: white;
+      z-index: 2147483647;
+      display: none;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .mw-header {
+      padding: 12px 16px;
+      background: rgba(124,58,237,0.1);
+      border-bottom: 1px solid rgba(124,58,237,0.2);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: 600;
+      font-size: 14px;
+    }
+    .mw-header button {
+      background: transparent;
+      border: none;
+      color: #888;
+      cursor: pointer;
+      font-size: 18px;
+    }
+    .mw-header button:hover {
+      color: white;
+    }
+    .mw-body {
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    textarea {
+      width: 100%;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 6px;
+      padding: 10px;
+      color: white;
+      font-size: 13px;
+      resize: vertical;
+      min-height: 60px;
+      box-sizing: border-box;
+      outline: none;
+    }
+    textarea:focus {
+      border-color: rgba(124,58,237,0.5);
+    }
+    select {
+      width: 100%;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 6px;
+      padding: 8px;
+      color: white;
+      font-size: 13px;
+      outline: none;
+    }
+    button.primary {
+      background: #7c3aed;
+      color: white;
+      border: none;
+      padding: 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: background 0.2s;
+    }
+    button.primary:hover {
+      background: #6d28d9;
+    }
+    button.primary:disabled {
+      background: #4c1d95;
+      cursor: not-allowed;
+      opacity: 0.7;
+    }
+    .chat-msg {
+      padding: 10px;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.4;
+      margin-bottom: 8px;
+      white-space: pre-wrap;
+    }
+    .chat-user {
+      background: rgba(124,58,237,0.2);
+      border: 1px solid rgba(124,58,237,0.3);
+      align-self: flex-end;
+      margin-left: 20px;
+    }
+    .chat-ai {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      align-self: flex-start;
+      margin-right: 20px;
+    }
+    .chat-system {
+      background: transparent;
+      color: #888;
+      font-style: italic;
+      text-align: center;
+      font-size: 12px;
+      margin: 4px 0;
+    }
+  `
+  
+  const html = `
+    <div id="mw-widget">
+      <div class="mw-header">
+        <span>?? Prompt Builder</span>
+        <button id="mw-close-widget">�</button>
+      </div>
+      
+      <!-- Phase 1: Goal -->
+      <div id="mw-phase-goal" class="mw-body">
+        <label style="font-size: 13px; color: #ccc;">What do you want to achieve?</label>
+        <textarea id="mw-goal-input" placeholder="e.g. I want to debug a React performance issue..."></textarea>
+        
+        <label style="font-size: 13px; color: #ccc; margin-top: 4px;">Template (Optional)</label>
+        <select id="mw-template-select">
+          <option value="none">No Template</option>
+          <option value="Code Debugger">Code Debugger</option>
+          <option value="Copywriter">Copywriter</option>
+          <option value="Academic Reviewer">Academic Reviewer</option>
+          <option value="Brainstorming Partner">Brainstorming Partner</option>
+          <option value="Interview Prep">Interview Prep</option>
+        </select>
+        
+        <button id="mw-start-btn" class="primary">Start Engineering</button>
+      </div>
+      
+      <!-- Phase 2: Clarifying Chat -->
+      <div id="mw-phase-chat" class="mw-body" style="display:none;">
+        <div id="mw-chat-history" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column;"></div>
+        <textarea id="mw-chat-input" placeholder="Your answers..."></textarea>
+        <button id="mw-send-btn" class="primary">Generate Prompt</button>
+      </div>
+    </div>
+  `
+  
+  builderShadow.appendChild(style)
+  
+  const container = document.createElement('div')
+  container.innerHTML = html
+  builderShadow.appendChild(container)
+  
+  document.body.appendChild(builderWidgetHost)
+  
+  setupWidgetListeners()
+}
+
+function setupWidgetListeners() {
+  const widget = builderShadow.getElementById('mw-widget')
+  const closeBtn = builderShadow.getElementById('mw-close-widget')
+  const startBtn = builderShadow.getElementById('mw-start-btn')
+  const sendBtn = builderShadow.getElementById('mw-send-btn')
+  const goalPhase = builderShadow.getElementById('mw-phase-goal')
+  const chatPhase = builderShadow.getElementById('mw-phase-chat')
+  const goalInput = builderShadow.getElementById('mw-goal-input')
+  const templateSelect = builderShadow.getElementById('mw-template-select')
+  const chatHistory = builderShadow.getElementById('mw-chat-history')
+  const chatInput = builderShadow.getElementById('mw-chat-input')
+  
+  closeBtn.addEventListener('click', () => {
+    widget.style.display = 'none'
+  })
+  
+  function addMsg(role, text) {
+    const div = document.createElement('div')
+    div.className = `chat-msg chat-${role}`
+    div.textContent = text
+    chatHistory.appendChild(div)
+    chatHistory.scrollTop = chatHistory.scrollHeight
+    return div
+  }
+  
+  startBtn.addEventListener('click', async () => {
+    const goal = goalInput.value.trim()
+    if (!goal) return
+    
+    currentGoal = goal
+    currentTemplate = templateSelect.value
+    
+    goalPhase.style.display = 'none'
+    chatPhase.style.display = 'flex'
+    chatHistory.innerHTML = ''
+    
+    addMsg('user', goal)
+    const loader = addMsg('system', 'Analyzing your goal...')
+    
+    try {
+      const res = await chrome.runtime.sendMessage({
+        type: 'GENERATE_QUESTIONS',
+        goal: currentGoal,
+        template: currentTemplate
+      })
+      
+      loader.remove()
+      
+      if (res.error) {
+        addMsg('system', 'Error: ' + res.error)
+        return
+      }
+      
+      currentQuestions = res.questions || []
+      const qText = "I have a few clarifying questions:\n" + currentQuestions.map((q, i) => `${i+1}. ${q}`).join('\n')
+      addMsg('ai', qText)
+      chatInput.focus()
+      
+    } catch (e) {
+      loader.remove()
+      addMsg('system', 'Network error.')
+    }
+  })
+  
+  sendBtn.addEventListener('click', async () => {
+    const answers = chatInput.value.trim()
+    if (!answers) return
+    
+    addMsg('user', answers)
+    chatInput.value = ''
+    chatInput.disabled = true
+    sendBtn.disabled = true
+    
+    const loader = addMsg('system', 'Engineering final prompt...')
+    
+    const combinedMessage = `Goal: ${currentGoal}\n\nClarifying Questions:\n${currentQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}\n\nMy Answers:\n${answers}`
+    
+    try {
+      const res = await chrome.runtime.sendMessage({
+        type: 'ENGINEER_PROMPT',
+        message: combinedMessage,
+        template: currentTemplate
+      })
+      
+      loader.remove()
+      
+      if (res.error) {
+        addMsg('system', 'Error: ' + res.error)
+        chatInput.disabled = false
+        sendBtn.disabled = false
+        return
+      }
+      
+      addMsg('system', 'Prompt injected into chat! You can close this window.')
+      
+      // Inject into host page
+      injectIntoChat(res.engineeredPrompt, false)
+      
+      setTimeout(() => {
+        widget.style.display = 'none'
+        // Reset state
+        goalPhase.style.display = 'flex'
+        chatPhase.style.display = 'none'
+        goalInput.value = ''
+        chatInput.value = ''
+        chatInput.disabled = false
+        sendBtn.disabled = false
+      }, 3000)
+      
+    } catch (e) {
+      loader.remove()
+      addMsg('system', 'Network error.')
+      chatInput.disabled = false
+      sendBtn.disabled = false
+    }
+  })
+}
+
+function togglePromptBuilder() {
+  if (!builderShadow) injectPromptBuilderWidget()
+  const widget = builderShadow.getElementById('mw-widget')
+  
+  if (widget.style.display === 'flex') {
+    widget.style.display = 'none'
+  } else {
+    widget.style.display = 'flex'
+    // Focus goal input if we are in phase 1
+    const goalPhase = builderShadow.getElementById('mw-phase-goal')
+    if (goalPhase.style.display !== 'none') {
+      builderShadow.getElementById('mw-goal-input').focus()
+    } else {
+      builderShadow.getElementById('mw-chat-input').focus()
+    }
+  }
+}
+
+// Add a floating trigger button and hotkey
+function injectTriggerButton() {
+  if (document.getElementById('mw-floating-trigger')) return
+  
+  const btn = document.createElement('div')
+  btn.id = 'mw-floating-trigger'
+  btn.innerHTML = '??'
+  btn.title = 'Open Prompt Builder (Cmd/Ctrl + Shift + P)'
+  Object.assign(btn.style, {
+    position: 'fixed',
+    bottom: '20px',
+    right: '20px',
+    width: '40px',
+    height: '40px',
+    background: '#7c3aed',
+    borderRadius: '50%',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: '20px',
+    cursor: 'pointer',
+    boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+    zIndex: '2147483646',
+    transition: 'transform 0.2s',
+    userSelect: 'none'
+  })
+  
+  btn.onmouseover = () => btn.style.transform = 'scale(1.1)'
+  btn.onmouseout = () => btn.style.transform = 'scale(1)'
+  btn.onclick = togglePromptBuilder
+  
+  document.body.appendChild(btn)
+}
+
+document.addEventListener('keydown', (e) => {
+  // Cmd/Ctrl + Shift + P
+  if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'p') {
+    e.preventDefault()
+    togglePromptBuilder()
+  }
+})
