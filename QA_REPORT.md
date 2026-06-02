@@ -235,3 +235,30 @@ None. Storage parameters for visibility are successfully maintained and synced w
 
 ### Verdict
 APPROVED — ready to merge
+
+---
+
+## QA Report — MW-021
+Date: 2026-06-02T05:18:00-05:00
+Status: PASS
+Tested by: QA Agent
+
+### What Was Tested
+1. **Extension Popup JS Callbacks Integration**:
+   - Audited the real API bindings inside `extension/popup.js` (lines 74-177).
+   - Verified `/generate_clarifying_questions` trigger logic passing `goal`, `template`, and `api_key` payload.
+   - Verified `/engineer_prompt` trigger logic passing combined `message` strings containing initial goals, dynamic questions, and user replies.
+   - Checked the loading dialogs ('Analyzing your goal...', 'Generating final prompt...') mapping state transitions in the chat box element.
+
+### Results
+- **Dynamic Question Wiring**: PASS — Correctly transitions mock workflows to dynamic API integrations.
+- **Payload Structure Consistency**: PASS — Payload parameters align with backend request specs.
+
+### Failures Found
+None.
+
+### Regression Check
+None.
+
+### Verdict
+APPROVED — ready to merge
