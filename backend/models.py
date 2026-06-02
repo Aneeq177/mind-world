@@ -32,3 +32,12 @@ class BlendResponse(BaseModel):
     claude_url: str
     chatgpt_url: str
     summaries: list[dict]
+
+class GenerateQuestionsRequest(BaseModel):
+    goal: str
+    template: Optional[str] = "none"
+    api_key: Optional[str] = None
+
+class UpdateProfileRequest(BaseModel):
+    email: str
+    is_profile_enabled: bool

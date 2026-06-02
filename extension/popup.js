@@ -264,6 +264,36 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   })
 
+  // Personal Profile Toggle
+  const profileOptIn = document.getElementById('profile-opt-in')
+  const profileStatus = document.getElementById('profile-status')
+  
+  if (profileOptIn) {
+    chrome.storage.local.get(['mw_profile_enabled'], (res) => {
+      profileOptIn.checked = !!res.mw_profile_enabled
+    })
+    
+    profileOptIn.addEventListener('change', async (e) => {
+      const isEnabled = e.target.checked
+      await chrome.storage.local.set({ mw_profile_enabled: isEnabled })
+      
+      if (!currentEmail) return
+      
+      try {
+        await fetch(`${API_BASE}/update_profile_settings`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: currentEmail, is_profile_enabled: isEnabled })
+        })
+        profileStatus.textContent = isEnabled ? '✓ Opted in to Personal Profile' : '✓ Opted out of Personal Profile'
+        profileStatus.style.display = 'block'
+        setTimeout(() => { profileStatus.style.display = 'none' }, 3000)
+      } catch (err) {
+        // do nothing
+      }
+    })
+  }
+
   // Advanced section toggle
   advancedToggle.addEventListener('click', () => {
     const isOpen = advancedContent.style.display !== 'none'
