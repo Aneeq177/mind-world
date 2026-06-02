@@ -57,7 +57,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'ENGINEER_PROMPT') {
-    handleEngineerPrompt(message.message, message.conversationIds).then(sendResponse)
+    handleEngineerPrompt(message.message, message.template).then(sendResponse)
+    return true
+  }
+
+  if (message.type === 'GENERATE_QUESTIONS') {
+    handleGenerateQuestions(message.goal, message.template).then(sendResponse)
     return true
   }
 
@@ -192,7 +197,7 @@ async function handleSummarize(conversationIds, currentQuery) {
   }
 }
 
-async function handleEngineerPrompt(userMessage, conversationIds) {
+async function handleEngineerPrompt(userMessage, templateStr) {
   try {
     const { email, apiKey } = await getCredentials()
     if (!email) return { error: 'not_logged_in' }
@@ -204,7 +209,7 @@ async function handleEngineerPrompt(userMessage, conversationIds) {
       body: JSON.stringify({
         email,
         message: userMessage,
-        conversation_ids: conversationIds && conversationIds.length > 0 ? conversationIds : null,
+        template: templateStr || "none",
         api_key: apiKey || null
       })
     })
@@ -216,8 +221,36 @@ async function handleEngineerPrompt(userMessage, conversationIds) {
 
     const data = await response.json()
     return {
-      engineeredPrompt: data.engineered_prompt,
-      conversationsUsed: data.conversations_used
+      engineeredPrompt: data.prompt || data.engineered_prompt
+    }
+  } catch (error) {
+    return { error: error.message }
+  }
+}
+
+async function handleGenerateQuestions(goal, templateStr) {
+  try {
+    const { apiKey } = await getCredentials()
+    if (!apiKey) return { error: 'no_api_key' }
+
+    const response = await fetch(`${API_BASE}/generate_clarifying_questions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        goal: goal,
+        template: templateStr || "none",
+        api_key: apiKey || null
+      })
+    })
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}))
+      return { error: err.detail || 'Failed to generate questions' }
+    }
+
+    const data = await response.json()
+    return {
+      questions: data.questions || []
     }
   } catch (error) {
     return { error: error.message }
