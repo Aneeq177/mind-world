@@ -172,7 +172,6 @@ async function handleSummarize(conversationIds, currentQuery) {
   try {
     const { email, apiKey } = await getCredentials()
     if (!email) return { error: 'not_logged_in' }
-    if (!apiKey) return { error: 'no_api_key', message: 'Please add your Anthropic API key in the extension settings to use Engineer Prompt.' }
 
     const response = await fetch(`${API_BASE}/summarize`, {
       method: 'POST',
@@ -201,7 +200,6 @@ async function handleEngineerPrompt(userMessage, templateStr) {
   try {
     const { email, apiKey } = await getCredentials()
     if (!email) return { error: 'not_logged_in' }
-    if (!apiKey) return { error: 'no_api_key', message: 'Please add your Anthropic API key in the extension settings to use Engineer Prompt.' }
 
     const response = await fetch(`${API_BASE}/engineer_prompt`, {
       method: 'POST',
@@ -231,7 +229,6 @@ async function handleEngineerPrompt(userMessage, templateStr) {
 async function handleGenerateQuestions(goal, templateStr) {
   try {
     const { apiKey } = await getCredentials()
-    if (!apiKey) return { error: 'no_api_key' }
 
     const response = await fetch(`${API_BASE}/generate_clarifying_questions`, {
       method: 'POST',
