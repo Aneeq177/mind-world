@@ -1350,8 +1350,8 @@ function injectTriggerButton() {
   
   const btn = document.createElement('div')
   btn.id = 'mw-floating-trigger'
-  btn.innerHTML = '??'
-  btn.title = 'Open Prompt Builder (Cmd/Ctrl + Shift + P)'
+  btn.innerHTML = '✨'
+  btn.title = 'Open Prompt Builder (Ctrl/Cmd + Shift + P)'
   Object.assign(btn.style, {
     position: 'fixed',
     bottom: '20px',
