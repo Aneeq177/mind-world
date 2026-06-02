@@ -142,3 +142,30 @@ def get_user_integration(user_id: str, provider: str) -> dict:
         .eq("provider", provider)\
         .execute()
     return result.data[0] if result.data else None
+
+def get_personal_profile(user_id: str) -> dict:
+    supabase = get_supabase()
+    result = supabase.table("personal_profiles")\
+        .select("*")\
+        .eq("user_id", user_id)\
+        .execute()
+    return result.data[0] if result.data else {"user_id": user_id, "profile_data": {}, "is_profile_enabled": False}
+
+def update_personal_profile(user_id: str, profile_data: dict, is_profile_enabled: bool) -> dict:
+    supabase = get_supabase()
+    row = {
+        "user_id": user_id,
+        "profile_data": profile_data,
+        "is_profile_enabled": is_profile_enabled,
+        "updated_at": "now()"
+    }
+    result = supabase.table("personal_profiles").upsert(row, on_conflict="user_id").execute()
+    return result.data[0] if result.data else {}
+
+def get_prompt_templates() -> list[dict]:
+    supabase = get_supabase()
+    result = supabase.table("prompt_templates")\
+        .select("*")\
+        .order("created_at")\
+        .execute()
+    return result.data if result.data else []

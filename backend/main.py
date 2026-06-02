@@ -153,6 +153,12 @@ class EngineerPromptRequest(BaseModel):
     message: str
     conversation_ids: Optional[list[str]] = None
     api_key: Optional[str] = None
+    template: Optional[str] = None
+
+class UpdateProfileSettingsRequest(BaseModel):
+    email: str
+    is_profile_enabled: bool
+    profile_data: Optional[dict] = None
 
 @app.post("/summarize")
 async def summarize(request: SummarizeRequest):
@@ -252,7 +258,7 @@ async def engineer_prompt(request: EngineerPromptRequest):
     try:
         import anthropic
         from sentence_transformers import SentenceTransformer
-        from services.database import search_conversations
+        from services.database import search_conversations, get_personal_profile
 
         api_key = request.api_key or os.getenv("ANTHROPIC_API_KEY")
         if not api_key:
@@ -313,9 +319,19 @@ async def engineer_prompt(request: EngineerPromptRequest):
                 "conversations_used": 0
             }
 
+        profile = get_personal_profile(user_id)
+        profile_context = ""
+        if profile and profile.get("is_profile_enabled"):
+            profile_data = profile.get("profile_data", {})
+            if profile_data:
+                profile_context = "\n[USER'S PERSONAL PROFILE (Use this as background context)]\n"
+                for key, value in profile_data.items():
+                    profile_context += f"- {key.capitalize()}: {value}\n"
+                profile_context += "\n"
+
         system_prompt = """You are an expert prompt engineer. Transform the user's rough message into a complete, well-structured prompt that will get the best possible response from an AI assistant.
 
-You will receive the user's original message and relevant excerpts from their past AI conversations.
+You will receive the user's original message, relevant excerpts from their past AI conversations, and optionally their personal profile context.
 
 Your task:
 1. Classify the intent: advice / continuation / learning / building / decision
@@ -345,7 +361,10 @@ Rules:
 - Keep the entire output under 500 words
 - Output ONLY the engineered prompt. No preamble, no explanation, no commentary."""
 
-        user_content = f"User's message:\n{request.message}\n\nRelevant past conversations:\n{conv_context}"
+        user_content = f"User's message:\n{request.message}\n\nRelevant past conversations:\n{conv_context}\n{profile_context}"
+        
+        if request.template and request.template != "none":
+            user_content += f"\n\nPlease use the '{request.template}' prompt template structure or persona as inspiration for the engineered prompt."
 
         client = anthropic.Anthropic(api_key=api_key)
         response = client.messages.create(
@@ -362,6 +381,32 @@ Rules:
 
     except HTTPException:
         raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/templates")
+async def get_templates():
+    try:
+        from services.database import get_prompt_templates
+        templates = get_prompt_templates()
+        return {"templates": templates}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/update_profile_settings")
+async def update_profile_settings(request: UpdateProfileSettingsRequest):
+    try:
+        from services.database import get_or_create_user, get_personal_profile, update_personal_profile
+        email = request.email.lower().strip()
+        user_id = get_or_create_user(email)
+        
+        profile_data = request.profile_data
+        if profile_data is None:
+            existing = get_personal_profile(user_id)
+            profile_data = existing.get("profile_data", {})
+            
+        update_personal_profile(user_id, profile_data, request.is_profile_enabled)
+        return {"success": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
