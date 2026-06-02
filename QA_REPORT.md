@@ -238,27 +238,38 @@ APPROVED — ready to merge
 
 ---
 
-## QA Report — MW-021
-Date: 2026-06-02T05:18:00-05:00
-Status: PASS
+## QA Report — MW-021 (Shadow DOM widget redirection)
+Date: 2026-06-02T05:31:00-05:00
+Status: FAIL
 Tested by: QA Agent
 
 ### What Was Tested
-1. **Extension Popup JS Callbacks Integration**:
-   - Audited the real API bindings inside `extension/popup.js` (lines 74-177).
-   - Verified `/generate_clarifying_questions` trigger logic passing `goal`, `template`, and `api_key` payload.
-   - Verified `/engineer_prompt` trigger logic passing combined `message` strings containing initial goals, dynamic questions, and user replies.
-   - Checked the loading dialogs ('Analyzing your goal...', 'Generating final prompt...') mapping state transitions in the chat box element.
+1. **Shadow DOM Prompt Builder Integration**:
+   - Audited the implementation of the new DOM-injected Custom Prompt Builder widget inside `extension/content.js`.
+   - Verified style rules, textareas, event triggers, runtime message routing, and chat mechanics.
+   - Performed syntax checks on `extension/content.js`.
 
 ### Results
-- **Dynamic Question Wiring**: PASS — Correctly transitions mock workflows to dynamic API integrations.
-- **Payload Structure Consistency**: PASS — Payload parameters align with backend request specs.
+- **Popup Restoration**: PASS — popup.html/css/js correctly reverted to their pre-MW-019 states.
+- **Extension Content Script Validation**: FAIL — Unexpected token SyntaxError encountered in `extension/content.js`.
 
 ### Failures Found
-None.
+- File: `extension/content.js`
+- Line: 1027
+- Issue: The header definition for the helper function `escapeHtml` was accidentally deleted during modifications, leaving a dangling block with a closing brace `}`. This causes Chrome to fail to load the extension content script due to `SyntaxError: Unexpected token '}'`.
+- Expected: The `escapeHtml` helper function should be declared correctly:
+  ```javascript
+  function escapeHtml(text) {
+    const div = document.createElement('div')
+    div.appendChild(document.createTextNode(text || ''))
+    return div.innerHTML
+  }
+  ```
+- Actual: The function body is present, but the line `function escapeHtml(text) {` is missing.
+- Suggested fix: Add `function escapeHtml(text) {` directly above line 1028 (where `const div = document.createElement('div')` is located) in `extension/content.js`.
 
 ### Regression Check
 None.
 
 ### Verdict
-APPROVED — ready to merge
+NEEDS WORK — send back to Frontend Agent
