@@ -3,7 +3,8 @@ const UPLOAD_BASE = CONFIG.UPLOAD_BASE
 
 document.addEventListener('DOMContentLoaded', async () => {
   const loginView = document.getElementById('login-view')
-  const connectedView = document.getElementById('connected-view')
+  const settingsView = document.getElementById('settings-view') // formerly connected-view
+  const promptBuilderView = document.getElementById('prompt-builder-view')
   const emailInput = document.getElementById('email-input')
   const saveBtn = document.getElementById('save-btn')
   const loginError = document.getElementById('login-error')
@@ -19,21 +20,102 @@ document.addEventListener('DOMContentLoaded', async () => {
   const saveApikeyBtn = document.getElementById('save-apikey-btn')
   const apikeyStatus = document.getElementById('apikey-status')
 
+  // Prompt Builder elements
+  const openSettingsBtn = document.getElementById('open-settings-btn')
+  const backToBuilderBtn = document.getElementById('back-to-builder-btn')
+  const startBuilderBtn = document.getElementById('start-builder-btn')
+  const resetBuilderBtn = document.getElementById('reset-builder-btn')
+  const builderInputMode = document.getElementById('builder-input-mode')
+  const builderChatMode = document.getElementById('builder-chat-mode')
+  const goalInput = document.getElementById('goal-input')
+  const templateSelect = document.getElementById('template-select')
+  const useProfileContext = document.getElementById('use-profile-context')
+  const chatMessages = document.getElementById('chat-messages')
+  const chatReplyInput = document.getElementById('chat-reply-input')
+  const chatSendBtn = document.getElementById('chat-send-btn')
+
   let currentEmail = null
 
   // Load saved credentials and visibility
-  const stored = await chrome.storage.local.get(['mw_email', 'mw_api_key', 'mw_default_visibility'])
+  const stored = await chrome.storage.local.get(['mw_email', 'mw_api_key', 'mw_default_visibility', 'mw_use_profile_context'])
+  useProfileContext.checked = stored.mw_use_profile_context === true
 
   // Apply saved visibility state on open
   applyVisibilityState(stored.mw_default_visibility || 'private')
 
   if (stored.mw_email) {
-    showConnectedView(stored.mw_email, stored.mw_api_key)
+    showPromptBuilderView(stored.mw_email, stored.mw_api_key)
     loadStats(stored.mw_email)
   } else {
     loginView.style.display = 'block'
-    connectedView.style.display = 'none'
+    promptBuilderView.style.display = 'none'
+    settingsView.style.display = 'none'
   }
+
+  useProfileContext.addEventListener('change', (e) => {
+    chrome.storage.local.set({ mw_use_profile_context: e.target.checked })
+  })
+
+  openSettingsBtn.addEventListener('click', () => {
+    promptBuilderView.style.display = 'none'
+    settingsView.style.display = 'block'
+  })
+
+  backToBuilderBtn.addEventListener('click', () => {
+    settingsView.style.display = 'none'
+    promptBuilderView.style.display = 'block'
+  })
+
+  function appendChatMessage(role, text) {
+    const bubble = document.createElement('div')
+    bubble.className = `chat-bubble ${role}`
+    bubble.textContent = text
+    chatMessages.appendChild(bubble)
+    chatMessages.scrollTop = chatMessages.scrollHeight
+  }
+
+  startBuilderBtn.addEventListener('click', () => {
+    const goal = goalInput.value.trim()
+    if (!goal) return
+    
+    // Switch to chat mode
+    builderInputMode.style.display = 'none'
+    builderChatMode.style.display = 'flex'
+    chatMessages.innerHTML = '' // Clear
+    
+    // Resize popup for chat
+    document.body.style.height = '550px'
+    
+    appendChatMessage('user', goal)
+    appendChatMessage('system', 'Initializing Prompt Engineer...')
+
+    // Mock AI Clarifying Questions
+    setTimeout(() => {
+      appendChatMessage('ai', 'I have 2 clarifying questions before I generate your prompt:\n1. Who is the target audience?\n2. What tone should it be? (e.g. professional, casual)')
+    }, 1500)
+  })
+
+  chatSendBtn.addEventListener('click', () => {
+    const reply = chatReplyInput.value.trim()
+    if (!reply) return
+    appendChatMessage('user', reply)
+    chatReplyInput.value = ''
+    
+    setTimeout(() => {
+      appendChatMessage('system', 'Generating final prompt...')
+    }, 500)
+
+    setTimeout(() => {
+      appendChatMessage('ai', 'Here is your engineered prompt:\n\n"Act as an expert... [Mock Final Prompt Generated]"')
+    }, 2500)
+  })
+
+  resetBuilderBtn.addEventListener('click', () => {
+    builderChatMode.style.display = 'none'
+    builderInputMode.style.display = 'block'
+    goalInput.value = ''
+    document.body.style.height = 'auto'
+  })
 
   // Visibility toggle (inside has-workspace panel)
   document.getElementById('vis-private').addEventListener('click', async () => {
@@ -254,7 +336,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         chrome.tabs.sendMessage(tab.id, { type: 'CREDENTIALS_UPDATED', email }).catch(() => {})
       })
 
-      showConnectedView(email, null)
+      showPromptBuilderView(email, apiKey)
       loadStats(email)
 
     } catch (err) {
@@ -289,15 +371,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   logoutBtn.addEventListener('click', async () => {
     await chrome.storage.local.remove(['mw_email', 'mw_api_key'])
     currentEmail = null
-    connectedView.style.display = 'none'
+    settingsView.style.display = 'none'
+    promptBuilderView.style.display = 'none'
     loginView.style.display = 'block'
     emailInput.value = ''
   })
 
-  function showConnectedView(email, existingApiKey) {
+  function showPromptBuilderView(email, existingApiKey) {
     currentEmail = email
     loginView.style.display = 'none'
-    connectedView.style.display = 'block'
+    settingsView.style.display = 'none'
+    promptBuilderView.style.display = 'block'
     userEmail.textContent = email
 
     if (existingApiKey && apikeyStatus) {
