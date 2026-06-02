@@ -74,9 +74,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     chatMessages.scrollTop = chatMessages.scrollHeight
   }
 
-  startBuilderBtn.addEventListener('click', () => {
+  let currentBuilderGoal = ''
+  let currentBuilderTemplate = 'none'
+  let currentQuestions = []
+
+  startBuilderBtn.addEventListener('click', async () => {
     const goal = goalInput.value.trim()
     if (!goal) return
+    
+    currentBuilderGoal = goal
+    currentBuilderTemplate = templateSelect.value
     
     // Switch to chat mode
     builderInputMode.style.display = 'none'
@@ -87,27 +94,84 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.body.style.height = '550px'
     
     appendChatMessage('user', goal)
-    appendChatMessage('system', 'Initializing Prompt Engineer...')
+    
+    const stored = await chrome.storage.local.get('mw_api_key')
+    const apiKey = stored.mw_api_key || ''
 
-    // Mock AI Clarifying Questions
-    setTimeout(() => {
-      appendChatMessage('ai', 'I have 2 clarifying questions before I generate your prompt:\n1. Who is the target audience?\n2. What tone should it be? (e.g. professional, casual)')
-    }, 1500)
+    appendChatMessage('system', 'Analyzing your goal...')
+
+    try {
+      const res = await fetch(`${API_BASE}/generate_clarifying_questions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          goal: currentBuilderGoal,
+          template: currentBuilderTemplate,
+          api_key: apiKey
+        })
+      })
+
+      if (!res.ok) {
+        throw new Error('Failed to generate questions')
+      }
+
+      const data = await res.json()
+      currentQuestions = data.questions || []
+      
+      // Remove the "Analyzing..." message
+      chatMessages.lastChild.remove()
+      
+      const questionsText = 'I have a few clarifying questions before I generate your prompt:\n' + 
+        currentQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')
+        
+      appendChatMessage('ai', questionsText)
+    } catch (e) {
+      chatMessages.lastChild.remove()
+      appendChatMessage('system', 'Error analyzing goal. Try again.')
+      console.error(e)
+    }
   })
 
-  chatSendBtn.addEventListener('click', () => {
+  chatSendBtn.addEventListener('click', async () => {
     const reply = chatReplyInput.value.trim()
     if (!reply) return
     appendChatMessage('user', reply)
     chatReplyInput.value = ''
     
-    setTimeout(() => {
-      appendChatMessage('system', 'Generating final prompt...')
-    }, 500)
+    appendChatMessage('system', 'Generating final prompt...')
 
-    setTimeout(() => {
-      appendChatMessage('ai', 'Here is your engineered prompt:\n\n"Act as an expert... [Mock Final Prompt Generated]"')
-    }, 2500)
+    const stored = await chrome.storage.local.get('mw_api_key')
+    const apiKey = stored.mw_api_key || ''
+
+    // Combine goal, questions, and answers for the prompt engineer
+    const combinedMessage = `Goal: ${currentBuilderGoal}\n\nClarifying Questions:\n${currentQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}\n\nMy Answers:\n${reply}`
+
+    try {
+      const res = await fetch(`${API_BASE}/engineer_prompt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: combinedMessage,
+          template: currentBuilderTemplate,
+          api_key: apiKey
+        })
+      })
+
+      if (!res.ok) {
+        throw new Error('Failed to generate prompt')
+      }
+
+      const data = await res.json()
+      
+      // Remove the "Generating..." message
+      chatMessages.lastChild.remove()
+      
+      appendChatMessage('ai', `Here is your engineered prompt:\n\n${data.prompt}`)
+    } catch (e) {
+      chatMessages.lastChild.remove()
+      appendChatMessage('system', 'Error generating prompt. Try again.')
+      console.error(e)
+    }
   })
 
   resetBuilderBtn.addEventListener('click', () => {
@@ -115,6 +179,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     builderInputMode.style.display = 'block'
     goalInput.value = ''
     document.body.style.height = 'auto'
+    currentBuilderGoal = ''
+    currentBuilderTemplate = 'none'
+    currentQuestions = []
   })
 
   // Visibility toggle (inside has-workspace panel)
