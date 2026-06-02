@@ -160,6 +160,11 @@ class UpdateProfileSettingsRequest(BaseModel):
     is_profile_enabled: bool
     profile_data: Optional[dict] = None
 
+class ClarifyingQuestionsRequest(BaseModel):
+    goal: str
+    template: Optional[str] = None
+    api_key: Optional[str] = None
+
 @app.post("/summarize")
 async def summarize(request: SummarizeRequest):
     try:
@@ -379,6 +384,69 @@ Rules:
             "conversations_used": len(selected)
         }
 
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/generate_clarifying_questions")
+async def generate_clarifying_questions(request: ClarifyingQuestionsRequest):
+    try:
+        import anthropic
+        import json
+        
+        api_key = request.api_key or os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise HTTPException(status_code=400, detail="API key required")
+            
+        client = anthropic.Anthropic(api_key=api_key)
+        
+        system_prompt = """You are an expert AI assistant designed to help users engineer the perfect prompt.
+The user has provided an initial goal. Your task is to ask exactly 2-3 highly specific clarifying questions that will help you generate a better prompt.
+
+Return ONLY a valid JSON array of strings containing the questions.
+Do not include any other text, markdown formatting, or markdown code blocks (no ```json).
+Just the raw JSON array.
+Example: ["What programming language?", "What is the specific error message?"]
+"""
+        
+        user_content = f"User's goal: {request.goal}"
+        if request.template and request.template != "none":
+            user_content += f"\n\nThey plan to use this template context: {request.template}"
+            
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=200,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_content}]
+        )
+        
+        try:
+            # Try to parse the JSON response
+            text = response.content[0].text.strip()
+            # Strip markdown block if Claude included it despite instructions
+            if text.startswith("```json"):
+                text = text[7:]
+            if text.startswith("```"):
+                text = text[3:]
+            if text.endswith("```"):
+                text = text[:-3]
+                
+            questions = json.loads(text.strip())
+            if not isinstance(questions, list):
+                # Fallback format if dict returned
+                questions = [str(v) for v in questions.values()]
+        except json.JSONDecodeError:
+            # Fallback if Claude completely failed JSON formatting
+            text = response.content[0].text.strip()
+            questions = [line.strip('- *1234567890.') for line in text.split('\n') if line.strip()]
+            
+        # Ensure we return a default if everything failed
+        if not questions:
+            questions = ["Can you provide more details about your goal?", "What specific outcome are you looking for?"]
+            
+        return {"questions": questions[:3]}
+        
     except HTTPException:
         raise
     except Exception as e:
