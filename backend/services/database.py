@@ -166,9 +166,16 @@ def get_prompt_templates() -> list[dict]:
     supabase = get_supabase()
     result = supabase.table("prompt_templates")\
         .select("*")\
-        .order("created_at")\
+        .order("category")\
+        .order("name")\
         .execute()
-    return result.data if result.data else []
+    templates = result.data if result.data else []
+    templates.sort(key=lambda t: (
+        1 if (t.get("tier") or "standard") == "pro" else 0,
+        t.get("category") or "",
+        t.get("name") or "",
+    ))
+    return templates
 
 def get_prompt_template_by_name(name: str) -> dict | None:
     supabase = get_supabase()

@@ -1304,7 +1304,13 @@ async function openEngineerPanel(conversationIds) {
 
 
 
-  content.value = response.engineeredPrompt
+  const raw = response.engineeredPrompt || ''
+
+  content.value = typeof formatEngineeredPrompt === 'function'
+
+    ? formatEngineeredPrompt(raw)
+
+    : raw
 
   panel.dataset.conversationsUsed = String(response.conversationsUsed || 0)
 
@@ -1429,7 +1435,27 @@ function injectIntoChat(text, isLegacy) {
 
   } else if (inputField.contentEditable === 'true') {
 
-    inputField.innerText = fullText
+    const host = window.location.hostname
+
+  if (host.includes('chatgpt.com') || host.includes('claude.ai') || host.includes('gemini.google.com')) {
+
+      const blocks = fullText.split(/\n\n+/)
+
+      inputField.innerHTML = blocks.map(block => {
+
+        const lines = block.split('\n').map(l => l.trim()).filter(Boolean)
+
+        if (!lines.length) return ''
+
+        return '<p>' + lines.map(l => escapeHtml(l)).join('<br>') + '</p>'
+
+      }).join('')
+
+    } else {
+
+      inputField.innerText = fullText
+
+    }
 
 
 

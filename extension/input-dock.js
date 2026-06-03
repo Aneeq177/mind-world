@@ -4,9 +4,35 @@
 (function () {
   const DOCK_ID = 'mw-input-dock'
   const POPOVER_ID = 'mw-improve-popover-host'
-  const MAX_CHIPS = 6
+  const MAX_CHIPS = 5
 
   let cachedTemplates = []
+
+  function formatEngineeredPrompt(text) {
+    if (!text) return ''
+    let s = text.trim()
+    s = s.replace(/\n*---+\n*/g, '\n\n')
+    s = s.replace(/^---+\s*|\s*---+$/g, '')
+    s = s.replace(/\*\*([^*]+)\*\*/g, '$1')
+    const headers = [
+      'CONTEXT FROM YOUR HISTORY', 'CONTEXT ABOUT ME', 'WHO YOU ARE',
+      'WHAT YOU HAVE ALREADY EXPLORED', "WHAT I'VE ALREADY TRIED OR EXPLORED",
+      'WHAT HAS BEEN DECIDED OR RULED OUT', 'WHAT HAS BEEN DECIDED',
+      'CONSTRAINTS OR DECISIONS', 'MY REQUEST', 'YOUR QUESTION', 'YOUR TASK',
+      'WHAT I NEED FROM YOU', 'ROLE', 'CONSTRAINTS', 'OUTPUT FORMAT'
+    ]
+    headers.forEach(h => {
+      const re = new RegExp('\\s*(' + h.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[^\\n]*:)', 'gi')
+      s = s.replace(re, '\n\n$1\n')
+    })
+    s = s.replace(/\s+•\s+/g, '\n• ')
+    s = s.replace(/(?<=\S)\s+(\d+\.\s+)/g, '\n\n$1')
+    s = s.replace(/[ \t]+/g, ' ')
+    s = s.replace(/\n{3,}/g, '\n\n')
+    return s.trim()
+  }
+
+  window.formatEngineeredPrompt = formatEngineeredPrompt
   let dockHost = null
   let popoverShadow = null
   let anchoredInput = null
@@ -47,7 +73,9 @@
       { kw: ['debug', 'bug', 'error', 'code', 'function'], name: 'Code Debugger' },
       { kw: ['essay', 'paper', 'thesis', 'academic'], name: 'Academic Reviewer' },
       { kw: ['email', 'message'], name: 'Email Writer' },
+      { kw: ['cover letter', 'coverletter'], name: 'Cover Letter (CO-STAR Pro)' },
       { kw: ['interview', 'resume', 'job'], name: 'Interview Prep' },
+      { kw: ['review code', 'pull request', 'pr review'], name: 'Code Review (Staff Engineer)' },
       { kw: ['decide', 'decision', 'choose'], name: 'Decision Framework' },
       { kw: ['brainstorm', 'ideas'], name: 'Brainstorming Partner' }
     ]
@@ -75,7 +103,7 @@
     style.textContent = `
       .mw-pop {
         pointer-events: auto;
-        width: 360px;
+        width: 440px;
         max-width: calc(100vw - 24px);
         background: #111;
         border: 1px solid rgba(124,58,237,0.35);
@@ -92,7 +120,8 @@
       .mw-pop h4 { margin: 0; font-size: 13px; font-weight: 600; color: #c4b5fd; }
       .mw-pop .note { font-size: 11px; color: #888; text-align: center; }
       .mw-pop textarea {
-        width: 100%; min-height: 120px; max-height: 200px;
+        width: 100%; min-height: 180px; max-height: 320px;
+        white-space: pre-wrap;
         background: rgba(255,255,255,0.05);
         border: 1px solid rgba(255,255,255,0.12);
         border-radius: 6px; padding: 8px; color: #fff;
@@ -216,7 +245,7 @@
       <button class="btn-ghost" id="mw-pop-close">Cancel</button>
     `)
     const ta = popoverShadow.getElementById('mw-pop-preview-text')
-    if (ta) ta.value = text
+    if (ta) ta.value = formatEngineeredPrompt(text)
     popoverShadow.getElementById('mw-pop-replace').onclick = () => {
       if (typeof injectIntoChat === 'function') injectIntoChat(ta.value, false)
       closePopover()
@@ -280,8 +309,59 @@
 
   function injectTemplate(template) {
     const body = template.template || template
-    const text = typeof body === 'string' ? body : ''
+    let text = typeof body === 'string' ? body : ''
+    text = formatEngineeredPrompt(text)
     if (typeof injectIntoChat === 'function') injectIntoChat(text, false)
+  }
+
+  function openProLibrary() {
+    const list = cachedTemplates.length ? cachedTemplates : FALLBACK_TEMPLATES
+    const pro = list.filter(t => t.tier === 'pro')
+    if (!pro.length) {
+      openPopover('preview', '<p class="note">No Pro templates yet. Run the premium templates SQL migration in Supabase.</p>', `
+        <button class="btn-ghost" id="mw-pop-close">OK</button>
+      `)
+      popoverShadow.getElementById('mw-pop-close').onclick = closePopover
+      return
+    }
+    let html = '<p class="note">Pro templates — detailed prompts with attribution. Click to preview.</p><div style="max-height:200px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;">'
+    pro.forEach(t => {
+      const attr = t.attribution ? escapeHtml(t.attribution) : ''
+      html += `<button type="button" class="mw-pro-item" data-name="${escapeHtml(t.name)}" style="
+        text-align:left;padding:8px;border-radius:6px;border:1px solid rgba(124,58,237,0.3);
+        background:rgba(124,58,237,0.1);color:#e9d5ff;cursor:pointer;font-size:12px;">
+        <strong>${escapeHtml(t.name)}</strong><br><span style="color:#888;font-size:10px;">${escapeHtml(t.category || '')}</span>
+      </button>`
+    })
+    html += '</div>'
+    openPopover('preview', html, `<button class="btn-ghost" id="mw-pop-close">Close</button>`)
+    popoverShadow.querySelectorAll('.mw-pro-item').forEach(btn => {
+      btn.onclick = () => {
+        const name = btn.getAttribute('data-name')
+        const t = pro.find(x => x.name === name)
+        if (!t) return
+        const attr = t.attribution ? '<p class="note" style="font-size:10px;">' + escapeHtml(t.attribution) + '</p>' : ''
+        openPopover('preview', attr + '<textarea id="mw-pop-preview-text" spellcheck="false"></textarea>', `
+          <button class="btn-primary" id="mw-pop-replace">Use in chat</button>
+          <button class="btn-ghost" id="mw-pop-back-pro">Back</button>
+        `)
+        const ta = popoverShadow.getElementById('mw-pop-preview-text')
+        if (ta) ta.value = formatEngineeredPrompt(t.template || '')
+        popoverShadow.getElementById('mw-pop-replace').onclick = () => {
+          injectTemplate(t)
+          closePopover()
+        }
+        popoverShadow.getElementById('mw-pop-back-pro').onclick = openProLibrary
+        positionPopover()
+      }
+    })
+    popoverShadow.getElementById('mw-pop-close').onclick = closePopover
+  }
+
+  function escapeHtml(text) {
+    const d = document.createElement('div')
+    d.textContent = text || ''
+    return d.innerHTML
   }
 
   function buildDockUI(inputField) {
@@ -311,11 +391,14 @@
     function renderChips() {
       chipsWrap.innerHTML = ''
       const list = cachedTemplates.length ? cachedTemplates : FALLBACK_TEMPLATES
-      list.slice(0, MAX_CHIPS).forEach(t => {
+      const standard = list.filter(t => !t.tier || t.tier === 'standard')
+      const quick = standard.length ? standard : list
+
+      quick.slice(0, MAX_CHIPS).forEach(t => {
         const chip = document.createElement('button')
         chip.type = 'button'
-        chip.textContent = t.name
-        chip.title = t.description || t.name
+        chip.textContent = t.name.replace(/ \(.*\)$/, '')
+        chip.title = (t.description || t.name) + (t.attribution ? '\n\n' + t.attribution : '')
         chip.style.cssText = `
           padding: 4px 8px; font-size: 11px; border-radius: 12px; cursor: pointer;
           border: 1px solid rgba(124,58,237,0.35); background: rgba(124,58,237,0.15);
@@ -327,26 +410,24 @@
         chipsWrap.appendChild(chip)
       })
 
-      if (list.length > MAX_CHIPS) {
-        const more = document.createElement('select')
-        more.style.cssText = 'font-size:11px;padding:3px 6px;border-radius:6px;background:#222;color:#fff;border:1px solid #444;'
-        const opt0 = document.createElement('option')
-        opt0.value = ''
-        opt0.textContent = 'More...'
-        more.appendChild(opt0)
-        list.slice(MAX_CHIPS).forEach(t => {
-          const o = document.createElement('option')
-          o.value = t.name
-          o.textContent = t.name
-          more.appendChild(o)
-        })
-        more.onchange = () => {
-          const t = list.find(x => x.name === more.value)
-          if (t) injectTemplate(t)
-          more.value = ''
-        }
-        chipsWrap.appendChild(more)
+      const more = document.createElement('select')
+      more.style.cssText = 'font-size:11px;padding:3px 6px;border-radius:6px;background:#222;color:#fff;border:1px solid #444;max-width:110px;'
+      const opt0 = document.createElement('option')
+      opt0.value = ''
+      opt0.textContent = 'More...'
+      more.appendChild(opt0)
+      quick.slice(MAX_CHIPS).forEach(t => {
+        const o = document.createElement('option')
+        o.value = t.name
+        o.textContent = t.name
+        more.appendChild(o)
+      })
+      more.onchange = () => {
+        const t = quick.find(x => x.name === more.value)
+        if (t) injectTemplate(t)
+        more.value = ''
       }
+      if (quick.length > MAX_CHIPS) chipsWrap.appendChild(more)
     }
 
     renderChips()
@@ -368,8 +449,23 @@
       startImprove()
     }
 
+    const proBtn = document.createElement('button')
+    proBtn.type = 'button'
+    proBtn.textContent = 'Pro'
+    proBtn.title = 'Detailed prompt library (with attribution)'
+    proBtn.style.cssText = `
+      padding: 4px 10px; font-size: 11px; font-weight: 600; border-radius: 6px; cursor: pointer;
+      border: 1px solid rgba(251,191,36,0.4); background: rgba(251,191,36,0.12); color: #fcd34d;
+    `
+    proBtn.onclick = (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      openProLibrary()
+    }
+
     dock.appendChild(label)
     dock.appendChild(chipsWrap)
+    dock.appendChild(proBtn)
     dock.appendChild(improveBtn)
 
     const parent = inputField.parentElement

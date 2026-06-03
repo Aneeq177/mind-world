@@ -343,57 +343,70 @@ async def engineer_prompt(request: EngineerPromptRequest):
             if tmpl:
                 template_body = tmpl.get("template", "")
 
+        format_rules = """
+OUTPUT FORMAT (required — plain text for pasting into a chat box):
+- Use blank lines between sections (double newline). Never use --- divider lines.
+- Section titles: ALL CAPS on their own line, ending with a colon.
+- Each bullet on its own line, starting with "• " (one bullet per line, never multiple on one line).
+- Numbered lists: one item per line.
+- No markdown **bold**; plain text only.
+- Omit empty sections entirely.
+- Output ONLY the final prompt. No preamble or commentary."""
+
         if has_history:
-            system_prompt = """You are an expert prompt engineer. Transform the user's rough message into a complete, well-structured prompt that will get the best possible response from an AI assistant.
+            system_prompt = f"""You are an expert prompt engineer. Transform the user's rough message into a clear, readable prompt for an AI assistant.
 
-You will receive the user's original message, relevant excerpts from their past AI conversations, and optionally their personal profile context.
+Use past conversations and profile only for relevant facts. Never invent details.
 
-Your task:
-1. Classify the intent: advice / continuation / learning / building / decision
-2. Extract ONLY facts, decisions, preferences, and constraints from past conversations that are genuinely relevant to this specific question
-3. Engineer a complete prompt using EXACTLY this format:
+Use this structure (include only sections that have content):
 
----
-[CONTEXT FROM YOUR HISTORY]
+CONTEXT ABOUT ME
 
-WHO YOU ARE (relevant to this question):
-• [relevant background facts about the user from past conversations or profile]
+• [one fact per line]
 
-WHAT YOU HAVE ALREADY EXPLORED:
-• [relevant past thinking, research, or attempts]
+WHAT I'VE ALREADY TRIED OR EXPLORED
 
-WHAT HAS BEEN DECIDED OR RULED OUT:
-• [decisions already made, things already tried]
+• [one item per line]
 
-[YOUR QUESTION]
-[the user's question reframed for clarity and specificity, with relevant constraints embedded]
----
+CONSTRAINTS OR DECISIONS
 
-Rules:
-- Omit any section that has nothing relevant to contribute — do not include empty sections
-- Reframe the question to be specific, actionable, and grounded in the user's actual situation
-- Never invent or assume information not present in the past conversations or profile
-- Keep the entire output under 500 words
-- Output ONLY the engineered prompt. No preamble, no explanation, no commentary."""
+• [one item per line]
+
+MY REQUEST
+
+[2–4 sentences: specific task, audience, and success criteria]
+
+WHAT I NEED FROM YOU
+
+1. [deliverable]
+2. [deliverable]
+
+{format_rules}"""
             user_content = f"User's message:\n{request.message}\n\nRelevant past conversations:\n{conv_context}\n{profile_context}"
         else:
-            system_prompt = """You are an expert prompt engineer. Transform the user's rough message into a complete, well-structured prompt that will get the best possible response from an AI assistant.
+            system_prompt = f"""You are an expert prompt engineer. Transform the user's rough message into a clear, readable prompt for an AI assistant.
 
-You may receive optional personal profile context and an optional prompt template scaffold.
+If a template scaffold is provided, adapt its structure to the user's situation.
 
-Your task:
-1. Classify the intent: advice / continuation / learning / building / decision
-2. Engineer a complete, specific, actionable prompt tailored to the user's goal and any clarifying answers they provided
-3. If a template scaffold is provided, adapt its structure and persona to the user's specific situation — do not copy it verbatim
+Use this structure when helpful:
 
-Format the output as a clear, ready-to-send prompt. Use sections only when they add clarity (role, context, task, constraints, desired output format).
+ROLE
 
-Rules:
-- Be specific and actionable based on what the user actually told you
-- Embed constraints and preferences from clarifying answers
-- Never invent facts about the user unless present in profile context
-- Keep the entire output under 500 words
-- Output ONLY the engineered prompt. No preamble, no explanation, no commentary."""
+[who the AI should act as]
+
+MY REQUEST
+
+[specific task]
+
+CONSTRAINTS
+
+• [one per line]
+
+WHAT I NEED FROM YOU
+
+1. [deliverable]
+
+{format_rules}"""
             user_content = f"User's message:\n{request.message}\n{profile_context}"
 
         if template_body:
@@ -413,8 +426,12 @@ Rules:
             messages=[{"role": "user", "content": user_content}]
         )
 
+        from services.prompt_format import format_engineered_prompt
+        raw_prompt = response.content[0].text
+        formatted = format_engineered_prompt(raw_prompt)
+
         return {
-            "engineered_prompt": response.content[0].text,
+            "engineered_prompt": formatted,
             "conversations_used": len(context_parts)
         }
 
