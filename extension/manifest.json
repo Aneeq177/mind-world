@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Mind World",
   "version": "1.0.0",
-  "description": "Your AI conversation memory layer. Find relevant past conversations as you type.",
+  "description": "Improve your AI prompts as you type. Templates and one-click Enhance for Claude, ChatGPT, and Gemini.",
   "permissions": [
     "storage",
     "activeTab",
@@ -27,7 +27,7 @@
         "https://gemini.google.com/*",
         "https://perplexity.ai/*"
       ],
-      "js": ["content.js"],
+      "js": ["content.js", "input-dock.js"],
       "css": ["sidebar.css"],
       "run_at": "document_idle"
     }

@@ -1,94 +1,82 @@
-# Mind World — Refocused Vision
+# Mind World — Product Vision
 
 ## What It Is
-A Chrome extension that sits inside Claude, ChatGPT, and Gemini and engineers perfect prompts for you automatically. No prompt engineering knowledge required.
 
-## The Core Problem It Solves
-Most people get mediocre results from LLMs not because the AI is bad, but because their prompts are bad. The gap between how most people prompt and how expert prompt engineers prompt is enormous. Mind World closes that gap automatically.
+Mind World is a Chrome extension that lives **on the AI chat input** (Claude, ChatGPT, Gemini). It helps you write better prompts **while you compose**, so the AI gives you better answers — without learning prompt engineering.
 
-## How It Works
+## The Core Problem
 
-### Step 1 — You describe your goal in plain English
-"I want Claude to help me decide between two universities"
-"I need to debug this function"
-"I want ChatGPT to review my essay like an admissions counselor"
+Most people get mediocre results from LLMs because their **prompts** are vague, unstructured, or missing context. Mind World fixes that at the moment you type — not in a separate app or wizard.
 
-### Step 2 — The system understands your real goal
-It detects what type of task this is, what you're actually trying to achieve, and asks 2-3 targeted clarifying questions if needed to get there.
+## How It Works (User Experience)
 
-### Step 3 — It engineers the perfect prompt
-Two ways it can do this:
-- **Template mode** — picks the best pre-built professionally engineered prompt template from a curated library and adapts it to your situation
-- **Custom mode** — builds a prompt from scratch engineered specifically around your goal
+### 1. Template chips (fast path)
 
-### Step 4 — It enriches the prompt with your context
-Automatically pulls two layers of context without you doing anything:
-- **Your personal profile** — who you are, your background, situation, preferences, constraints, goals. Built passively from your conversation history and a one-time onboarding. Never have to re-explain yourself again.
-- **Relevant past conversations** — searches all your history and pulls only what actually matters for this specific goal.
+A row of small buttons sits **above the chat box**: Debug code, Review essay, Write email, and more.
 
-### Step 5 — Injects everything cleanly into the chat
-One click. The perfectly engineered, personally enriched prompt lands in the chat input ready to send.
+- Tap a chip → a professional prompt scaffold drops into your input.
+- You fill in the blanks and send.
+- Works on day one — no conversation history required.
 
----
+### 2. Improve (one click)
 
-## The Two Core Features
+An **Improve** button sits next to the chat input.
 
-### 1. Template Library
-A curated collection of professionally engineered prompt templates covering the most common use cases:
-- **Academic** — admissions counselor, essay reviewer, study planner, research assistant
-- **Technical** — code debugger, code reviewer, system architect, bug explainer
-- **Career** — resume reviewer, interview coach, career advisor, cover letter writer
-- **Personal decisions** — pros and cons analyst, decision framework, devil's advocate
-- **Professional** — email writer, meeting summarizer, strategy advisor, presentation builder
-- **Creative** — writing coach, brainstorm partner, editor, storyteller
+- Reads what you already typed.
+- Silently pulls relevant past conversations and your optional personal profile.
+- Returns a clearer, structured prompt in a small preview popover.
+- You **Replace** (or edit) in the input, then send.
 
-Each template has been engineered and evaluated for quality. User browses, searches, or gets recommended the right one based on what they describe.
+Clarifying questions appear **only** when your draft is very short or vague — inline in the popover, not a multi-step interview.
 
-### 2. Custom Prompt Builder
-When no template fits, the system builds one from scratch:
-- User describes goal in plain English
-- System classifies the goal type
-- Asks 2-3 clarifying questions to understand constraints, preferences, desired output
-- Engineers a custom prompt structure around the specific goal
-- Enriches with personal profile and relevant past context
-- Injects
+### 3. Silent context (engine, not a feature)
 
----
+**Context blending** is not a separate workflow users manage.
 
-## The Context Layer (What Makes It Personal)
+- Past conversations are captured automatically in the background.
+- When you Improve, Mind World semantically finds what matters and weaves it into the engineered prompt.
+- Optional: a one-time **personal profile** in the extension popup (background, goals, constraints).
 
-### Personal Profile
-Built from two sources:
-- **Onboarding** — one-time setup where user tells the system about themselves. Background, goals, current situation, preferences, constraints.
-- **Passive learning** — system continuously reads new conversations and updates the profile silently. Over time it knows you deeply without you doing anything.
+Users do not search, stage, or manually pick conversations for normal use.
 
-### Conversation Memory
-- Automatically captures every conversation across Claude, ChatGPT, Gemini
-- When engineering a prompt, searches all history semantically
-- Extracts only what's relevant to the current goal
-- The user never manually selects anything
+## What We Are NOT Building (Now)
 
----
+- Floating corner widget as the primary UI
+- Ctrl+Shift+P (conflicts with browser Print)
+- Sidebar memory search as the hero flow
+- Manual “select 2–4 conversations and inject context block”
+- 3D conversation map as the product
+- Company brain / team workspaces in the extension
+- Grammarly-style tab-to-accept ghost text (future phase)
 
-## Why This Works
-- **Zero learning curve** — users don't need to know anything about prompt engineering
-- **Immediately useful** — works from day one even before much history is built up
-- **Gets better over time** — the more you use it the better it knows you
-- **Works everywhere** — Claude, ChatGPT, Gemini all in one extension
-- **Saves time** — what takes an expert 10 minutes to engineer happens in seconds
+## Secondary / Later
 
----
+- **mind-world.app** — bulk import of conversation history (upload once, fuels silent memory)
+- **Advanced context** — optional “add more from history” in the Improve popover
+- **Grammarly-style suggestions** — inline ghost text as you type (v2)
+- **3D map / manual blend** — power-user tools on the web app, not the extension focus
 
-## What We Are NOT Building
-- A conversation map or visualization
-- A 3D world
-- A company brain or enterprise product
-- A standalone app
+## Architecture (Simple)
 
-The extension is the product. It lives where users already are.
+```
+User types in host chat input
+        ↓
+[Template chips]  or  [Improve button]
+        ↓
+Backend: templates DB + /engineer_prompt
+        ├── semantic search (silent memory)
+        ├── personal profile (if enabled)
+        └── Claude Haiku (structure + clarity)
+        ↓
+Preview popover → Replace in input → User sends
+```
 
----
+## The One Metric
 
-## The One Metric That Matters
-Do people get noticeably better responses from their LLM after using Mind World than before?
-If yes, the product works. Everything else follows from that.
+Do people get noticeably better LLM responses after using Mind World than before?
+
+If yes, the product works. Everything else follows.
+
+## Keyboard Shortcut
+
+**Alt+Shift+M** — Improve current draft (Mind World). Not Ctrl+Shift+P.

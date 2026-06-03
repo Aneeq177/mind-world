@@ -1,4 +1,4 @@
-// Mind World Content Script v2
+﻿// Mind World Content Script v2
 
 // Smarter injection with preview panel
 
@@ -288,8 +288,6 @@ function init() {
 
   setTimeout(() => {
 
-    injectSidebar()
-
     watchInputField()
 
     startAutoSave()
@@ -322,14 +320,6 @@ function init() {
 
   }).observe(document, { subtree: true, childList: true })
 
-
-
-  // Initialize DOM-Injected Prompt Builder
-
-  injectPromptBuilderWidget()
-
-  injectTriggerButton()
-
 }
 
 
@@ -350,11 +340,11 @@ function injectSidebar() {
 
     <div id="mw-header">
 
-      <span id="mw-logo">🌍</span>
+      <span id="mw-logo">ðŸŒ</span>
 
       <span id="mw-title">Mind World</span>
 
-      <button id="mw-close">×</button>
+      <button id="mw-close">Ã—</button>
 
     </div>
 
@@ -370,7 +360,7 @@ function injectSidebar() {
 
       />
 
-      <button id="mw-search-btn">→</button>
+      <button id="mw-search-btn">â†’</button>
 
     </div>
 
@@ -378,7 +368,7 @@ function injectSidebar() {
 
       <button id="mw-scope-personal" style="flex:1;padding:4px 8px;border-radius:4px;border:1px solid rgba(124,58,237,0.5);background:rgba(124,58,237,0.3);color:white;font-size:0.75rem;cursor:pointer;">My Memory</button>
 
-      <button id="mw-scope-company" style="flex:1;padding:4px 8px;border-radius:4px;border:1px solid rgba(255,255,255,0.1);background:transparent;color:#888;font-size:0.75rem;cursor:pointer;">🏢 Company</button>
+      <button id="mw-scope-company" style="flex:1;padding:4px 8px;border-radius:4px;border:1px solid rgba(255,255,255,0.1);background:transparent;color:#888;font-size:0.75rem;cursor:pointer;">ðŸ¢ Company</button>
 
     </div>
 
@@ -388,7 +378,7 @@ function injectSidebar() {
 
     <div id="mw-auto-engineer" style="display:none">
 
-      <button id="mw-auto-engineer-btn">⚡ Engineer Prompt</button>
+      <button id="mw-auto-engineer-btn">âš¡ Engineer Prompt</button>
 
     </div>
 
@@ -402,9 +392,9 @@ function injectSidebar() {
 
       </div>
 
-      <button id="mw-preview-btn">⚡ Engineer Prompt</button>
+      <button id="mw-preview-btn">âš¡ Engineer Prompt</button>
 
-      <button id="mw-quick-inject-btn">Just inject context →</button>
+      <button id="mw-quick-inject-btn">Just inject context â†’</button>
 
     </div>
 
@@ -414,7 +404,7 @@ function injectSidebar() {
 
         <span id="mw-preview-title">Engineered Prompt</span>
 
-        <button id="mw-preview-close">×</button>
+        <button id="mw-preview-close">Ã—</button>
 
       </div>
 
@@ -424,7 +414,7 @@ function injectSidebar() {
 
       <div id="mw-preview-actions">
 
-        <button id="mw-confirm-inject">⚡ Use This Prompt</button>
+        <button id="mw-confirm-inject">âš¡ Use This Prompt</button>
 
         <button id="mw-cancel-inject">Cancel</button>
 
@@ -432,8 +422,8 @@ function injectSidebar() {
 
       <div id="mw-sidebar-feedback" style="display:flex;align-items:center;justify-content:center;gap:8px;padding:8px 0;">
         <span style="font-size:0.7rem;color:#666;">Helpful?</span>
-        <button id="mw-sidebar-feedback-up" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:14px;">👍</button>
-        <button id="mw-sidebar-feedback-down" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:14px;">👎</button>
+        <button id="mw-sidebar-feedback-up" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:14px;">ðŸ‘</button>
+        <button id="mw-sidebar-feedback-down" style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:14px;">ðŸ‘Ž</button>
       </div>
 
     </div>
@@ -536,7 +526,7 @@ function injectSidebar() {
 
 
 
-  // Company scope hidden — prompt engineering is the focus
+  // Company scope hidden â€” prompt engineering is the focus
   const scopeDiv = document.getElementById('mw-search-scope')
   if (scopeDiv) scopeDiv.style.display = 'none'
   currentScope = 'personal'
@@ -691,7 +681,11 @@ function watchInputField() {
 
 
 
-    injectPromptBuilderButton(inputField)
+    if (typeof injectPromptBuilderButton === 'function') {
+
+      injectPromptBuilderButton(inputField)
+
+    }
 
   }
 
@@ -889,21 +883,7 @@ function handleInput(e) {
 
 
 
-  if (currentQuery.length < 15) return
-
-
-
-  searchTimeout = setTimeout(() => {
-
-    if (currentQuery !== lastQuery) {
-
-      lastQuery = currentQuery
-
-      performSearch(currentQuery)
-
-    }
-
-  }, 1500)
+  // Silent: keep currentQuery for Improve; no auto sidebar search
 
 }
 
@@ -915,7 +895,7 @@ async function performSearch(query) {
 
   if (!response_status?.loggedIn) {
 
-    updateStatus('⚠️ Please log in via the Mind World extension icon')
+    updateStatus('âš ï¸ Please log in via the Mind World extension icon')
 
     showSidebar()
 
@@ -929,7 +909,7 @@ async function performSearch(query) {
 
   if (currentScope === 'company') {
 
-    updateStatus('🏢 Searching company memory...')
+    updateStatus('ðŸ¢ Searching company memory...')
 
     showSidebar()
 
@@ -947,13 +927,13 @@ async function performSearch(query) {
 
     }
 
-    updateStatus(`🏢 ${results.length} company conversation${results.length > 1 ? 's' : ''} found`)
+    updateStatus(`ðŸ¢ ${results.length} company conversation${results.length > 1 ? 's' : ''} found`)
 
     updateResults(results, true)
 
   } else {
 
-    updateStatus('🔍 Searching your memories...')
+    updateStatus('ðŸ” Searching your memories...')
 
     showSidebar()
 
@@ -971,7 +951,7 @@ async function performSearch(query) {
 
     }
 
-    updateStatus(`✨ ${results.length} relevant conversation${results.length > 1 ? 's' : ''} found`)
+    updateStatus(`âœ¨ ${results.length} relevant conversation${results.length > 1 ? 's' : ''} found`)
 
     updateResults(results, false)
 
@@ -1049,7 +1029,7 @@ function updateResults(results, isCompany = false) {
 
       const initials = r.owner_initials || '??'
 
-      const similarity = r.similarity ? Math.round(r.similarity * 100) : '—'
+      const similarity = r.similarity ? Math.round(r.similarity * 100) : 'â€”'
 
       return `
 
@@ -1067,7 +1047,7 @@ function updateResults(results, isCompany = false) {
 
           <div class="mw-result-preview">${escapeHtml(cleanPreview)}...</div>
 
-          <div class="mw-result-meta">${r.owner_email || ''} · ${(r.created_at || '').slice(0, 10)}</div>
+          <div class="mw-result-meta">${r.owner_email || ''} Â· ${(r.created_at || '').slice(0, 10)}</div>
 
         </div>
 
@@ -1107,7 +1087,7 @@ function updateResults(results, isCompany = false) {
 
           <span class="mw-source-badge">
 
-            ${r.source === 'claude' ? '🟣' : '🟢'} ${r.source}
+            ${r.source === 'claude' ? 'ðŸŸ£' : 'ðŸŸ¢'} ${r.source}
 
           </span>
 
@@ -1125,7 +1105,7 @@ function updateResults(results, isCompany = false) {
 
         <div class="mw-result-meta">
 
-          ${r.num_messages} msgs · ${r.created_at.slice(0, 10)}
+          ${r.num_messages} msgs Â· ${r.created_at.slice(0, 10)}
 
         </div>
 
@@ -1139,7 +1119,7 @@ function updateResults(results, isCompany = false) {
 
                 data-created="${r.created_at}">
 
-          ${isStaged ? '✓ Added to inject' : '+ Add to inject'}
+          ${isStaged ? 'âœ“ Added to inject' : '+ Add to inject'}
 
         </button>
 
@@ -1258,7 +1238,7 @@ async function submitSidebarFeedback(rating) {
       templateUsed: 'none',
       conversationsUsed: parseInt(panel.dataset.conversationsUsed || '0', 10)
     })
-    updateStatus(rating === 1 ? 'Thanks for the feedback!' : 'Feedback recorded — we will improve')
+    updateStatus(rating === 1 ? 'Thanks for the feedback!' : 'Feedback recorded â€” we will improve')
   } catch (e) { /* ignore */ }
 }
 
@@ -1387,7 +1367,7 @@ async function openPreviewPanel() {
 
     } else if (response.error === 'no_api_key' || response.error === 'missing_api_key') {
 
-      content.value = '⚠️ Add your Anthropic API key to use this feature.\n\nClick the Mind World icon in your toolbar → API Settings'
+      content.value = 'âš ï¸ Add your Anthropic API key to use this feature.\n\nClick the Mind World icon in your toolbar â†’ API Settings'
 
     } else {
 
@@ -1577,7 +1557,7 @@ function debounceAutoSave() {
 
   if (saveDebounceTimer) clearTimeout(saveDebounceTimer)
 
-  // Wait 10 seconds after the last DOM mutation — by then streaming is done
+  // Wait 10 seconds after the last DOM mutation â€” by then streaming is done
 
   saveDebounceTimer = setTimeout(tryAutoSave, 10000)
 
@@ -2067,11 +2047,11 @@ function showSaveToast() {
 
   const prev = statusEl.textContent
 
-  statusEl.textContent = '✓ Saved to memory'
+  statusEl.textContent = 'âœ“ Saved to memory'
 
   setTimeout(() => {
 
-    if (statusEl.textContent === '✓ Saved to memory') {
+    if (statusEl.textContent === 'âœ“ Saved to memory') {
 
       statusEl.textContent = prev
 
@@ -2091,552 +2071,4 @@ function escapeHtml(text) {
 
 }
 
-// --- DOM INJECTED PROMPT BUILDER ---
-
-let builderWidgetHost = null
-let builderShadow = null
-let currentGoal = ''
-let currentTemplate = 'none'
-let currentQuestions = []
-let lastEngineeredPrompt = ''
-let lastConversationsUsed = 0
-let cachedTemplates = []
-
-function injectPromptBuilderWidget() {
-  if (document.getElementById('mw-prompt-widget-host')) return
-
-  builderWidgetHost = document.createElement('div')
-  builderWidgetHost.id = 'mw-prompt-widget-host'
-
-  builderShadow = builderWidgetHost.attachShadow({ mode: 'open' })
-
-  const style = document.createElement('style')
-  style.textContent = `
-    #mw-widget {
-      position: fixed;
-      bottom: 80px;
-      right: 20px;
-      width: 380px;
-      background: #111;
-      border: 1px solid rgba(124,58,237,0.3);
-      border-radius: 12px;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      color: white;
-      z-index: 2147483647;
-      display: none;
-      flex-direction: column;
-      overflow: hidden;
-    }
-    .mw-header {
-      padding: 12px 16px;
-      background: rgba(124,58,237,0.1);
-      border-bottom: 1px solid rgba(124,58,237,0.2);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-weight: 600;
-      font-size: 14px;
-    }
-    .mw-header button {
-      background: transparent;
-      border: none;
-      color: #888;
-      cursor: pointer;
-      font-size: 18px;
-      line-height: 1;
-    }
-    .mw-header button:hover { color: white; }
-    .mw-body {
-      padding: 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      max-height: 420px;
-      overflow-y: auto;
-    }
-    textarea, .preview-area {
-      width: 100%;
-      background: rgba(255,255,255,0.05);
-      border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 6px;
-      padding: 10px;
-      color: white;
-      font-size: 13px;
-      resize: vertical;
-      min-height: 60px;
-      box-sizing: border-box;
-      outline: none;
-      font-family: inherit;
-      line-height: 1.4;
-    }
-    .preview-area { min-height: 140px; max-height: 220px; }
-    textarea:focus { border-color: rgba(124,58,237,0.5); }
-    select {
-      width: 100%;
-      background: rgba(255,255,255,0.05);
-      border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 6px;
-      padding: 8px;
-      color: white;
-      font-size: 13px;
-      outline: none;
-    }
-    select option { background: #222; color: white; }
-    button.primary {
-      background: #7c3aed;
-      color: white;
-      border: none;
-      padding: 10px;
-      border-radius: 6px;
-      cursor: pointer;
-      font-weight: 600;
-      transition: background 0.2s;
-    }
-    button.primary:hover { background: #6d28d9; }
-    button.primary:disabled { background: #4c1d95; cursor: not-allowed; opacity: 0.7; }
-    button.secondary {
-      background: transparent;
-      color: #aaa;
-      border: 1px solid rgba(255,255,255,0.15);
-      padding: 8px;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 12px;
-    }
-    button.secondary:hover { color: white; border-color: rgba(255,255,255,0.3); }
-    .chat-msg {
-      padding: 10px;
-      border-radius: 8px;
-      font-size: 13px;
-      line-height: 1.4;
-      margin-bottom: 8px;
-      white-space: pre-wrap;
-    }
-    .chat-user {
-      background: rgba(124,58,237,0.2);
-      border: 1px solid rgba(124,58,237,0.3);
-      align-self: flex-end;
-      margin-left: 20px;
-    }
-    .chat-ai {
-      background: rgba(255,255,255,0.05);
-      border: 1px solid rgba(255,255,255,0.1);
-      align-self: flex-start;
-      margin-right: 20px;
-    }
-    .chat-system {
-      background: transparent;
-      color: #888;
-      font-style: italic;
-      text-align: center;
-      font-size: 12px;
-      margin: 4px 0;
-    }
-    .enrich-note {
-      font-size: 11px;
-      color: #888;
-      text-align: center;
-    }
-    .feedback-row {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      margin-top: 4px;
-    }
-    .feedback-row span { font-size: 11px; color: #666; }
-    .feedback-btn {
-      background: rgba(255,255,255,0.05);
-      border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 6px;
-      padding: 6px 12px;
-      cursor: pointer;
-      font-size: 16px;
-      line-height: 1;
-    }
-    .feedback-btn:hover { background: rgba(124,58,237,0.2); border-color: rgba(124,58,237,0.4); }
-    .feedback-btn.selected { background: rgba(124,58,237,0.3); border-color: rgba(124,58,237,0.6); }
-    label.field-label { font-size: 13px; color: #ccc; }
-  `
-
-  builderShadow.appendChild(style)
-
-  const widget = document.createElement('div')
-  widget.id = 'mw-widget'
-
-  const header = document.createElement('div')
-  header.className = 'mw-header'
-  const headerTitle = document.createElement('span')
-  headerTitle.textContent = '\u2728 Prompt Builder'
-  const closeBtn = document.createElement('button')
-  closeBtn.id = 'mw-close-widget'
-  closeBtn.textContent = '\u00d7'
-  header.appendChild(headerTitle)
-  header.appendChild(closeBtn)
-
-  const goalPhase = document.createElement('div')
-  goalPhase.id = 'mw-phase-goal'
-  goalPhase.className = 'mw-body'
-  goalPhase.innerHTML = `
-    <label class="field-label">What do you want to achieve?</label>
-    <textarea id="mw-goal-input" placeholder="e.g. I want to debug a React performance issue..."></textarea>
-    <label class="field-label">Template (Optional)</label>
-    <select id="mw-template-select"><option value="none">Loading templates...</option></select>
-    <button id="mw-start-btn" class="primary">Start Engineering</button>
-  `
-
-  const chatPhase = document.createElement('div')
-  chatPhase.id = 'mw-phase-chat'
-  chatPhase.className = 'mw-body'
-  chatPhase.style.display = 'none'
-  chatPhase.innerHTML = `
-    <div id="mw-chat-history" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;"></div>
-    <textarea id="mw-chat-input" placeholder="Your answers..."></textarea>
-    <button id="mw-send-btn" class="primary">Generate Prompt</button>
-  `
-
-  const previewPhase = document.createElement('div')
-  previewPhase.id = 'mw-phase-preview'
-  previewPhase.className = 'mw-body'
-  previewPhase.style.display = 'none'
-  previewPhase.innerHTML = `
-    <div id="mw-preview-enrich" class="enrich-note"></div>
-    <textarea id="mw-preview-text" class="preview-area" spellcheck="false"></textarea>
-    <button id="mw-inject-btn" class="primary">\u26a1 Use This Prompt</button>
-    <button id="mw-back-btn" class="secondary">Back to edit answers</button>
-    <div class="feedback-row">
-      <span>Was this prompt helpful?</span>
-      <button id="mw-feedback-up" class="feedback-btn" title="Helpful">\u{1F44D}</button>
-      <button id="mw-feedback-down" class="feedback-btn" title="Not helpful">\u{1F44E}</button>
-    </div>
-  `
-
-  widget.appendChild(header)
-  widget.appendChild(goalPhase)
-  widget.appendChild(chatPhase)
-  widget.appendChild(previewPhase)
-  builderShadow.appendChild(widget)
-  document.body.appendChild(builderWidgetHost)
-
-  setupWidgetListeners()
-  loadWidgetTemplates()
-}
-
-async function loadWidgetTemplates() {
-  if (!builderShadow) return
-  const select = builderShadow.getElementById('mw-template-select')
-  if (!select) return
-
-  try {
-    const res = await chrome.runtime.sendMessage({ type: 'GET_TEMPLATES' })
-    cachedTemplates = res.templates || []
-  } catch (e) {
-    cachedTemplates = []
-  }
-
-  select.innerHTML = ''
-  const noneOpt = document.createElement('option')
-  noneOpt.value = 'none'
-  noneOpt.textContent = 'No Template (Custom)'
-  select.appendChild(noneOpt)
-
-  const byCategory = {}
-  cachedTemplates.forEach(t => {
-    const cat = t.category || 'General'
-    if (!byCategory[cat]) byCategory[cat] = []
-    byCategory[cat].push(t)
-  })
-
-  Object.keys(byCategory).sort().forEach(cat => {
-    const group = document.createElement('optgroup')
-    group.label = cat
-    byCategory[cat].forEach(t => {
-      const opt = document.createElement('option')
-      opt.value = t.name
-      opt.textContent = t.name
-      group.appendChild(opt)
-    })
-    select.appendChild(group)
-  })
-
-  if (cachedTemplates.length === 0) {
-    const fallbacks = [
-      'Code Debugger', 'Academic Reviewer', 'Creative Copywriter',
-      'Brainstorming Partner', 'Interview Prep'
-    ]
-    fallbacks.forEach(name => {
-      const opt = document.createElement('option')
-      opt.value = name
-      opt.textContent = name
-      select.appendChild(opt)
-    })
-  }
-}
-
-function suggestTemplateForGoal(goal) {
-  if (!goal || cachedTemplates.length === 0) return 'none'
-  const lower = goal.toLowerCase()
-  const rules = [
-    { keywords: ['debug', 'bug', 'error', 'code', 'function', 'python', 'javascript', 'react'], name: 'Code Debugger' },
-    { keywords: ['essay', 'paper', 'thesis', 'academic', 'admission'], name: 'Academic Reviewer' },
-    { keywords: ['resume', 'cv', 'job', 'career', 'interview'], name: 'Interview Prep' },
-    { keywords: ['brainstorm', 'ideas', 'creative', 'marketing', 'copy'], name: 'Brainstorming Partner' },
-    { keywords: ['write', 'copy', 'headline', 'ad'], name: 'Creative Copywriter' },
-    { keywords: ['decide', 'decision', 'choose', 'pros and cons'], name: "Devil's Advocate" },
-    { keywords: ['email', 'message', 'professional'], name: 'Email Writer' },
-    { keywords: ['study', 'exam', 'learn', 'course'], name: 'Study Planner' },
-    { keywords: ['architect', 'design', 'system', 'api'], name: 'System Architect' },
-  ]
-  for (const rule of rules) {
-    if (rule.keywords.some(kw => lower.includes(kw))) {
-      const match = cachedTemplates.find(t => t.name === rule.name)
-      if (match) return match.name
-    }
-  }
-  return 'none'
-}
-
-function resetWidgetState() {
-  if (!builderShadow) return
-  builderShadow.getElementById('mw-phase-goal').style.display = 'flex'
-  builderShadow.getElementById('mw-phase-chat').style.display = 'none'
-  builderShadow.getElementById('mw-phase-preview').style.display = 'none'
-  builderShadow.getElementById('mw-goal-input').value = ''
-  builderShadow.getElementById('mw-chat-input').value = ''
-  builderShadow.getElementById('mw-chat-input').disabled = false
-  builderShadow.getElementById('mw-send-btn').disabled = false
-  builderShadow.getElementById('mw-chat-history').innerHTML = ''
-  builderShadow.getElementById('mw-template-select').value = 'none'
-  currentGoal = ''
-  currentTemplate = 'none'
-  currentQuestions = []
-  lastEngineeredPrompt = ''
-  lastConversationsUsed = 0
-}
-
-function setupWidgetListeners() {
-  const widget = builderShadow.getElementById('mw-widget')
-  const closeBtn = builderShadow.getElementById('mw-close-widget')
-  const startBtn = builderShadow.getElementById('mw-start-btn')
-  const sendBtn = builderShadow.getElementById('mw-send-btn')
-  const goalPhase = builderShadow.getElementById('mw-phase-goal')
-  const chatPhase = builderShadow.getElementById('mw-phase-chat')
-  const previewPhase = builderShadow.getElementById('mw-phase-preview')
-  const goalInput = builderShadow.getElementById('mw-goal-input')
-  const templateSelect = builderShadow.getElementById('mw-template-select')
-  const chatHistory = builderShadow.getElementById('mw-chat-history')
-  const chatInput = builderShadow.getElementById('mw-chat-input')
-  const previewText = builderShadow.getElementById('mw-preview-text')
-  const injectBtn = builderShadow.getElementById('mw-inject-btn')
-  const backBtn = builderShadow.getElementById('mw-back-btn')
-  const enrichNote = builderShadow.getElementById('mw-preview-enrich')
-  const feedbackUp = builderShadow.getElementById('mw-feedback-up')
-  const feedbackDown = builderShadow.getElementById('mw-feedback-down')
-
-  closeBtn.addEventListener('click', () => {
-    widget.style.display = 'none'
-    resetWidgetState()
-  })
-
-  goalInput.addEventListener('blur', () => {
-    const suggested = suggestTemplateForGoal(goalInput.value.trim())
-    if (suggested !== 'none') templateSelect.value = suggested
-  })
-
-  function addMsg(role, text) {
-    const div = document.createElement('div')
-    div.className = 'chat-msg chat-' + role
-    div.textContent = text
-    chatHistory.appendChild(div)
-    chatHistory.scrollTop = chatHistory.scrollHeight
-    return div
-  }
-
-  function showPreview(promptText, conversationsUsed) {
-    lastEngineeredPrompt = promptText
-    lastConversationsUsed = conversationsUsed || 0
-    chatPhase.style.display = 'none'
-    previewPhase.style.display = 'flex'
-    previewText.value = promptText
-    if (conversationsUsed > 0) {
-      enrichNote.textContent = 'Enriched with ' + conversationsUsed + ' past conversation' + (conversationsUsed > 1 ? 's' : '')
-    } else {
-      enrichNote.textContent = 'Engineered from your goal and answers'
-    }
-    feedbackUp.classList.remove('selected')
-    feedbackDown.classList.remove('selected')
-  }
-
-  async function submitFeedback(rating) {
-    feedbackUp.classList.toggle('selected', rating === 1)
-    feedbackDown.classList.toggle('selected', rating === -1)
-    try {
-      await chrome.runtime.sendMessage({
-        type: 'PROMPT_FEEDBACK',
-        rating,
-        goal: currentGoal,
-        promptPreview: lastEngineeredPrompt.slice(0, 500),
-        templateUsed: currentTemplate,
-        conversationsUsed: lastConversationsUsed
-      })
-    } catch (e) { /* ignore */ }
-  }
-
-  feedbackUp.addEventListener('click', () => submitFeedback(1))
-  feedbackDown.addEventListener('click', () => submitFeedback(-1))
-
-  startBtn.addEventListener('click', async () => {
-    const goal = goalInput.value.trim()
-    if (!goal) return
-
-    currentGoal = goal
-    currentTemplate = templateSelect.value
-
-    goalPhase.style.display = 'none'
-    chatPhase.style.display = 'flex'
-    chatHistory.innerHTML = ''
-
-    addMsg('user', goal)
-    const loader = addMsg('system', 'Analyzing your goal...')
-
-    try {
-      const res = await chrome.runtime.sendMessage({
-        type: 'GENERATE_QUESTIONS',
-        goal: currentGoal,
-        template: currentTemplate
-      })
-
-      loader.remove()
-
-      if (res.error) {
-        addMsg('system', 'Error: ' + res.error)
-        return
-      }
-
-      currentQuestions = res.questions || []
-      const qText = 'I have a few clarifying questions:\n' + currentQuestions.map((q, i) => (i + 1) + '. ' + q).join('\n')
-      addMsg('ai', qText)
-      chatInput.focus()
-    } catch (e) {
-      loader.remove()
-      addMsg('system', 'Network error.')
-    }
-  })
-
-  sendBtn.addEventListener('click', async () => {
-    const answers = chatInput.value.trim()
-    if (!answers) return
-
-    addMsg('user', answers)
-    chatInput.value = ''
-    chatInput.disabled = true
-    sendBtn.disabled = true
-
-    const loader = addMsg('system', 'Engineering final prompt...')
-
-    const combinedMessage = 'Goal: ' + currentGoal + '\n\nClarifying Questions:\n' +
-      currentQuestions.map((q, i) => (i + 1) + '. ' + q).join('\n') +
-      '\n\nMy Answers:\n' + answers
-
-    try {
-      const res = await chrome.runtime.sendMessage({
-        type: 'ENGINEER_PROMPT',
-        message: combinedMessage,
-        template: currentTemplate
-      })
-
-      loader.remove()
-
-      if (res.error) {
-        addMsg('system', 'Error: ' + res.error)
-        chatInput.disabled = false
-        sendBtn.disabled = false
-        return
-      }
-
-      showPreview(res.engineeredPrompt, res.conversationsUsed)
-    } catch (e) {
-      loader.remove()
-      addMsg('system', 'Network error.')
-      chatInput.disabled = false
-      sendBtn.disabled = false
-    }
-  })
-
-  injectBtn.addEventListener('click', () => {
-    injectIntoChat(previewText.value, false)
-    widget.style.display = 'none'
-    resetWidgetState()
-  })
-
-  backBtn.addEventListener('click', () => {
-    previewPhase.style.display = 'none'
-    chatPhase.style.display = 'flex'
-    chatInput.disabled = false
-    sendBtn.disabled = false
-    chatInput.focus()
-  })
-}
-
-function togglePromptBuilder() {
-  if (!builderShadow) injectPromptBuilderWidget()
-  const widget = builderShadow.getElementById('mw-widget')
-
-  if (widget.style.display === 'flex') {
-    widget.style.display = 'none'
-  } else {
-    widget.style.display = 'flex'
-    loadWidgetTemplates()
-    const goalPhase = builderShadow.getElementById('mw-phase-goal')
-    if (goalPhase.style.display !== 'none') {
-      builderShadow.getElementById('mw-goal-input').focus()
-    } else if (builderShadow.getElementById('mw-phase-preview').style.display !== 'none') {
-      builderShadow.getElementById('mw-preview-text').focus()
-    } else {
-      builderShadow.getElementById('mw-chat-input').focus()
-    }
-  }
-}
-
-// Add a floating trigger button and hotkey
-function injectTriggerButton() {
-  if (document.getElementById('mw-floating-trigger')) return
-
-  const btn = document.createElement('div')
-  btn.id = 'mw-floating-trigger'
-  btn.textContent = '\u2728'
-  btn.title = 'Open Prompt Builder (Ctrl/Cmd + Shift + P)'
-  Object.assign(btn.style, {
-    position: 'fixed',
-    bottom: '20px',
-    right: '20px',
-    width: '40px',
-    height: '40px',
-    background: '#7c3aed',
-    borderRadius: '50%',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontSize: '20px',
-    cursor: 'pointer',
-    boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-    zIndex: '2147483646',
-    transition: 'transform 0.2s',
-    userSelect: 'none'
-  })
-
-  btn.onmouseover = () => { btn.style.transform = 'scale(1.1)' }
-  btn.onmouseout = () => { btn.style.transform = 'scale(1)' }
-  btn.onclick = togglePromptBuilder
-
-  document.body.appendChild(btn)
-}
-
-document.addEventListener('keydown', (e) => {
-  if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'p') {
-    e.preventDefault()
-    togglePromptBuilder()
-  }
-})
-
+// Prompt Builder UI lives in input-dock.js (template chips + Improve popover)
