@@ -67,7 +67,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'GET_TEMPLATES') {
-    handleGetTemplates().then(sendResponse)
+    handleGetTemplates(!!message.forceRefresh).then(sendResponse)
     return true
   }
 
@@ -270,26 +270,31 @@ async function handleGenerateQuestions(goal, templateStr) {
   }
 }
 
-async function handleGetTemplates() {
+async function handleGetTemplates(forceRefresh = false) {
   try {
-    const cached = await chrome.storage.local.get(['mw_templates', 'mw_templates_at'])
-    const cacheAge = Date.now() - (cached.mw_templates_at || 0)
-    if (cached.mw_templates && cacheAge < 3600000) {
-      return { templates: cached.mw_templates }
+    const cacheKey = 'mw_templates_v2'
+    if (!forceRefresh) {
+      const cached = await chrome.storage.local.get([cacheKey, 'mw_templates_at'])
+      const cacheAge = Date.now() - (cached.mw_templates_at || 0)
+      if (cached[cacheKey] && cacheAge < 300000) {
+        return { templates: cached[cacheKey] }
+      }
     }
 
-    const response = await fetch(`${API_BASE}/templates`)
-    if (!response.ok) return { templates: [] }
+    const response = await fetch(`${API_BASE}/templates?ts=${Date.now()}`)
+    if (!response.ok) {
+      return { templates: [], error: 'fetch_failed', status: response.status }
+    }
 
     const data = await response.json()
     const templates = data.templates || []
     await chrome.storage.local.set({
-      mw_templates: templates,
+      [cacheKey]: templates,
       mw_templates_at: Date.now()
     })
-    return { templates }
+    return { templates, proCount: templates.filter(t => (t.tier || '').toLowerCase() === 'pro').length }
   } catch (error) {
-    return { templates: [] }
+    return { templates: [], error: error.message }
   }
 }
 

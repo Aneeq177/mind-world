@@ -47,12 +47,26 @@
     { name: 'Decision Framework', template: 'You are a strategic decision advisor. Help me evaluate this decision using options, criteria, tradeoffs, and risks.\n\n[Decision:]' }
   ]
 
-  async function loadTemplates() {
+  function isProTemplate(t) {
+    if (!t) return false
+    if ((t.tier || '').toLowerCase() === 'pro') return true
+    if (t.attribution && String(t.attribution).length > 15) return true
+    if ((t.template || '').length > 500) return true
+    if (/\(.*?Pro\)/i.test(t.name || '')) return true
+    return false
+  }
+
+  async function loadTemplates(forceRefresh = false) {
     try {
-      const res = await chrome.runtime.sendMessage({ type: 'GET_TEMPLATES' })
+      const res = await chrome.runtime.sendMessage({
+        type: 'GET_TEMPLATES',
+        forceRefresh
+      })
       cachedTemplates = (res.templates && res.templates.length) ? res.templates : FALLBACK_TEMPLATES
+      return res
     } catch (e) {
       cachedTemplates = FALLBACK_TEMPLATES
+      return { templates: cachedTemplates, error: e.message }
     }
   }
 
@@ -314,11 +328,15 @@
     if (typeof injectIntoChat === 'function') injectIntoChat(text, false)
   }
 
-  function openProLibrary() {
+  async function openProLibrary() {
+    openPopover('loading', '<p class="note">Loading Pro templates...</p>', '')
+    await loadTemplates(true)
     const list = cachedTemplates.length ? cachedTemplates : FALLBACK_TEMPLATES
-    const pro = list.filter(t => t.tier === 'pro')
+    const pro = list.filter(isProTemplate)
     if (!pro.length) {
-      openPopover('preview', '<p class="note">No Pro templates yet. Run the premium templates SQL migration in Supabase.</p>', `
+      openPopover('preview', `<p class="note">No Pro templates found (${list.length} total loaded).</p>
+        <p class="note" style="font-size:11px;">If you ran the SQL migration, reload the extension and try again. In Supabase run:<br>
+        <code style="color:#a78bfa;">SELECT name, tier FROM prompt_templates WHERE tier = 'pro';</code></p>`, `
         <button class="btn-ghost" id="mw-pop-close">OK</button>
       `)
       popoverShadow.getElementById('mw-pop-close').onclick = closePopover
@@ -391,7 +409,7 @@
     function renderChips() {
       chipsWrap.innerHTML = ''
       const list = cachedTemplates.length ? cachedTemplates : FALLBACK_TEMPLATES
-      const standard = list.filter(t => !t.tier || t.tier === 'standard')
+      const standard = list.filter(t => !isProTemplate(t))
       const quick = standard.length ? standard : list
 
       quick.slice(0, MAX_CHIPS).forEach(t => {
