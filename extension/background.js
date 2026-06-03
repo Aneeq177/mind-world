@@ -57,12 +57,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'ENGINEER_PROMPT') {
-    handleEngineerPrompt(message.message, message.template).then(sendResponse)
+    handleEngineerPrompt(message.message, message.template, message.conversationIds).then(sendResponse)
     return true
   }
 
   if (message.type === 'GENERATE_QUESTIONS') {
     handleGenerateQuestions(message.goal, message.template).then(sendResponse)
+    return true
+  }
+
+  if (message.type === 'GET_TEMPLATES') {
+    handleGetTemplates().then(sendResponse)
+    return true
+  }
+
+  if (message.type === 'PROMPT_FEEDBACK') {
+    handlePromptFeedback(message).then(sendResponse)
     return true
   }
 
@@ -196,20 +206,25 @@ async function handleSummarize(conversationIds, currentQuery) {
   }
 }
 
-async function handleEngineerPrompt(userMessage, templateStr) {
+async function handleEngineerPrompt(userMessage, templateStr, conversationIds) {
   try {
     const { email, apiKey } = await getCredentials()
     if (!email) return { error: 'not_logged_in' }
 
+    const body = {
+      email,
+      message: userMessage,
+      template: templateStr || 'none',
+      api_key: apiKey || null
+    }
+    if (conversationIds && conversationIds.length > 0) {
+      body.conversation_ids = conversationIds
+    }
+
     const response = await fetch(`${API_BASE}/engineer_prompt`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email,
-        message: userMessage,
-        template: templateStr || "none",
-        api_key: apiKey || null
-      })
+      body: JSON.stringify(body)
     })
 
     if (!response.ok) {
@@ -219,7 +234,8 @@ async function handleEngineerPrompt(userMessage, templateStr) {
 
     const data = await response.json()
     return {
-      engineeredPrompt: data.prompt || data.engineered_prompt
+      engineeredPrompt: data.prompt || data.engineered_prompt,
+      conversationsUsed: data.conversations_used || 0
     }
   } catch (error) {
     return { error: error.message }
@@ -235,7 +251,7 @@ async function handleGenerateQuestions(goal, templateStr) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         goal: goal,
-        template: templateStr || "none",
+        template: templateStr || 'none',
         api_key: apiKey || null
       })
     })
@@ -249,6 +265,54 @@ async function handleGenerateQuestions(goal, templateStr) {
     return {
       questions: data.questions || []
     }
+  } catch (error) {
+    return { error: error.message }
+  }
+}
+
+async function handleGetTemplates() {
+  try {
+    const cached = await chrome.storage.local.get(['mw_templates', 'mw_templates_at'])
+    const cacheAge = Date.now() - (cached.mw_templates_at || 0)
+    if (cached.mw_templates && cacheAge < 3600000) {
+      return { templates: cached.mw_templates }
+    }
+
+    const response = await fetch(`${API_BASE}/templates`)
+    if (!response.ok) return { templates: [] }
+
+    const data = await response.json()
+    const templates = data.templates || []
+    await chrome.storage.local.set({
+      mw_templates: templates,
+      mw_templates_at: Date.now()
+    })
+    return { templates }
+  } catch (error) {
+    return { templates: [] }
+  }
+}
+
+async function handlePromptFeedback(message) {
+  try {
+    const { email } = await getCredentials()
+    if (!email) return { error: 'not_logged_in' }
+
+    const response = await fetch(`${API_BASE}/prompt_feedback`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email,
+        rating: message.rating,
+        goal: message.goal || '',
+        prompt_preview: message.promptPreview || '',
+        template_used: message.templateUsed || '',
+        conversations_used: message.conversationsUsed || 0
+      })
+    })
+
+    if (!response.ok) return { error: 'Failed to log feedback' }
+    return { success: true }
   } catch (error) {
     return { error: error.message }
   }

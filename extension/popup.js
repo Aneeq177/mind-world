@@ -264,32 +264,114 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   })
 
-  // Personal Profile Toggle
+  // Personal Profile Toggle + onboarding fields
   const profileOptIn = document.getElementById('profile-opt-in')
   const profileStatus = document.getElementById('profile-status')
-  
-  if (profileOptIn) {
-    chrome.storage.local.get(['mw_profile_enabled'], (res) => {
-      profileOptIn.checked = !!res.mw_profile_enabled
+  const profileFields = document.getElementById('profile-fields')
+  const saveProfileBtn = document.getElementById('save-profile-btn')
+  const profileInputs = {
+    background: document.getElementById('profile-background'),
+    situation: document.getElementById('profile-situation'),
+    goals: document.getElementById('profile-goals'),
+    constraints: document.getElementById('profile-constraints'),
+    preferences: document.getElementById('profile-preferences')
+  }
+
+  function showProfileFields(show) {
+    if (profileFields) profileFields.style.display = show ? 'flex' : 'none'
+  }
+
+  function getProfileDataFromForm() {
+    return {
+      background: profileInputs.background?.value.trim() || '',
+      situation: profileInputs.situation?.value.trim() || '',
+      goals: profileInputs.goals?.value.trim() || '',
+      constraints: profileInputs.constraints?.value.trim() || '',
+      preferences: profileInputs.preferences?.value.trim() || ''
+    }
+  }
+
+  function fillProfileForm(data) {
+    if (!data) return
+    Object.keys(profileInputs).forEach(key => {
+      if (profileInputs[key]) profileInputs[key].value = data[key] || ''
     })
-    
+  }
+
+  async function loadProfileSettings(email) {
+    if (!email) return
+    try {
+      const res = await fetch(`${API_BASE}/get_profile_settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      })
+      if (!res.ok) return
+      const data = await res.json()
+      const enabled = !!data.is_profile_enabled
+      if (profileOptIn) profileOptIn.checked = enabled
+      await chrome.storage.local.set({ mw_profile_enabled: enabled })
+      fillProfileForm(data.profile_data)
+      showProfileFields(enabled)
+    } catch (err) {
+      // use local storage fallback
+      const local = await chrome.storage.local.get(['mw_profile_enabled'])
+      if (profileOptIn) profileOptIn.checked = !!local.mw_profile_enabled
+      showProfileFields(!!local.mw_profile_enabled)
+    }
+  }
+
+  async function saveProfileSettings(isEnabled, profileData) {
+    if (!currentEmail) return false
+    try {
+      await fetch(`${API_BASE}/update_profile_settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: currentEmail,
+          is_profile_enabled: isEnabled,
+          profile_data: profileData
+        })
+      })
+      return true
+    } catch (err) {
+      return false
+    }
+  }
+
+  if (profileOptIn) {
     profileOptIn.addEventListener('change', async (e) => {
       const isEnabled = e.target.checked
       await chrome.storage.local.set({ mw_profile_enabled: isEnabled })
-      
+      showProfileFields(isEnabled)
+
       if (!currentEmail) return
-      
-      try {
-        await fetch(`${API_BASE}/update_profile_settings`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: currentEmail, is_profile_enabled: isEnabled })
-        })
-        profileStatus.textContent = isEnabled ? '✓ Opted in to Personal Profile' : '✓ Opted out of Personal Profile'
+
+      const ok = await saveProfileSettings(isEnabled, getProfileDataFromForm())
+      if (ok && profileStatus) {
+        profileStatus.textContent = isEnabled ? 'Profile enabled for prompt enrichment' : 'Profile disabled'
         profileStatus.style.display = 'block'
         setTimeout(() => { profileStatus.style.display = 'none' }, 3000)
-      } catch (err) {
-        // do nothing
+      }
+    })
+  }
+
+  if (saveProfileBtn) {
+    saveProfileBtn.addEventListener('click', async () => {
+      if (!currentEmail) return
+      saveProfileBtn.disabled = true
+      saveProfileBtn.textContent = 'Saving...'
+
+      const profileData = getProfileDataFromForm()
+      const isEnabled = profileOptIn ? profileOptIn.checked : false
+      const ok = await saveProfileSettings(isEnabled, profileData)
+
+      saveProfileBtn.disabled = false
+      saveProfileBtn.textContent = 'Save Profile'
+      if (ok && profileStatus) {
+        profileStatus.textContent = 'Profile saved'
+        profileStatus.style.display = 'block'
+        setTimeout(() => { profileStatus.style.display = 'none' }, 3000)
       }
     })
   }
@@ -329,9 +411,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     loginView.style.display = 'none'
     connectedView.style.display = 'block'
     userEmail.textContent = email
+    loadProfileSettings(email)
 
     if (existingApiKey && apikeyStatus) {
-      apikeyStatus.textContent = '✓ API key configured'
+      apikeyStatus.textContent = 'API key configured'
       apikeyStatus.className = 'apikey-saved'
     }
 
@@ -364,7 +447,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           if (onboarding) onboarding.style.display = 'block'
           if (addMoreBanner) addMoreBanner.style.display = 'none'
           if (instructions) instructions.style.display = 'none'
-          if (openMap) openMap.style.display = 'none'
+          if (openMap) openMap.style.display = 'block'
         } else if (count < 50) {
           if (onboarding) onboarding.style.display = 'none'
           if (addMoreBanner) addMoreBanner.style.display = 'flex'
@@ -380,35 +463,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch {
       convCount.textContent = '—'
       platformsCount.textContent = '—'
-    }
-
-    // Load workspace info separately
-    loadWorkspaceInfo(email)
-  }
-
-  async function loadWorkspaceInfo(email) {
-    try {
-      const res = await fetch(`${API_BASE}/workspace_info`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email })
-      })
-      if (!res.ok) { showWorkspaceState('none'); return }
-      const data = await res.json()
-
-      if (data.workspace) {
-        populateWorkspace(data.workspace)
-        showWorkspaceState('has')
-        applyVisibilityState(
-          (await chrome.storage.local.get('mw_default_visibility')).mw_default_visibility || 'private'
-        )
-        await chrome.storage.local.set({ mw_has_company: true })
-      } else {
-        await chrome.storage.local.set({ mw_has_workspace: false, mw_has_company: false })
-        showWorkspaceState('none')
-      }
-    } catch {
-      showWorkspaceState('none')
     }
   }
 })

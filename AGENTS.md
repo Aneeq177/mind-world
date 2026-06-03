@@ -69,6 +69,9 @@ embeddings (conversation_id TEXT, user_id UUID, embedding VECTOR(384))
   My Memory / Company tabs in sidebar
 - Submitted to Chrome Web Store (pending review)
 
+## Strict Extension Development Rules
+- **UTF-8 ENCODING REQUIRED:** Chrome strictly requires all extension scripts (especially `content.js` and `background.js`) to be explicitly saved with `UTF-8` encoding. If you use PowerShell to echo or pipe content (`>`), it often defaults to UTF-16LE, which will completely break the extension and throw a `Could not load file for content script. It isn't UTF-8 encoded.` error. ALWAYS verify your file encoding before pushing!
+
 ## Current Issues To Fix
 1. Company search (/company_search) returning no results even 
    though conversations are marked visibility='team' and both 

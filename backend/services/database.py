@@ -169,3 +169,30 @@ def get_prompt_templates() -> list[dict]:
         .order("created_at")\
         .execute()
     return result.data if result.data else []
+
+def get_prompt_template_by_name(name: str) -> dict | None:
+    supabase = get_supabase()
+    result = supabase.table("prompt_templates")\
+        .select("*")\
+        .eq("name", name)\
+        .limit(1)\
+        .execute()
+    return result.data[0] if result.data else None
+
+def log_prompt_feedback(
+    user_id: str,
+    rating: int,
+    goal: str = "",
+    prompt_preview: str = "",
+    template_used: str = "",
+    conversations_used: int = 0,
+) -> None:
+    supabase = get_supabase()
+    supabase.table("prompt_feedback").insert({
+        "user_id": user_id,
+        "rating": rating,
+        "goal": goal[:500] if goal else "",
+        "prompt_preview": prompt_preview[:2000] if prompt_preview else "",
+        "template_used": template_used or "",
+        "conversations_used": conversations_used,
+    }).execute()

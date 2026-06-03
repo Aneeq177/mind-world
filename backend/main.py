@@ -160,6 +160,17 @@ class UpdateProfileSettingsRequest(BaseModel):
     is_profile_enabled: bool
     profile_data: Optional[dict] = None
 
+class GetProfileSettingsRequest(BaseModel):
+    email: str
+
+class PromptFeedbackRequest(BaseModel):
+    email: str
+    rating: int  # 1 or -1
+    goal: Optional[str] = None
+    prompt_preview: Optional[str] = None
+    template_used: Optional[str] = None
+    conversations_used: Optional[int] = 0
+
 class ClarifyingQuestionsRequest(BaseModel):
     goal: str
     template: Optional[str] = None
@@ -263,7 +274,7 @@ async def engineer_prompt(request: EngineerPromptRequest):
     try:
         import anthropic
         from sentence_transformers import SentenceTransformer
-        from services.database import search_conversations, get_personal_profile
+        from services.database import search_conversations, get_personal_profile, get_prompt_template_by_name
 
         api_key = request.api_key or os.getenv("ANTHROPIC_API_KEY")
         if not api_key:
@@ -283,7 +294,6 @@ async def engineer_prompt(request: EngineerPromptRequest):
             for c in selected:
                 print(f"  - {c.get('id')} | title: {c.get('title')} | text_length: {len(c.get('full_text') or '')}")
 
-            # Fallback: try fetching by ID without user_id filter
             if not selected:
                 print("[engineer_prompt] Retrying without user_id filter")
                 from services.database import get_supabase
@@ -312,17 +322,7 @@ async def engineer_prompt(request: EngineerPromptRequest):
                     f"Content:\n{full_text[:3000]}"
                 )
         conv_context = "\n\n---\n\n".join(context_parts) if context_parts else ""
-
-        if not conv_context.strip():
-            print(f"[engineer_prompt] No context content — selected={len(selected)}, context_parts={len(context_parts)}")
-            return {
-                "engineered_prompt": (
-                    f"I need help with: {request.message}\n\n"
-                    "(Note: Could not load context from selected conversations. "
-                    "Please try re-uploading your conversation history at mind-world.app)"
-                ),
-                "conversations_used": 0
-            }
+        has_history = bool(conv_context.strip())
 
         profile = get_personal_profile(user_id)
         profile_context = ""
@@ -331,10 +331,20 @@ async def engineer_prompt(request: EngineerPromptRequest):
             if profile_data:
                 profile_context = "\n[USER'S PERSONAL PROFILE (Use this as background context)]\n"
                 for key, value in profile_data.items():
-                    profile_context += f"- {key.capitalize()}: {value}\n"
+                    if value:
+                        profile_context += f"- {key.capitalize()}: {value}\n"
                 profile_context += "\n"
 
-        system_prompt = """You are an expert prompt engineer. Transform the user's rough message into a complete, well-structured prompt that will get the best possible response from an AI assistant.
+        template_body = ""
+        template_name = ""
+        if request.template and request.template != "none":
+            template_name = request.template
+            tmpl = get_prompt_template_by_name(request.template)
+            if tmpl:
+                template_body = tmpl.get("template", "")
+
+        if has_history:
+            system_prompt = """You are an expert prompt engineer. Transform the user's rough message into a complete, well-structured prompt that will get the best possible response from an AI assistant.
 
 You will receive the user's original message, relevant excerpts from their past AI conversations, and optionally their personal profile context.
 
@@ -347,7 +357,7 @@ Your task:
 [CONTEXT FROM YOUR HISTORY]
 
 WHO YOU ARE (relevant to this question):
-• [relevant background facts about the user from past conversations]
+• [relevant background facts about the user from past conversations or profile]
 
 WHAT YOU HAVE ALREADY EXPLORED:
 • [relevant past thinking, research, or attempts]
@@ -362,14 +372,38 @@ WHAT HAS BEEN DECIDED OR RULED OUT:
 Rules:
 - Omit any section that has nothing relevant to contribute — do not include empty sections
 - Reframe the question to be specific, actionable, and grounded in the user's actual situation
-- Never invent or assume information not present in the past conversations
+- Never invent or assume information not present in the past conversations or profile
 - Keep the entire output under 500 words
 - Output ONLY the engineered prompt. No preamble, no explanation, no commentary."""
+            user_content = f"User's message:\n{request.message}\n\nRelevant past conversations:\n{conv_context}\n{profile_context}"
+        else:
+            system_prompt = """You are an expert prompt engineer. Transform the user's rough message into a complete, well-structured prompt that will get the best possible response from an AI assistant.
 
-        user_content = f"User's message:\n{request.message}\n\nRelevant past conversations:\n{conv_context}\n{profile_context}"
-        
-        if request.template and request.template != "none":
-            user_content += f"\n\nPlease use the '{request.template}' prompt template structure or persona as inspiration for the engineered prompt."
+You may receive optional personal profile context and an optional prompt template scaffold.
+
+Your task:
+1. Classify the intent: advice / continuation / learning / building / decision
+2. Engineer a complete, specific, actionable prompt tailored to the user's goal and any clarifying answers they provided
+3. If a template scaffold is provided, adapt its structure and persona to the user's specific situation — do not copy it verbatim
+
+Format the output as a clear, ready-to-send prompt. Use sections only when they add clarity (role, context, task, constraints, desired output format).
+
+Rules:
+- Be specific and actionable based on what the user actually told you
+- Embed constraints and preferences from clarifying answers
+- Never invent facts about the user unless present in profile context
+- Keep the entire output under 500 words
+- Output ONLY the engineered prompt. No preamble, no explanation, no commentary."""
+            user_content = f"User's message:\n{request.message}\n{profile_context}"
+
+        if template_body:
+            user_content += (
+                f"\n\n[PROMPT TEMPLATE SCAFFOLD — adapt this structure and persona to the user's situation]\n"
+                f"Template name: {template_name}\n"
+                f"{template_body}"
+            )
+        elif template_name:
+            user_content += f"\n\nPlease use the '{template_name}' prompt template persona as inspiration for the engineered prompt."
 
         client = anthropic.Anthropic(api_key=api_key)
         response = client.messages.create(
@@ -381,7 +415,7 @@ Rules:
 
         return {
             "engineered_prompt": response.content[0].text,
-            "conversations_used": len(selected)
+            "conversations_used": len(context_parts)
         }
 
     except HTTPException:
@@ -475,6 +509,42 @@ async def update_profile_settings(request: UpdateProfileSettingsRequest):
             
         update_personal_profile(user_id, profile_data, request.is_profile_enabled)
         return {"success": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/get_profile_settings")
+async def get_profile_settings(request: GetProfileSettingsRequest):
+    try:
+        from services.database import get_or_create_user, get_personal_profile
+        email = request.email.lower().strip()
+        user_id = get_or_create_user(email)
+        profile = get_personal_profile(user_id)
+        return {
+            "is_profile_enabled": profile.get("is_profile_enabled", False),
+            "profile_data": profile.get("profile_data", {}),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/prompt_feedback")
+async def prompt_feedback(request: PromptFeedbackRequest):
+    try:
+        from services.database import get_or_create_user, log_prompt_feedback
+        if request.rating not in (-1, 1):
+            raise HTTPException(status_code=400, detail="Rating must be 1 or -1")
+        email = request.email.lower().strip()
+        user_id = get_or_create_user(email)
+        log_prompt_feedback(
+            user_id=user_id,
+            rating=request.rating,
+            goal=request.goal or "",
+            prompt_preview=request.prompt_preview or "",
+            template_used=request.template_used or "",
+            conversations_used=request.conversations_used or 0,
+        )
+        return {"success": True}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

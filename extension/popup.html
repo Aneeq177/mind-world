@@ -13,7 +13,7 @@
         <span>Mind World</span>
       </div>
       <p id="login-subtitle">
-        Enter your email to activate your memory layer.
+        Enter your email to activate Mind World prompt engineering.
       </p>
       <div class="input-group">
         <label>Email</label>
@@ -78,21 +78,44 @@
 
       <!-- Personal Profile Section -->
       <div id="profile-section" style="margin-top:12px; padding:12px; background:rgba(255,255,255,0.03); border-radius:8px; border:1px solid rgba(255,255,255,0.06);">
-        <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
           <div>
             <div style="font-size:0.8rem; color:white; font-weight:600;">Personal Profile</div>
-            <div style="font-size:0.7rem; color:#888; margin-top:2px;">Let AI learn about you for better prompts</div>
+            <div style="font-size:0.7rem; color:#888; margin-top:2px;">Enrich prompts with your background</div>
           </div>
           <label class="switch">
             <input type="checkbox" id="profile-opt-in">
             <span class="slider round"></span>
           </label>
         </div>
+        <div id="profile-fields" style="display:none; flex-direction:column; gap:8px; margin-top:8px;">
+          <div class="input-group" style="margin:0;">
+            <label>Background</label>
+            <input type="text" id="profile-background" placeholder="e.g. CS student, 2 years React experience" />
+          </div>
+          <div class="input-group" style="margin:0;">
+            <label>Current situation</label>
+            <input type="text" id="profile-situation" placeholder="e.g. Applying to grad schools, building a startup" />
+          </div>
+          <div class="input-group" style="margin:0;">
+            <label>Goals</label>
+            <input type="text" id="profile-goals" placeholder="e.g. Land a SWE internship, launch MVP by June" />
+          </div>
+          <div class="input-group" style="margin:0;">
+            <label>Constraints</label>
+            <input type="text" id="profile-constraints" placeholder="e.g. Limited budget, 10 hrs/week" />
+          </div>
+          <div class="input-group" style="margin:0;">
+            <label>Preferences</label>
+            <input type="text" id="profile-preferences" placeholder="e.g. Concise answers, step-by-step explanations" />
+          </div>
+          <button id="save-profile-btn" style="padding:8px; border-radius:6px; border:none; background:#7c3aed; color:white; font-size:0.82rem; cursor:pointer; font-weight:600;">Save Profile</button>
+        </div>
         <div id="profile-status" style="font-size:0.72rem; color:#00FF88; margin-top:6px; display:none;"></div>
       </div>
 
-      <!-- Workspace section -->
-      <div id="workspace-section" style="margin-top:12px;">
+      <!-- Workspace section (hidden — deprioritized) -->
+      <div id="workspace-section" style="display:none; margin-top:12px;">
 
         <!-- No workspace state -->
         <div id="no-workspace" style="padding:12px;background:rgba(255,255,255,0.03);border-radius:8px;border:1px solid rgba(255,255,255,0.06);">
@@ -156,37 +179,37 @@
       <!-- Onboarding: shown when 0 conversations -->
       <div id="onboarding" style="display:none">
         <div id="no-data-box">
-          No conversations found — let's fix that.
+          Get started with prompt engineering — no history required.
         </div>
-        <div id="onboarding-title">3 steps to get started</div>
+        <div id="onboarding-title">How to use Mind World</div>
         <div class="onboarding-step">
           <span class="step-num">1</span>
           <div class="step-text">
-            <div class="step-label">Export your Claude history</div>
-            <div class="step-sub">claude.ai → Settings → Account → Export Data</div>
+            <div class="step-label">Open any AI chat</div>
+            <div class="step-sub">Works on Claude, ChatGPT, and Gemini</div>
           </div>
         </div>
         <div class="onboarding-step">
           <span class="step-num">2</span>
           <div class="step-text">
-            <div class="step-label">Export your ChatGPT history</div>
-            <div class="step-sub">chatgpt.com → Settings → Data Controls → Export Data</div>
+            <div class="step-label">Press Ctrl+Shift+P (or click the sparkle button)</div>
+            <div class="step-sub">Describe your goal in plain English</div>
           </div>
         </div>
         <div class="onboarding-step">
           <span class="step-num">3</span>
           <div class="step-text">
-            <div class="step-label">Upload both files</div>
-            <div class="step-sub">Click the button below to build your 2D map</div>
+            <div class="step-label">Review and inject your engineered prompt</div>
+            <div class="step-sub">Optionally import history at mind-world.app for richer context</div>
           </div>
         </div>
-        <button id="upload-btn">Upload My History →</button>
+        <button id="upload-btn">Import Conversation History (Optional)</button>
       </div>
 
       <!-- Normal instructions: shown when conversations exist -->
       <div id="instructions" style="display:none">
-        Start typing in Claude, ChatGPT, or Gemini and Mind World
-        will surface relevant past conversations automatically.
+        Press Ctrl+Shift+P on any AI chat to engineer a perfect prompt.
+        Your past conversations are used automatically for context.
       </div>
 
       <a
@@ -195,7 +218,7 @@
         id="open-map"
         style="display:none"
       >
-        🌍 Add more history / Open Map
+        Import more history at mind-world.app
       </a>
       <button id="logout-btn">Sign out</button>
     </div>
