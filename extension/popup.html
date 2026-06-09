@@ -13,7 +13,7 @@
         <span>Mind World</span>
       </div>
       <p id="login-subtitle">
-        Enter your email to activate Mind World prompt engineering.
+        Enter your email to get started. Takes 30 seconds.
       </p>
       <div class="input-group">
         <label>Email</label>
@@ -172,50 +172,72 @@
 
       <!-- Add more history: shown when 1-49 conversations -->
       <div id="add-more-banner" style="display:none">
-        <span>💡 More history = better Improve context</span>
-        <button id="add-more-import-btn" type="button" style="background:none;border:none;color:#a78bfa;font-size:0.75rem;cursor:pointer;padding:0;">Import more</button>
+        <span>💡 Import more chats for better memory</span>
+        <button id="add-more-import-btn" type="button" style="background:none;border:none;color:#a78bfa;font-size:0.75rem;cursor:pointer;padding:0;">Add more</button>
       </div>
 
       <!-- Onboarding: shown when 0 conversations -->
       <div id="onboarding" style="display:none">
-        <div id="no-data-box">
-          Get started with prompt engineering — no history required.
+        <div id="onboarding-hero">
+          <div id="onboarding-hero-title">Bring your past AI chats here</div>
+          <div id="onboarding-hero-sub">One-time setup. Mind World remembers everything for you.</div>
         </div>
-        <div id="onboarding-title">How to use Mind World</div>
-        <div class="onboarding-step">
-          <span class="step-num">1</span>
-          <div class="step-text">
-            <div class="step-label">Open any AI chat</div>
-            <div class="step-sub">Works on Claude, ChatGPT, and Gemini</div>
-          </div>
+
+        <div id="platform-picker">
+          <button type="button" class="platform-btn active" data-platform="chatgpt">ChatGPT</button>
+          <button type="button" class="platform-btn" data-platform="claude">Claude</button>
         </div>
-        <div class="onboarding-step">
-          <span class="step-num">2</span>
-          <div class="step-text">
-            <div class="step-label">Use template chips or click Improve above the chat</div>
-            <div class="step-sub">Shortcut: Alt+Shift+M to improve your draft</div>
-          </div>
+
+        <div id="export-guide-chatgpt" class="export-guide">
+          <div class="export-guide-title">How to download your chats</div>
+          <ol class="export-steps">
+            <li>Open <a href="https://chatgpt.com" target="_blank">chatgpt.com</a></li>
+            <li>Click your <strong>profile picture</strong> (bottom-left corner)</li>
+            <li>Click <strong>Settings</strong> → <strong>Data controls</strong></li>
+            <li>Click <strong>Export data</strong> → confirm</li>
+            <li>Check your email — OpenAI sends a download link (may take a few minutes)</li>
+            <li>Download the file — it will be a <strong>.zip</strong> file</li>
+          </ol>
         </div>
-        <div class="onboarding-step">
-          <span class="step-num">3</span>
-          <div class="step-text">
-            <div class="step-label">Review and inject your engineered prompt</div>
-            <div class="step-sub">Import past chats below so Improve pulls relevant context automatically</div>
-          </div>
+
+        <div id="export-guide-claude" class="export-guide" style="display:none">
+          <div class="export-guide-title">How to download your chats</div>
+          <ol class="export-steps">
+            <li>Open <a href="https://claude.ai" target="_blank">claude.ai</a></li>
+            <li>Click your <strong>initials</strong> (bottom-left corner)</li>
+            <li>Click <strong>Settings</strong> → <strong>Privacy</strong></li>
+            <li>Click <strong>Export data</strong></li>
+            <li>Download <strong>conversations.json</strong> when it's ready</li>
+          </ol>
         </div>
-        <button id="upload-btn">Import Conversation History</button>
+
+        <button id="upload-btn">📁 I downloaded it — upload here</button>
         <input type="file" id="import-file-input" accept=".json,.zip" style="display:none" />
-        <div id="import-status" style="display:none;font-size:0.75rem;margin-top:8px;padding:8px;border-radius:6px;text-align:center;"></div>
-        <p style="font-size:0.68rem;color:#666;margin-top:6px;text-align:center;">
-          Claude: conversations.json &nbsp;|&nbsp; ChatGPT: export .zip
-        </p>
+        <div id="import-status" style="display:none"></div>
+
+        <button type="button" id="skip-import-btn">Skip for now — I'll import later</button>
+
+        <div id="after-skip-hint" style="display:none">
+          <div class="onboarding-step">
+            <span class="step-num">1</span>
+            <div class="step-text">
+              <div class="step-label">Open Claude, ChatGPT, or Gemini</div>
+            </div>
+          </div>
+          <div class="onboarding-step">
+            <span class="step-num">2</span>
+            <div class="step-text">
+              <div class="step-label">Click <strong>Improve</strong> above the chat box</div>
+              <div class="step-sub">Or press Alt+Shift+M</div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Normal instructions: shown when conversations exist -->
       <div id="instructions" style="display:none">
-        Use the bar above the chat: templates or Improve (Alt+Shift+M).
-        Past conversations are searched automatically and shown in the preview.
-        <button id="instructions-import-btn" type="button" style="display:block;margin-top:8px;width:100%;padding:8px;border-radius:6px;border:1px solid rgba(124,58,237,0.4);background:rgba(124,58,237,0.12);color:#c4b5fd;font-size:0.8rem;cursor:pointer;">Import more history</button>
+        Click <strong>Improve</strong> above any chat to get smarter prompts using your past conversations.
+        <button id="instructions-import-btn" type="button" style="display:block;margin-top:8px;width:100%;padding:8px;border-radius:6px;border:1px solid rgba(124,58,237,0.4);background:rgba(124,58,237,0.12);color:#c4b5fd;font-size:0.8rem;cursor:pointer;">Import more chats</button>
       </div>
 
       <a
@@ -224,7 +246,7 @@
         id="open-map"
         style="display:none"
       >
-        Import more history at mind-world.app
+        View your memory map
       </a>
       <button id="logout-btn">Sign out</button>
     </div>

@@ -5,7 +5,7 @@
 }
 
 body {
-  width: 300px;
+  width: 340px;
   background: #0a0a14;
   color: white;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -311,9 +311,126 @@ body {
   color: white;
 }
 
-/* Onboarding steps */
+/* Onboarding — import-first */
 #onboarding {
   margin-bottom: 14px;
+}
+
+#onboarding-hero {
+  padding: 14px;
+  background: linear-gradient(135deg, rgba(124,58,237,0.15), rgba(91,33,182,0.08));
+  border: 1px solid rgba(124,58,237,0.25);
+  border-radius: 10px;
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+#onboarding-hero-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: white;
+  margin-bottom: 4px;
+}
+
+#onboarding-hero-sub {
+  font-size: 0.75rem;
+  color: #888;
+  line-height: 1.4;
+}
+
+#platform-picker {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.platform-btn {
+  flex: 1;
+  padding: 10px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.04);
+  color: #888;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.platform-btn.active {
+  background: rgba(124,58,237,0.2);
+  border-color: rgba(124,58,237,0.5);
+  color: #c4b5fd;
+}
+
+.platform-btn[data-platform="chatgpt"].active {
+  background: rgba(16,163,127,0.15);
+  border-color: rgba(16,163,127,0.4);
+  color: #6ee7b7;
+}
+
+.export-guide {
+  padding: 12px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+
+.export-guide-title {
+  font-size: 0.72rem;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-bottom: 8px;
+}
+
+.export-steps {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 0.78rem;
+  color: #aaa;
+  line-height: 1.55;
+}
+
+.export-steps li {
+  margin-bottom: 5px;
+}
+
+.export-steps a {
+  color: #a78bfa;
+  text-decoration: none;
+}
+
+.export-steps a:hover {
+  text-decoration: underline;
+}
+
+.export-steps strong {
+  color: #ddd;
+  font-weight: 600;
+}
+
+#skip-import-btn {
+  width: 100%;
+  padding: 8px;
+  margin-top: 8px;
+  background: none;
+  border: none;
+  color: #555;
+  font-size: 0.72rem;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+#skip-import-btn:hover {
+  color: #888;
+}
+
+#after-skip-hint {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255,255,255,0.06);
 }
 
 #onboarding-title {
@@ -373,16 +490,27 @@ body {
 
 #upload-btn {
   width: 100%;
-  padding: 11px;
+  padding: 14px 12px;
   background: linear-gradient(135deg, #7c3aed, #5b21b6);
   border: none;
   border-radius: 10px;
   color: white;
-  font-size: 0.85rem;
+  font-size: 0.88rem;
   font-weight: 600;
   cursor: pointer;
-  margin-top: 6px;
   transition: opacity 0.2s;
+}
+
+#import-status {
+  font-size: 0.75rem;
+  margin-top: 8px;
+  padding: 8px;
+  border-radius: 6px;
+  text-align: center;
+}
+
+.onboarding-collapsed {
+  display: none !important;
 }
 
 #upload-btn:hover {

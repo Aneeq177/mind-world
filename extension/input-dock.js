@@ -227,6 +227,23 @@
       .mw-pop .mw-source-item p { margin: 4px 0 0; color: #888; font-size: 10px; line-height: 1.3; }
       .mw-pop .mw-import-hint { font-size: 11px; color: #888; }
       .mw-pop .mw-import-hint a { color: #a78bfa; cursor: pointer; }
+      .mw-pop .mw-import-guide { font-size: 11px; color: #aaa; line-height: 1.5; }
+      .mw-pop .mw-import-guide ol { margin: 8px 0 0; padding-left: 18px; }
+      .mw-pop .mw-import-guide li { margin-bottom: 4px; }
+      .mw-pop .mw-import-guide .platform-tabs {
+        display: flex; gap: 6px; margin-bottom: 10px;
+      }
+      .mw-pop .mw-import-guide .platform-tab {
+        flex: 1; padding: 6px; border-radius: 6px; font-size: 10px; font-weight: 600;
+        border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.04);
+        color: #888; cursor: pointer;
+      }
+      .mw-pop .mw-import-guide .platform-tab.active {
+        background: rgba(124,58,237,0.2); border-color: rgba(124,58,237,0.4); color: #c4b5fd;
+      }
+      .mw-pop .mw-import-guide .platform-tab.gpt.active {
+        background: rgba(16,163,127,0.15); border-color: rgba(16,163,127,0.4); color: #6ee7b7;
+      }
     `
     popoverShadow.appendChild(style)
     const pop = document.createElement('div')
@@ -277,6 +294,7 @@
 
     if (mode === 'loading') title.textContent = 'Improving...'
     else if (mode === 'clarify') title.textContent = 'Quick questions'
+    else if (mode === 'import') title.textContent = 'Import your chats'
     else title.textContent = 'Review improved prompt'
 
     body.innerHTML = html
@@ -337,9 +355,64 @@
       return html
     }
     if (!conversationsUsed) {
-      return `<p class="mw-import-hint">No matching history yet. <a id="mw-import-hint-link">Import past chats</a> so Improve can pull relevant context automatically.</p>`
+      return `<p class="mw-import-hint">No past chats yet. <a id="mw-import-hint-link">Import your chat history</a> so Improve remembers what you've discussed before.</p>`
     }
     return ''
+  }
+
+  const IMPORT_STEPS = {
+    chatgpt: [
+      'Open chatgpt.com → click your profile (bottom-left)',
+      'Settings → Data controls → Export data',
+      'Check your email for the download link',
+      'Click the Mind World icon in your browser → upload the .zip file'
+    ],
+    claude: [
+      'Open claude.ai → click your initials (bottom-left)',
+      'Settings → Privacy → Export data',
+      'Download conversations.json',
+      'Click the Mind World icon in your browser → upload the file'
+    ]
+  }
+
+  function showImportGuide() {
+    openPopover('import', `
+      <div class="mw-import-guide">
+        <p style="margin:0 0 8px;color:#ccc;font-weight:600;">Import your past AI chats (one-time, ~2 min)</p>
+        <div class="platform-tabs">
+          <button type="button" class="platform-tab gpt active" data-plat="chatgpt">ChatGPT</button>
+          <button type="button" class="platform-tab" data-plat="claude">Claude</button>
+        </div>
+        <ol id="mw-import-steps">${IMPORT_STEPS.chatgpt.map(s => `<li>${s}</li>`).join('')}</ol>
+      </div>
+    `, `
+      <button class="btn-primary" id="mw-pop-open-extension">Open Mind World to upload</button>
+      <button class="btn-ghost" id="mw-pop-close">Got it</button>
+    `)
+    popoverShadow.querySelectorAll('.platform-tab').forEach(tab => {
+      tab.onclick = () => {
+        const plat = tab.dataset.plat
+        popoverShadow.querySelectorAll('.platform-tab').forEach(t => t.classList.remove('active'))
+        tab.classList.add('active')
+        const steps = popoverShadow.getElementById('mw-import-steps')
+        if (steps) steps.innerHTML = IMPORT_STEPS[plat].map(s => `<li>${s}</li>`).join('')
+      }
+    })
+    const openExt = popoverShadow.getElementById('mw-pop-open-extension')
+    if (openExt) {
+      openExt.onclick = () => {
+        const body = popoverShadow.getElementById('mw-pop-body')
+        if (body) {
+          body.innerHTML = `<p style="font-size:12px;color:#ccc;line-height:1.6;margin:0;">
+            Click the <strong>🌍 Mind World icon</strong> in your browser toolbar (top-right, next to the address bar) to upload your file.
+          </p>`
+        }
+        openExt.style.display = 'none'
+        positionPopover()
+      }
+    }
+    popoverShadow.getElementById('mw-pop-close').onclick = closePopover
+    positionPopover()
   }
 
   function showPreviewResult(text, conversationsUsed, goal, templateName, sourcesUsed) {
@@ -372,13 +445,7 @@
     if (importLink) {
       importLink.onclick = (e) => {
         e.preventDefault()
-        chrome.storage.local.get('mw_email', (stored) => {
-          const email = stored.mw_email || ''
-          const url = email
-            ? `https://mind-world.app?email=${encodeURIComponent(email)}`
-            : 'https://mind-world.app'
-          window.open(url, '_blank')
-        })
+        showImportGuide()
       }
     }
     popoverShadow.getElementById('mw-pop-replace').onclick = () => {

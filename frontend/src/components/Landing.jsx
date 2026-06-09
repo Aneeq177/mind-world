@@ -46,6 +46,8 @@ export default function Landing() {
   const [hasExistingData, setHasExistingData] = useState(false)
   const [existingCount, setExistingCount] = useState(0)
   const [checkingEmail, setCheckingEmail] = useState(false)
+  const [selectedPlatform, setSelectedPlatform] = useState('chatgpt')
+  const [showAdvanced, setShowAdvanced] = useState(false)
 
   // If the popup opened this page with ?email=..., pre-fill, jump to upload, and check for data
   useEffect(() => {
@@ -115,8 +117,24 @@ export default function Landing() {
     }
   }
 
-  // Files required only when the user has no existing data
-  const canGenerate = email && apiKey && (claudeFile || chatgptFile || hasExistingData)
+  function handleSingleFileUpload(file) {
+    if (!file) return
+    const name = file.name.toLowerCase()
+    if (name.endsWith('.json')) {
+      setClaudeFile(file)
+      setChatgptFile(null)
+      setSelectedPlatform('claude')
+    } else if (name.endsWith('.zip')) {
+      setChatgptFile(file)
+      setClaudeFile(null)
+      setSelectedPlatform('chatgpt')
+    } else {
+      setError('Please upload the .zip file from ChatGPT or conversations.json from Claude.')
+    }
+  }
+
+  const hasFile = claudeFile || chatgptFile
+  const canGenerate = email && email.includes('@') && (hasFile || hasExistingData)
 
   async function handleGenerate() {
     if (!canGenerate) return
@@ -183,19 +201,36 @@ export default function Landing() {
     )
   }
 
+  const EXPORT_STEPS = {
+    chatgpt: [
+      'Open chatgpt.com and click your profile picture (bottom-left)',
+      'Go to Settings → Data controls → Export data',
+      'Confirm the export — OpenAI emails you a download link',
+      'Download the .zip file from the email, then upload it below'
+    ],
+    claude: [
+      'Open claude.ai and click your initials (bottom-left)',
+      'Go to Settings → Privacy → Export data',
+      'Download conversations.json when it\'s ready',
+      'Upload that file below'
+    ]
+  }
+
   if (view === 'upload') {
+    const uploadedFile = claudeFile || chatgptFile
+
     return (
       <div style={{
-        width: '100vw', height: '100vh',
+        width: '100vw', minHeight: '100vh',
         overflowY: 'auto',
         display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
-        padding: 'max(48px, calc(50vh - 320px)) 24px',
+        padding: 'max(32px, calc(50vh - 380px)) 24px 48px',
         boxSizing: 'border-box',
         background: '#000008',
         backgroundImage: 'radial-gradient(ellipse at center, #0a0a1a 0%, #000008 100%)'
       }}>
         <div style={{
-          width: '480px', padding: '48px',
+          width: '520px', maxWidth: '100%', padding: '40px',
           background: 'rgba(255,255,255,0.03)',
           border: '1px solid rgba(255,255,255,0.08)',
           borderRadius: '24px', color: 'white'
@@ -204,26 +239,149 @@ export default function Landing() {
             onClick={() => setView('home')}
             style={{
               background: 'none', border: 'none', color: '#555',
-              fontSize: '0.82rem', cursor: 'pointer', marginBottom: '24px',
+              fontSize: '0.82rem', cursor: 'pointer', marginBottom: '20px',
               padding: 0, display: 'flex', alignItems: 'center', gap: '4px'
             }}
           >
             ← Back
           </button>
 
-          <div style={{ textAlign: 'center', marginBottom: '40px' }}>
-            <div style={{ fontSize: '3rem', marginBottom: '12px' }}>🌍</div>
-            <h1 style={{ fontSize: '1.8rem', fontWeight: '700', marginBottom: '8px' }}>
-              Build your map
+          <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+            <div style={{ fontSize: '2.5rem', marginBottom: '10px' }}>🌍</div>
+            <h1 style={{ fontSize: '1.6rem', fontWeight: '700', marginBottom: '8px' }}>
+              Import your AI chats
             </h1>
             <p style={{ color: '#888', fontSize: '0.9rem', lineHeight: '1.6' }}>
-              Upload your conversation exports and Mind World<br />
-              maps your AI history in 2D.
+              One-time setup. Takes about 2 minutes.
             </p>
           </div>
 
+          {hasExistingData && !checkingEmail && (
+            <div style={{
+              background: 'rgba(124,58,237,0.1)',
+              border: '1px solid rgba(124,58,237,0.3)',
+              borderRadius: '10px',
+              padding: '14px 16px',
+              marginBottom: '20px'
+            }}>
+              <div style={{ color: '#a78bfa', fontWeight: '600', marginBottom: '4px' }}>
+                ✓ You already have {existingCount} conversations saved
+              </div>
+              <button
+                onClick={handleLoadExisting}
+                style={{
+                  width: '100%', padding: '12px', marginTop: '8px',
+                  background: 'linear-gradient(135deg, #7c3aed, #5b21b6)',
+                  border: 'none', borderRadius: '8px',
+                  color: 'white', fontSize: '0.9rem', fontWeight: '600',
+                  cursor: 'pointer'
+                }}
+              >
+                Open my map →
+              </button>
+              <div style={{ color: '#555', fontSize: '0.75rem', textAlign: 'center', marginTop: '8px' }}>
+                or add more chats below
+              </div>
+            </div>
+          )}
+
+          {/* Step 1: Which AI? */}
+          <div style={{ marginBottom: '20px' }}>
+            <div style={{ fontSize: '0.75rem', color: '#666', marginBottom: '10px', fontWeight: '600' }}>
+              STEP 1 — Which AI do you use?
+            </div>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              {[
+                { id: 'chatgpt', label: 'ChatGPT', emoji: '🟢' },
+                { id: 'claude', label: 'Claude', emoji: '🟣' }
+              ].map(p => (
+                <button
+                  key={p.id}
+                  onClick={() => setSelectedPlatform(p.id)}
+                  style={{
+                    flex: 1, padding: '14px',
+                    borderRadius: '10px', cursor: 'pointer',
+                    border: selectedPlatform === p.id
+                      ? (p.id === 'chatgpt' ? '1px solid rgba(16,163,127,0.5)' : '1px solid rgba(124,58,237,0.5)')
+                      : '1px solid rgba(255,255,255,0.1)',
+                    background: selectedPlatform === p.id
+                      ? (p.id === 'chatgpt' ? 'rgba(16,163,127,0.12)' : 'rgba(124,58,237,0.12)')
+                      : 'rgba(255,255,255,0.03)',
+                    color: selectedPlatform === p.id ? 'white' : '#888',
+                    fontSize: '0.9rem', fontWeight: '600'
+                  }}
+                >
+                  {p.emoji} {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Step 2: How to download */}
+          <div style={{
+            marginBottom: '20px', padding: '16px',
+            background: 'rgba(255,255,255,0.02)',
+            border: '1px solid rgba(255,255,255,0.06)',
+            borderRadius: '12px'
+          }}>
+            <div style={{ fontSize: '0.75rem', color: '#666', marginBottom: '12px', fontWeight: '600' }}>
+              STEP 2 — Download your chats
+            </div>
+            <ol style={{ margin: 0, paddingLeft: '20px', fontSize: '0.85rem', color: '#aaa', lineHeight: '1.7' }}>
+              {EXPORT_STEPS[selectedPlatform].map((step, i) => (
+                <li key={i} style={{ marginBottom: '6px' }}>{step}</li>
+              ))}
+            </ol>
+          </div>
+
+          {/* Step 3: Upload */}
+          <div style={{ marginBottom: '16px' }}>
+            <div style={{ fontSize: '0.75rem', color: '#666', marginBottom: '10px', fontWeight: '600' }}>
+              STEP 3 — Upload the file
+            </div>
+            <label style={{
+              display: 'block', padding: '28px 20px', textAlign: 'center',
+              border: `2px dashed ${uploadedFile ? '#7c3aed' : 'rgba(255,255,255,0.15)'}`,
+              borderRadius: '14px', cursor: 'pointer',
+              background: uploadedFile ? 'rgba(124,58,237,0.08)' : 'rgba(255,255,255,0.02)',
+              transition: 'all 0.2s'
+            }}>
+              {uploadedFile ? (
+                <>
+                  <div style={{ fontSize: '1.5rem', marginBottom: '6px' }}>✓</div>
+                  <div style={{ fontSize: '0.9rem', color: '#a78bfa', fontWeight: '600' }}>
+                    {uploadedFile.name}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: '#666', marginTop: '4px' }}>
+                    Click to choose a different file
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize: '2rem', marginBottom: '8px' }}>📁</div>
+                  <div style={{ fontSize: '0.95rem', color: '#ccc', fontWeight: '600' }}>
+                    Click here to upload
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: '#555', marginTop: '4px' }}>
+                    {selectedPlatform === 'chatgpt' ? '.zip file from your email' : 'conversations.json'}
+                  </div>
+                </>
+              )}
+              <input
+                type="file"
+                accept=".json,.zip"
+                style={{ display: 'none' }}
+                onChange={e => {
+                  setError('')
+                  handleSingleFileUpload(e.target.files[0])
+                }}
+              />
+            </label>
+          </div>
+
           <input
-            type="email" placeholder="your@email.com"
+            type="email"
+            placeholder="Your email (same one you used in the extension)"
             value={email}
             onChange={e => setEmail(e.target.value)}
             onBlur={e => checkExistingData(e.target.value)}
@@ -238,87 +396,35 @@ export default function Landing() {
 
           {checkingEmail && (
             <div style={{ fontSize: '0.78rem', color: '#555', marginBottom: '12px', textAlign: 'center' }}>
-              Checking for existing data...
+              Checking your account...
             </div>
           )}
 
-          {hasExistingData && !checkingEmail && (
-            <div style={{
-              background: 'rgba(124,58,237,0.1)',
-              border: '1px solid rgba(124,58,237,0.3)',
-              borderRadius: '10px',
-              padding: '14px 16px',
-              marginBottom: '16px'
-            }}>
-              <div style={{ color: '#a78bfa', fontWeight: '600', marginBottom: '4px' }}>
-                ✓ {existingCount} conversations found
-              </div>
-              <div style={{ color: '#888', fontSize: '0.82rem', marginBottom: '10px' }}>
-                You already have data. Load your existing map or upload new files to add more.
-              </div>
-              <button
-                onClick={handleLoadExisting}
-                style={{
-                  width: '100%', padding: '12px',
-                  background: 'linear-gradient(135deg, #7c3aed, #5b21b6)',
-                  border: 'none', borderRadius: '8px',
-                  color: 'white', fontSize: '0.9rem', fontWeight: '600',
-                  cursor: 'pointer', marginBottom: '8px'
-                }}
-              >
-                🌍 Load My Existing Map
-              </button>
-              <div style={{ color: '#555', fontSize: '0.75rem', textAlign: 'center' }}>
-                or upload new files below to add more conversations
-              </div>
-            </div>
-          )}
-
-          <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
-            <label style={{
-              flex: 1, padding: '16px', textAlign: 'center',
-              border: `1px dashed ${claudeFile ? '#7c3aed' : 'rgba(255,255,255,0.15)'}`,
-              borderRadius: '12px', cursor: 'pointer',
-              background: claudeFile ? 'rgba(124,58,237,0.1)' : 'transparent',
-              transition: 'all 0.2s'
-            }}>
-              <div style={{ fontSize: '1.5rem', marginBottom: '4px' }}>🟣</div>
-              <div style={{ fontSize: '0.8rem', color: '#888' }}>
-                {claudeFile ? claudeFile.name.slice(0, 20) + '...' : 'Claude export'}
-              </div>
-              <div style={{ fontSize: '0.7rem', color: '#555', marginTop: '2px' }}>conversations.json</div>
-              <input type="file" accept=".json" style={{ display: 'none' }}
-                onChange={e => setClaudeFile(e.target.files[0])} />
-            </label>
-
-            <label style={{
-              flex: 1, padding: '16px', textAlign: 'center',
-              border: `1px dashed ${chatgptFile ? '#10a37f' : 'rgba(255,255,255,0.15)'}`,
-              borderRadius: '12px', cursor: 'pointer',
-              background: chatgptFile ? 'rgba(16,163,127,0.1)' : 'transparent',
-              transition: 'all 0.2s'
-            }}>
-              <div style={{ fontSize: '1.5rem', marginBottom: '4px' }}>🟢</div>
-              <div style={{ fontSize: '0.8rem', color: '#888' }}>
-                {chatgptFile ? chatgptFile.name.slice(0, 20) + '...' : 'ChatGPT export'}
-              </div>
-              <div style={{ fontSize: '0.7rem', color: '#555', marginTop: '2px' }}>.zip file</div>
-              <input type="file" accept=".zip" style={{ display: 'none' }}
-                onChange={e => setChatgptFile(e.target.files[0])} />
-            </label>
-          </div>
-
-          <input
-            type="password" placeholder="Anthropic API key (sk-ant-...)"
-            value={apiKey} onChange={e => setApiKey(e.target.value)}
+          <button
+            onClick={() => setShowAdvanced(!showAdvanced)}
             style={{
-              width: '100%', padding: '14px 16px',
-              background: 'rgba(255,255,255,0.05)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: '10px', color: 'white',
-              fontSize: '0.9rem', marginBottom: '24px', outline: 'none'
+              background: 'none', border: 'none', color: '#555',
+              fontSize: '0.75rem', cursor: 'pointer', marginBottom: '12px', padding: 0
             }}
-          />
+          >
+            {showAdvanced ? '▾ Hide advanced settings' : '▸ Advanced settings (optional)'}
+          </button>
+
+          {showAdvanced && (
+            <input
+              type="password"
+              placeholder="Anthropic API key (only if import fails)"
+              value={apiKey}
+              onChange={e => setApiKey(e.target.value)}
+              style={{
+                width: '100%', padding: '14px 16px',
+                background: 'rgba(255,255,255,0.05)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: '10px', color: 'white',
+                fontSize: '0.85rem', marginBottom: '16px', outline: 'none'
+              }}
+            />
+          )}
 
           {error && (
             <div style={{
@@ -333,7 +439,8 @@ export default function Landing() {
           )}
 
           <button
-            onClick={handleGenerate} disabled={!canGenerate}
+            onClick={handleGenerate}
+            disabled={!canGenerate}
             style={{
               width: '100%', padding: '16px',
               background: canGenerate
@@ -346,14 +453,14 @@ export default function Landing() {
               transition: 'all 0.2s'
             }}
           >
-            🌍 Generate My Map
+            {hasFile ? '🌍 Import & build my map' : '🌍 Open my map'}
           </button>
 
           <p style={{
             textAlign: 'center', color: '#444',
-            fontSize: '0.75rem', marginTop: '16px'
+            fontSize: '0.75rem', marginTop: '16px', lineHeight: '1.5'
           }}>
-            Your data never leaves your session
+            Your chats stay private. Only you can see them.
           </p>
         </div>
       </div>

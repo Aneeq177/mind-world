@@ -17,6 +17,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   const importStatus = document.getElementById('import-status')
   const addMoreImportBtn = document.getElementById('add-more-import-btn')
   const instructionsImportBtn = document.getElementById('instructions-import-btn')
+  const skipImportBtn = document.getElementById('skip-import-btn')
+  const afterSkipHint = document.getElementById('after-skip-hint')
+  const profileSection = document.getElementById('profile-section')
+  const advancedSection = document.getElementById('advanced-section')
+  const statsRow = document.getElementById('stats-row')
   const advancedToggle = document.getElementById('advanced-toggle')
   const advancedContent = document.getElementById('advanced-content')
   const apikeyInputConnected = document.getElementById('apikey-input-connected')
@@ -230,6 +235,45 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (importFileInput) importFileInput.click()
   }
 
+  function setOnboardingMode(isNewUser) {
+    if (profileSection) profileSection.classList.toggle('onboarding-collapsed', isNewUser)
+    if (advancedSection) advancedSection.classList.toggle('onboarding-collapsed', isNewUser)
+    if (statsRow) statsRow.classList.toggle('onboarding-collapsed', isNewUser)
+  }
+
+  // Platform picker for export instructions
+  document.querySelectorAll('.platform-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const platform = btn.dataset.platform
+      document.querySelectorAll('.platform-btn').forEach(b => b.classList.remove('active'))
+      btn.classList.add('active')
+      const chatgptGuide = document.getElementById('export-guide-chatgpt')
+      const claudeGuide = document.getElementById('export-guide-claude')
+      if (chatgptGuide) chatgptGuide.style.display = platform === 'chatgpt' ? 'block' : 'none'
+      if (claudeGuide) claudeGuide.style.display = platform === 'claude' ? 'block' : 'none'
+    })
+  })
+
+  if (skipImportBtn) {
+    skipImportBtn.addEventListener('click', () => {
+      const hero = document.getElementById('onboarding-hero')
+      const picker = document.getElementById('platform-picker')
+      const chatgptGuide = document.getElementById('export-guide-chatgpt')
+      const claudeGuide = document.getElementById('export-guide-claude')
+      if (hero) hero.style.display = 'none'
+      if (picker) picker.style.display = 'none'
+      if (chatgptGuide) chatgptGuide.style.display = 'none'
+      if (claudeGuide) claudeGuide.style.display = 'none'
+      skipImportBtn.style.display = 'none'
+      if (uploadBtn) {
+        uploadBtn.textContent = '📁 Import chats later'
+        uploadBtn.style.background = 'rgba(124,58,237,0.15)'
+        uploadBtn.style.border = '1px solid rgba(124,58,237,0.35)'
+      }
+      if (afterSkipHint) afterSkipHint.style.display = 'block'
+    })
+  }
+
   function showImportStatus(message, isError) {
     if (!importStatus) return
     importStatus.style.display = 'block'
@@ -248,7 +292,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const isClaude = name.endsWith('.json')
     const isChatgpt = name.endsWith('.zip')
     if (!isClaude && !isChatgpt) {
-      showImportStatus('Use conversations.json (Claude) or .zip (ChatGPT).', true)
+      showImportStatus('That file type won\'t work. Use the .zip from ChatGPT or conversations.json from Claude.', true)
       return
     }
 
@@ -259,7 +303,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       uploadBtn.disabled = true
       uploadBtn.textContent = 'Importing...'
     }
-    showImportStatus('Uploading and indexing conversations...', false)
+    showImportStatus('Uploading your chats... this may take a minute.', false)
 
     try {
       const form = new FormData()
@@ -278,26 +322,47 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       const data = await res.json()
       const total = data.total || 0
-      showImportStatus(`Imported ${total} conversations. Improve will use them automatically.`, false)
+      showImportStatus(`Done! ${total} conversations imported. Mind World will remember them for you.`, false)
       loadStats(currentEmail)
     } catch (err) {
       const msg = String(err.message || err)
       if (msg.includes('API key')) {
-        showImportStatus('Add an Anthropic API key in API Settings, then retry.', true)
+        showImportStatus('Import needs an API key. Open API Settings above, add your free key, then try again.', true)
+        if (advancedSection) advancedSection.classList.remove('onboarding-collapsed')
+        if (advancedContent) advancedContent.style.display = 'block'
+        if (advancedToggle) advancedToggle.classList.add('advanced-open')
+      } else if (msg.includes('No conversations')) {
+        showImportStatus('No conversations found in that file. Make sure you downloaded the full export.', true)
       } else {
         showImportStatus(msg, true)
       }
     } finally {
       if (uploadBtn) {
         uploadBtn.disabled = false
-        uploadBtn.textContent = 'Import Conversation History'
+        uploadBtn.textContent = '📁 I downloaded it — upload here'
       }
       if (importFileInput) importFileInput.value = ''
     }
   }
 
   // Import history from popup (no redirect to web app)
-  uploadBtn.addEventListener('click', () => triggerImportPicker())
+  uploadBtn.addEventListener('click', () => {
+    const picker = document.getElementById('platform-picker')
+    if (picker && picker.style.display === 'none') {
+      picker.style.display = 'flex'
+      const active = document.querySelector('.platform-btn.active')
+      const platform = active?.dataset.platform || 'chatgpt'
+      const chatgptGuide = document.getElementById('export-guide-chatgpt')
+      const claudeGuide = document.getElementById('export-guide-claude')
+      if (chatgptGuide) chatgptGuide.style.display = platform === 'chatgpt' ? 'block' : 'none'
+      if (claudeGuide) claudeGuide.style.display = platform === 'claude' ? 'block' : 'none'
+      uploadBtn.textContent = '📁 I downloaded it — upload here'
+      uploadBtn.style.background = ''
+      uploadBtn.style.border = ''
+      return
+    }
+    triggerImportPicker()
+  })
   if (addMoreImportBtn) addMoreImportBtn.addEventListener('click', () => triggerImportPicker())
   if (instructionsImportBtn) instructionsImportBtn.addEventListener('click', () => triggerImportPicker())
 
@@ -522,17 +587,20 @@ document.addEventListener('DOMContentLoaded', async () => {
           if (onboarding) onboarding.style.display = 'block'
           if (addMoreBanner) addMoreBanner.style.display = 'none'
           if (instructions) instructions.style.display = 'none'
-          if (openMap) openMap.style.display = 'block'
+          if (openMap) openMap.style.display = 'none'
+          setOnboardingMode(true)
         } else if (count < 50) {
           if (onboarding) onboarding.style.display = 'none'
           if (addMoreBanner) addMoreBanner.style.display = 'flex'
           if (instructions) instructions.style.display = 'block'
           if (openMap) openMap.style.display = 'block'
+          setOnboardingMode(false)
         } else {
           if (onboarding) onboarding.style.display = 'none'
           if (addMoreBanner) addMoreBanner.style.display = 'none'
           if (instructions) instructions.style.display = 'block'
           if (openMap) openMap.style.display = 'block'
+          setOnboardingMode(false)
         }
       }
     } catch {
