@@ -117,3 +117,9 @@ Debug by:
 1. Checking conversations have correct user_id in Supabase
 2. Checking the pgvector function parameters match what backend sends
 3. Verifying embeddings exist for team-visible conversations
+
+## Agent Workflow — Auto-push to GitHub
+After implementing requested code changes, always commit and push to GitHub.
+- Rule: `.cursor/rules/auto-push-to-github.mdc` (always applies)
+- Hook: `.cursor/hooks.json` runs on agent `stop` and reminds the agent if changes are still local
+- Skip only when the user explicitly says not to commit/push, or when there are no changes

@@ -1,0 +1,39 @@
+---
+description: Commit and push to GitHub after implementing requested code changes
+alwaysApply: true
+---
+
+# Auto-push after code changes
+
+When the user asks you to **implement, fix, build, refactor, or update** code in this repo, finish by committing and pushing to GitHub unless they explicitly say not to.
+
+## When this applies
+
+- User requested code changes and you edited project files
+- The task is complete (or you are stopping for the turn with work done)
+
+## When to skip
+
+- User only asked a question or review with no code changes
+- User explicitly said "don't commit", "don't push", or "no git"
+- There are no relevant changes to commit
+- Changes include secrets (`.env`, credentials) — warn the user instead of committing
+
+## Required workflow (end of implementation tasks)
+
+1. Run `git status` and `git diff` to review changes
+2. Stage only relevant files (never secrets or accidental junk)
+3. Commit with a clear message focused on **why** (match recent `git log` style)
+4. Push to the current branch: `git push -u origin HEAD` (or `git push` if already tracking)
+5. Tell the user the commit hash and that the push succeeded
+
+## Git safety
+
+- Never `git push --force` to `main`/`master`
+- Never update git config
+- Never skip hooks unless the user explicitly requests it
+- If push fails (auth, conflicts), report the error and what the user should do
+
+## If you cannot push
+
+Say clearly that changes are committed locally but not pushed, and include the exact error.
