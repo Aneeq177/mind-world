@@ -13,6 +13,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   const platformsCount = document.getElementById('platforms-count')
   const openMap = document.getElementById('open-map')
   const uploadBtn = document.getElementById('upload-btn')
+  const importFileInput = document.getElementById('import-file-input')
+  const importStatus = document.getElementById('import-status')
+  const addMoreImportBtn = document.getElementById('add-more-import-btn')
+  const instructionsImportBtn = document.getElementById('instructions-import-btn')
   const advancedToggle = document.getElementById('advanced-toggle')
   const advancedContent = document.getElementById('advanced-content')
   const apikeyInputConnected = document.getElementById('apikey-input-connected')
@@ -222,13 +226,87 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   })
 
-  // Upload button opens the app with email pre-filled
-  uploadBtn.addEventListener('click', () => {
-    if (currentEmail) {
-      const url = `${UPLOAD_BASE}?email=${encodeURIComponent(currentEmail)}`
-      chrome.tabs.create({ url })
+  function triggerImportPicker() {
+    if (importFileInput) importFileInput.click()
+  }
+
+  function showImportStatus(message, isError) {
+    if (!importStatus) return
+    importStatus.style.display = 'block'
+    importStatus.textContent = message
+    importStatus.style.color = isError ? '#f87171' : '#6ee7b7'
+    importStatus.style.background = isError ? 'rgba(248,113,113,0.1)' : 'rgba(110,231,183,0.1)'
+    importStatus.style.border = isError
+      ? '1px solid rgba(248,113,113,0.3)'
+      : '1px solid rgba(110,231,183,0.3)'
+  }
+
+  async function importHistoryFile(file) {
+    if (!file || !currentEmail) return
+
+    const name = (file.name || '').toLowerCase()
+    const isClaude = name.endsWith('.json')
+    const isChatgpt = name.endsWith('.zip')
+    if (!isClaude && !isChatgpt) {
+      showImportStatus('Use conversations.json (Claude) or .zip (ChatGPT).', true)
+      return
     }
-  })
+
+    const stored = await chrome.storage.local.get(['mw_api_key'])
+    const apiKey = stored.mw_api_key || ''
+
+    if (uploadBtn) {
+      uploadBtn.disabled = true
+      uploadBtn.textContent = 'Importing...'
+    }
+    showImportStatus('Uploading and indexing conversations...', false)
+
+    try {
+      const form = new FormData()
+      form.append('email', currentEmail)
+      form.append('api_key', apiKey)
+      if (isClaude) form.append('claude_file', file, file.name)
+      else form.append('chatgpt_file', file, file.name)
+
+      const res = await fetch(`${API_BASE}/process`, { method: 'POST', body: form })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        const detail = err.detail
+        const msg = typeof detail === 'string' ? detail : (Array.isArray(detail) ? detail[0]?.msg : null) || 'Import failed'
+        throw new Error(msg)
+      }
+
+      const data = await res.json()
+      const total = data.total || 0
+      showImportStatus(`Imported ${total} conversations. Improve will use them automatically.`, false)
+      loadStats(currentEmail)
+    } catch (err) {
+      const msg = String(err.message || err)
+      if (msg.includes('API key')) {
+        showImportStatus('Add an Anthropic API key in API Settings, then retry.', true)
+      } else {
+        showImportStatus(msg, true)
+      }
+    } finally {
+      if (uploadBtn) {
+        uploadBtn.disabled = false
+        uploadBtn.textContent = 'Import Conversation History'
+      }
+      if (importFileInput) importFileInput.value = ''
+    }
+  }
+
+  // Import history from popup (no redirect to web app)
+  uploadBtn.addEventListener('click', () => triggerImportPicker())
+  if (addMoreImportBtn) addMoreImportBtn.addEventListener('click', () => triggerImportPicker())
+  if (instructionsImportBtn) instructionsImportBtn.addEventListener('click', () => triggerImportPicker())
+
+  if (importFileInput) {
+    importFileInput.addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0]
+      if (file) importHistoryFile(file)
+    })
+  }
 
   // Save email (login)
   saveBtn.addEventListener('click', async () => {
@@ -438,10 +516,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const onboarding = document.getElementById('onboarding')
         const instructions = document.getElementById('instructions')
         const addMoreBanner = document.getElementById('add-more-banner')
-        const addMoreLink = document.getElementById('add-more-link')
         const uploadUrl = `${UPLOAD_BASE}?email=${encodeURIComponent(email)}`
-
-        if (addMoreLink) addMoreLink.href = uploadUrl
 
         if (count === 0) {
           if (onboarding) onboarding.style.display = 'block'

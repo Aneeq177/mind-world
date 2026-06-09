@@ -172,8 +172,8 @@
 
       <!-- Add more history: shown when 1-49 conversations -->
       <div id="add-more-banner" style="display:none">
-        <span>💡 Add more history to improve your suggestions</span>
-        <a id="add-more-link" href="#" target="_blank">Upload more →</a>
+        <span>💡 More history = better Improve context</span>
+        <button id="add-more-import-btn" type="button" style="background:none;border:none;color:#a78bfa;font-size:0.75rem;cursor:pointer;padding:0;">Import more</button>
       </div>
 
       <!-- Onboarding: shown when 0 conversations -->
@@ -200,16 +200,22 @@
           <span class="step-num">3</span>
           <div class="step-text">
             <div class="step-label">Review and inject your engineered prompt</div>
-            <div class="step-sub">Optionally import history at mind-world.app for richer context</div>
+            <div class="step-sub">Import past chats below so Improve pulls relevant context automatically</div>
           </div>
         </div>
-        <button id="upload-btn">Import Conversation History (Optional)</button>
+        <button id="upload-btn">Import Conversation History</button>
+        <input type="file" id="import-file-input" accept=".json,.zip" style="display:none" />
+        <div id="import-status" style="display:none;font-size:0.75rem;margin-top:8px;padding:8px;border-radius:6px;text-align:center;"></div>
+        <p style="font-size:0.68rem;color:#666;margin-top:6px;text-align:center;">
+          Claude: conversations.json &nbsp;|&nbsp; ChatGPT: export .zip
+        </p>
       </div>
 
       <!-- Normal instructions: shown when conversations exist -->
       <div id="instructions" style="display:none">
-        Use the Mind World bar above the chat: pick a template or click Improve (Alt+Shift+M).
-        Your past conversations are used automatically for context.
+        Use the bar above the chat: templates or Improve (Alt+Shift+M).
+        Past conversations are searched automatically and shown in the preview.
+        <button id="instructions-import-btn" type="button" style="display:block;margin-top:8px;width:100%;padding:8px;border-radius:6px;border:1px solid rgba(124,58,237,0.4);background:rgba(124,58,237,0.12);color:#c4b5fd;font-size:0.8rem;cursor:pointer;">Import more history</button>
       </div>
 
       <a

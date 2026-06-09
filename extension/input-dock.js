@@ -4,9 +4,12 @@
 (function () {
   const DOCK_ID = 'mw-input-dock'
   const POPOVER_ID = 'mw-improve-popover-host'
-  const MAX_CHIPS = 5
+  const MAX_CHIPS = 3
+  const FAVORITES_KEY = 'mw_template_favorites'
 
   let cachedTemplates = []
+  let cachedCategories = []
+  let libraryState = { q: '', category: '', tier: '', favoritesOnly: false }
 
   function formatEngineeredPrompt(text) {
     if (!text) return ''
@@ -165,6 +168,65 @@
       }
       .mw-pop .btn-ghost:hover { color: #fff; }
       .mw-pop .err { color: #f87171; font-size: 12px; }
+      .mw-pop.library { width: 520px; max-height: 70vh; }
+      .mw-pop .lib-search {
+        width: 100%; box-sizing: border-box;
+        background: rgba(255,255,255,0.05);
+        border: 1px solid rgba(255,255,255,0.12);
+        border-radius: 6px; padding: 8px 10px; color: #fff; font-size: 12px;
+      }
+      .mw-pop .lib-filters {
+        display: flex; flex-wrap: wrap; gap: 4px; max-height: 72px; overflow-y: auto;
+      }
+      .mw-pop .lib-pill {
+        padding: 3px 8px; font-size: 10px; border-radius: 12px; cursor: pointer;
+        border: 1px solid rgba(124,58,237,0.35); background: transparent; color: #aaa;
+      }
+      .mw-pop .lib-pill.active {
+        background: rgba(124,58,237,0.35); color: #e9d5ff; border-color: #7c3aed;
+      }
+      .mw-pop .lib-pill.pro-pill { border-color: rgba(251,191,36,0.4); color: #fcd34d; }
+      .mw-pop .lib-pill.pro-pill.active { background: rgba(251,191,36,0.2); }
+      .mw-pop .lib-list {
+        max-height: 280px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;
+      }
+      .mw-pop .lib-item {
+        text-align: left; padding: 8px 10px; border-radius: 6px; cursor: pointer;
+        border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.03);
+        color: #fff; font-size: 12px; display: flex; align-items: flex-start; gap: 8px;
+      }
+      .mw-pop .lib-item:hover { border-color: rgba(124,58,237,0.4); background: rgba(124,58,237,0.1); }
+      .mw-pop .lib-item.pro { border-color: rgba(251,191,36,0.25); }
+      .mw-pop .lib-item-body { flex: 1; min-width: 0; }
+      .mw-pop .lib-item-name { font-weight: 600; color: #e9d5ff; }
+      .mw-pop .lib-item-desc { font-size: 10px; color: #888; margin-top: 2px;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .mw-pop .lib-item-meta { font-size: 9px; color: #666; margin-top: 2px; }
+      .mw-pop .lib-star {
+        background: none; border: none; cursor: pointer; font-size: 14px;
+        padding: 0; line-height: 1; color: #555; flex-shrink: 0;
+      }
+      .mw-pop .lib-star.on { color: #fbbf24; }
+      .mw-pop .lib-empty { font-size: 11px; color: #888; text-align: center; padding: 16px; }
+      .mw-pop .mw-sources { margin-top: 4px; }
+      .mw-pop .mw-sources-toggle {
+        background: none; border: none; color: #a78bfa; font-size: 11px;
+        cursor: pointer; padding: 0; text-decoration: underline;
+      }
+      .mw-pop .mw-sources-list {
+        margin-top: 8px; max-height: 120px; overflow-y: auto;
+        display: flex; flex-direction: column; gap: 6px;
+      }
+      .mw-pop .mw-source-item {
+        padding: 6px 8px; border-radius: 6px;
+        background: rgba(124,58,237,0.08); border: 1px solid rgba(124,58,237,0.2);
+        font-size: 11px;
+      }
+      .mw-pop .mw-source-item strong { color: #e9d5ff; display: block; }
+      .mw-pop .mw-source-meta { color: #666; font-size: 10px; }
+      .mw-pop .mw-source-item p { margin: 4px 0 0; color: #888; font-size: 10px; line-height: 1.3; }
+      .mw-pop .mw-import-hint { font-size: 11px; color: #888; }
+      .mw-pop .mw-import-hint a { color: #a78bfa; cursor: pointer; }
     `
     popoverShadow.appendChild(style)
     const pop = document.createElement('div')
@@ -197,8 +259,12 @@
 
   function closePopover() {
     const pop = popoverShadow && popoverShadow.getElementById('mw-pop-inner')
-    if (pop) pop.classList.remove('open')
+    if (pop) {
+      pop.classList.remove('open')
+      pop.classList.remove('library')
+    }
     popoverState.mode = 'closed'
+    libraryState = { q: '', category: '', tier: '', favoritesOnly: false }
   }
 
   function openPopover(mode, html, actionsHtml) {
@@ -221,7 +287,7 @@
   }
 
   async function runEngineer(message, templateName) {
-    openPopover('loading', '<p class="note">Using your draft and past context...</p>', '')
+    openPopover('loading', '<p class="note">Searching your memory and improving prompt...</p>', '')
     try {
       const res = await chrome.runtime.sendMessage({
         type: 'ENGINEER_PROMPT',
@@ -238,7 +304,13 @@
         popoverShadow.getElementById('mw-pop-close').onclick = closePopover
         return
       }
-      showPreviewResult(res.engineeredPrompt, res.conversationsUsed || 0, message, templateName)
+      showPreviewResult(
+        res.engineeredPrompt,
+        res.conversationsUsed || 0,
+        message,
+        templateName,
+        res.sourcesUsed || []
+      )
     } catch (e) {
       openPopover('preview', '<p class="err">Network error. Try again.</p>', `
         <button class="btn-ghost" id="mw-pop-close">Close</button>
@@ -247,12 +319,37 @@
     }
   }
 
-  function showPreviewResult(text, conversationsUsed, goal, templateName) {
+  function buildSourcesHtml(sourcesUsed, conversationsUsed) {
+    if (sourcesUsed && sourcesUsed.length) {
+      let html = `<div class="mw-sources">
+        <button type="button" class="mw-sources-toggle" id="mw-sources-toggle">Context from ${sourcesUsed.length} conversation${sourcesUsed.length > 1 ? 's' : ''} (show)</button>
+        <div class="mw-sources-list" id="mw-sources-list" style="display:none;">`
+      sourcesUsed.forEach(s => {
+        const sim = s.similarity != null ? ` \u00b7 ${s.similarity}% match` : ''
+        const src = (s.source || 'unknown').replace('chatgpt', 'ChatGPT').replace('claude', 'Claude')
+        html += `<div class="mw-source-item">
+          <strong>${escapeHtml(s.title)}</strong>
+          <span class="mw-source-meta">${escapeHtml(src)}${sim}</span>
+          ${s.preview ? `<p>${escapeHtml(s.preview)}</p>` : ''}
+        </div>`
+      })
+      html += '</div></div>'
+      return html
+    }
+    if (!conversationsUsed) {
+      return `<p class="mw-import-hint">No matching history yet. <a id="mw-import-hint-link">Import past chats</a> so Improve can pull relevant context automatically.</p>`
+    }
+    return ''
+  }
+
+  function showPreviewResult(text, conversationsUsed, goal, templateName, sourcesUsed) {
     const note = conversationsUsed > 0
-      ? 'Enriched with ' + conversationsUsed + ' past conversation' + (conversationsUsed > 1 ? 's' : '')
+      ? 'Improved using your draft + past conversations below'
       : 'Engineered from your draft'
+    const sourcesHtml = buildSourcesHtml(sourcesUsed, conversationsUsed)
     openPopover('preview', `
       <p class="note">${note}</p>
+      ${sourcesHtml}
       <textarea id="mw-pop-preview-text" spellcheck="false"></textarea>
     `, `
       <button class="btn-primary" id="mw-pop-replace">Replace in chat</button>
@@ -260,6 +357,30 @@
     `)
     const ta = popoverShadow.getElementById('mw-pop-preview-text')
     if (ta) ta.value = formatEngineeredPrompt(text)
+    const toggle = popoverShadow.getElementById('mw-sources-toggle')
+    const list = popoverShadow.getElementById('mw-sources-list')
+    if (toggle && list) {
+      let sourcesOpen = false
+      toggle.onclick = () => {
+        sourcesOpen = !sourcesOpen
+        list.style.display = sourcesOpen ? 'block' : 'none'
+        const n = sourcesUsed.length
+        toggle.textContent = `Context from ${n} conversation${n > 1 ? 's' : ''} (${sourcesOpen ? 'hide' : 'show'})`
+      }
+    }
+    const importLink = popoverShadow.getElementById('mw-import-hint-link')
+    if (importLink) {
+      importLink.onclick = (e) => {
+        e.preventDefault()
+        chrome.storage.local.get('mw_email', (stored) => {
+          const email = stored.mw_email || ''
+          const url = email
+            ? `https://mind-world.app?email=${encodeURIComponent(email)}`
+            : 'https://mind-world.app'
+          window.open(url, '_blank')
+        })
+      }
+    }
     popoverShadow.getElementById('mw-pop-replace').onclick = () => {
       if (typeof injectIntoChat === 'function') injectIntoChat(ta.value, false)
       closePopover()
@@ -321,59 +442,201 @@
     }
   }
 
+  async function getFavorites() {
+    const stored = await chrome.storage.local.get(FAVORITES_KEY)
+    return stored[FAVORITES_KEY] || []
+  }
+
+  async function toggleFavorite(name) {
+    const favs = await getFavorites()
+    const idx = favs.indexOf(name)
+    if (idx >= 0) favs.splice(idx, 1)
+    else favs.push(name)
+    await chrome.storage.local.set({ [FAVORITES_KEY]: favs })
+    return favs
+  }
+
   function injectTemplate(template) {
     const body = template.template || template
     let text = typeof body === 'string' ? body : ''
     text = formatEngineeredPrompt(text)
     if (typeof injectIntoChat === 'function') injectIntoChat(text, false)
+    const tName = template.name || (typeof template === 'object' ? '' : '')
+    if (tName) {
+      chrome.runtime.sendMessage({ type: 'TRACK_TEMPLATE_USE', name: tName }).catch(() => {})
+    }
+  }
+
+  function filterTemplatesLocal(list, q, category, tier, favoritesOnly, favs) {
+    let out = list.slice()
+    if (category) out = out.filter(t => (t.category || '') === category)
+    if (tier) out = out.filter(t => (t.tier || 'standard').toLowerCase() === tier)
+    if (favoritesOnly) out = out.filter(t => favs.includes(t.name))
+    if (q) {
+      const needle = q.toLowerCase()
+      out = out.filter(t =>
+        (t.name || '').toLowerCase().includes(needle) ||
+        (t.description || '').toLowerCase().includes(needle) ||
+        (t.search_text || '').toLowerCase().includes(needle) ||
+        (t.tags || []).some(tag => (tag || '').toLowerCase().includes(needle))
+      )
+    }
+    out.sort((a, b) => (b.use_count || 0) - (a.use_count || 0) || (a.name || '').localeCompare(b.name || ''))
+    return out
+  }
+
+  async function fetchLibraryTemplates() {
+    const hasFilters = libraryState.q || libraryState.category || libraryState.tier
+    if (hasFilters) {
+      const res = await chrome.runtime.sendMessage({
+        type: 'SEARCH_TEMPLATES',
+        q: libraryState.q,
+        category: libraryState.category,
+        tier: libraryState.tier,
+        sort: 'popular',
+        limit: 80
+      })
+      if (res.templates && res.templates.length) return res.templates
+    }
+    await loadTemplates(true)
+    return cachedTemplates.length ? cachedTemplates : FALLBACK_TEMPLATES
+  }
+
+  async function openLibrary() {
+    ensurePopover()
+    const pop = popoverShadow.getElementById('mw-pop-inner')
+    if (pop) pop.classList.add('library')
+    const title = popoverShadow.getElementById('mw-pop-title')
+    if (title) title.textContent = 'Template Library'
+
+    openPopover('library', '<p class="note">Loading templates...</p>', `
+      <button class="btn-ghost" id="mw-pop-close">Close</button>
+    `)
+    popoverShadow.getElementById('mw-pop-close').onclick = closePopover
+
+    const catRes = await chrome.runtime.sendMessage({ type: 'GET_TEMPLATE_CATEGORIES' })
+    cachedCategories = catRes.categories || []
+
+    async function renderLibrary() {
+      const favs = await getFavorites()
+      const list = await fetchLibraryTemplates()
+      let filtered = filterTemplatesLocal(
+        list,
+        libraryState.q,
+        libraryState.category,
+        libraryState.tier,
+        libraryState.favoritesOnly,
+        favs
+      )
+
+      let pillsHtml = `<button type="button" class="lib-pill${!libraryState.category && !libraryState.tier && !libraryState.favoritesOnly ? ' active' : ''}" data-cat="">All</button>`
+      pillsHtml += `<button type="button" class="lib-pill${libraryState.favoritesOnly ? ' active' : ''}" data-fav="1">Favorites</button>`
+      pillsHtml += `<button type="button" class="lib-pill pro-pill${libraryState.tier === 'pro' ? ' active' : ''}" data-tier="pro">Pro</button>`
+      cachedCategories.slice(0, 10).forEach(c => {
+        const active = libraryState.category === c.category ? ' active' : ''
+        pillsHtml += `<button type="button" class="lib-pill${active}" data-cat="${escapeHtml(c.category)}">${escapeHtml(c.category)} (${c.count})</button>`
+      })
+
+      let listHtml = ''
+      if (!filtered.length) {
+        listHtml = '<p class="lib-empty">No templates match. Try another search or category.</p>'
+      } else {
+        filtered.slice(0, 60).forEach(t => {
+          const isPro = (t.tier || '').toLowerCase() === 'pro' || isProTemplate(t)
+          const starred = favs.includes(t.name)
+          listHtml += `<div class="lib-item${isPro ? ' pro' : ''}" data-name="${escapeHtml(t.name)}">
+            <button type="button" class="lib-star${starred ? ' on' : ''}" data-star="${escapeHtml(t.name)}" title="Favorite">${starred ? '\u2605' : '\u2606'}</button>
+            <div class="lib-item-body">
+              <div class="lib-item-name">${escapeHtml(t.name)}</div>
+              <div class="lib-item-desc">${escapeHtml(t.description || '')}</div>
+              <div class="lib-item-meta">${escapeHtml(t.category || '')}${t.use_count ? ' \u00b7 ' + t.use_count + ' uses' : ''}</div>
+            </div>
+          </div>`
+        })
+      }
+
+      const body = popoverShadow.getElementById('mw-pop-body')
+      if (!body) return
+      body.innerHTML = `
+        <input type="text" class="lib-search" id="mw-lib-search" placeholder="Search templates..." value="${escapeHtml(libraryState.q)}" />
+        <div class="lib-filters" id="mw-lib-filters">${pillsHtml}</div>
+        <div class="lib-list" id="mw-lib-list">${listHtml}</div>
+        <p class="note">${filtered.length} template${filtered.length !== 1 ? 's' : ''}</p>
+      `
+
+      const searchInput = popoverShadow.getElementById('mw-lib-search')
+      let debounce = null
+      if (searchInput) {
+        searchInput.oninput = () => {
+          clearTimeout(debounce)
+          debounce = setTimeout(async () => {
+            libraryState.q = searchInput.value.trim()
+            await renderLibrary()
+          }, 250)
+        }
+        searchInput.onkeydown = (e) => e.stopPropagation()
+      }
+
+      popoverShadow.querySelectorAll('.lib-pill').forEach(btn => {
+        btn.onclick = async () => {
+          if (btn.dataset.fav) {
+            libraryState.favoritesOnly = !libraryState.favoritesOnly
+            libraryState.category = ''
+            libraryState.tier = ''
+          } else if (btn.dataset.tier) {
+            libraryState.tier = libraryState.tier === 'pro' ? '' : 'pro'
+            libraryState.favoritesOnly = false
+          } else {
+            libraryState.category = btn.dataset.cat || ''
+            libraryState.favoritesOnly = false
+            libraryState.tier = ''
+          }
+          await renderLibrary()
+        }
+      })
+
+      popoverShadow.querySelectorAll('.lib-star').forEach(btn => {
+        btn.onclick = async (e) => {
+          e.stopPropagation()
+          await toggleFavorite(btn.dataset.star)
+          await renderLibrary()
+        }
+      })
+
+      popoverShadow.querySelectorAll('.lib-item').forEach(row => {
+        row.onclick = () => {
+          const name = row.dataset.name
+          const t = filtered.find(x => x.name === name) || cachedTemplates.find(x => x.name === name)
+          if (!t) return
+          const isPro = (t.tier || '').toLowerCase() === 'pro' || isProTemplate(t)
+          const attr = t.attribution ? '<p class="note" style="font-size:10px;">' + escapeHtml(t.attribution) + '</p>' : ''
+          openPopover('preview', attr + '<textarea id="mw-pop-preview-text" spellcheck="false"></textarea>', `
+            <button class="btn-primary" id="mw-pop-use">Use in chat</button>
+            <button class="btn-ghost" id="mw-pop-back-lib">Back</button>
+          `)
+          const ta = popoverShadow.getElementById('mw-pop-preview-text')
+          if (ta) ta.value = formatEngineeredPrompt(t.template || '')
+          popoverShadow.getElementById('mw-pop-use').onclick = () => {
+            injectTemplate(t)
+            closePopover()
+          }
+          popoverShadow.getElementById('mw-pop-back-lib').onclick = openLibrary
+          positionPopover()
+        }
+      })
+
+      positionPopover()
+    }
+
+    await renderLibrary()
   }
 
   async function openProLibrary() {
-    openPopover('loading', '<p class="note">Loading Pro templates...</p>', '')
-    await loadTemplates(true)
-    const list = cachedTemplates.length ? cachedTemplates : FALLBACK_TEMPLATES
-    const pro = list.filter(isProTemplate)
-    if (!pro.length) {
-      openPopover('preview', `<p class="note">No Pro templates found (${list.length} total loaded).</p>
-        <p class="note" style="font-size:11px;">If you ran the SQL migration, reload the extension and try again. In Supabase run:<br>
-        <code style="color:#a78bfa;">SELECT name, tier FROM prompt_templates WHERE tier = 'pro';</code></p>`, `
-        <button class="btn-ghost" id="mw-pop-close">OK</button>
-      `)
-      popoverShadow.getElementById('mw-pop-close').onclick = closePopover
-      return
-    }
-    let html = '<p class="note">Pro templates — detailed prompts with attribution. Click to preview.</p><div style="max-height:200px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;">'
-    pro.forEach(t => {
-      const attr = t.attribution ? escapeHtml(t.attribution) : ''
-      html += `<button type="button" class="mw-pro-item" data-name="${escapeHtml(t.name)}" style="
-        text-align:left;padding:8px;border-radius:6px;border:1px solid rgba(124,58,237,0.3);
-        background:rgba(124,58,237,0.1);color:#e9d5ff;cursor:pointer;font-size:12px;">
-        <strong>${escapeHtml(t.name)}</strong><br><span style="color:#888;font-size:10px;">${escapeHtml(t.category || '')}</span>
-      </button>`
-    })
-    html += '</div>'
-    openPopover('preview', html, `<button class="btn-ghost" id="mw-pop-close">Close</button>`)
-    popoverShadow.querySelectorAll('.mw-pro-item').forEach(btn => {
-      btn.onclick = () => {
-        const name = btn.getAttribute('data-name')
-        const t = pro.find(x => x.name === name)
-        if (!t) return
-        const attr = t.attribution ? '<p class="note" style="font-size:10px;">' + escapeHtml(t.attribution) + '</p>' : ''
-        openPopover('preview', attr + '<textarea id="mw-pop-preview-text" spellcheck="false"></textarea>', `
-          <button class="btn-primary" id="mw-pop-replace">Use in chat</button>
-          <button class="btn-ghost" id="mw-pop-back-pro">Back</button>
-        `)
-        const ta = popoverShadow.getElementById('mw-pop-preview-text')
-        if (ta) ta.value = formatEngineeredPrompt(t.template || '')
-        popoverShadow.getElementById('mw-pop-replace').onclick = () => {
-          injectTemplate(t)
-          closePopover()
-        }
-        popoverShadow.getElementById('mw-pop-back-pro').onclick = openProLibrary
-        positionPopover()
-      }
-    })
-    popoverShadow.getElementById('mw-pop-close').onclick = closePopover
+    libraryState.tier = 'pro'
+    libraryState.category = ''
+    libraryState.favoritesOnly = false
+    libraryState.q = ''
+    await openLibrary()
   }
 
   function escapeHtml(text) {
@@ -403,20 +666,108 @@
     label.textContent = 'Mind World'
     label.style.cssText = 'font-size:11px;color:#a78bfa;font-weight:600;margin-right:4px;'
 
+    const memoryBadge = document.createElement('button')
+    memoryBadge.type = 'button'
+    memoryBadge.id = 'mw-memory-badge'
+    memoryBadge.style.cssText = `
+      font-size: 10px; padding: 2px 6px; border-radius: 10px; cursor: pointer;
+      border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05);
+      color: #888; white-space: nowrap;
+    `
+    memoryBadge.title = 'Conversations saved to your memory'
+    async function updateMemoryBadge() {
+      try {
+        const res = await chrome.runtime.sendMessage({ type: 'GET_MEMORY_STATS' })
+        const n = res.conversationCount || 0
+        if (n > 0) {
+          memoryBadge.textContent = n + ' in memory'
+          memoryBadge.style.color = '#6ee7b7'
+          memoryBadge.style.borderColor = 'rgba(110,231,183,0.3)'
+          memoryBadge.title = `${n} conversations saved — used automatically when you Improve`
+        } else {
+          memoryBadge.textContent = '+ Import history'
+          memoryBadge.style.color = '#fcd34d'
+          memoryBadge.style.borderColor = 'rgba(251,191,36,0.3)'
+          memoryBadge.title = 'Import past chats for richer Improve context (click extension icon)'
+        }
+      } catch (e) {
+        memoryBadge.textContent = ''
+      }
+    }
+    memoryBadge.onclick = (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      chrome.storage.local.get('mw_email', (stored) => {
+        const email = stored.mw_email || ''
+        window.open(
+          email ? `https://mind-world.app?email=${encodeURIComponent(email)}` : 'https://mind-world.app',
+          '_blank'
+        )
+      })
+    }
+    updateMemoryBadge()
+
     const chipsWrap = document.createElement('div')
-    chipsWrap.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;flex:1;'
+    chipsWrap.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;flex:1;align-items:center;'
 
-    function renderChips() {
-      chipsWrap.innerHTML = ''
+    const searchInput = document.createElement('input')
+    searchInput.type = 'text'
+    searchInput.placeholder = 'Search templates...'
+    searchInput.title = 'Open library to search all templates'
+    searchInput.style.cssText = `
+      flex: 1; min-width: 100px; max-width: 180px;
+      padding: 4px 8px; font-size: 11px; border-radius: 6px;
+      border: 1px solid rgba(124,58,237,0.25); background: rgba(0,0,0,0.3);
+      color: #e9d5ff;
+    `
+    searchInput.onfocus = () => {
+      libraryState.q = searchInput.value.trim()
+      openLibrary()
+    }
+    searchInput.onkeydown = (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        libraryState.q = searchInput.value.trim()
+        openLibrary()
+      }
+    }
+
+    async function renderChips() {
+      const existing = chipsWrap.querySelectorAll('.mw-quick-chip')
+      existing.forEach(el => el.remove())
+
       const list = cachedTemplates.length ? cachedTemplates : FALLBACK_TEMPLATES
-      const standard = list.filter(t => !isProTemplate(t))
-      const quick = standard.length ? standard : list
+      const draft = getInputText(anchoredInput)
+      let quick = []
 
-      quick.slice(0, MAX_CHIPS).forEach(t => {
+      if (draft.length > 10) {
+        try {
+          const res = await chrome.runtime.sendMessage({
+            type: 'SUGGEST_TEMPLATES',
+            draft,
+            limit: MAX_CHIPS
+          })
+          if (res.templates && res.templates.length) {
+            quick = res.templates
+          }
+        } catch (e) { /* fallback below */ }
+      }
+
+      if (!quick.length) {
+        const favs = await getFavorites()
+        const favTemplates = list.filter(t => favs.includes(t.name) && !isProTemplate(t))
+        const standard = list.filter(t => !isProTemplate(t))
+        quick = favTemplates.length
+          ? favTemplates.slice(0, MAX_CHIPS)
+          : standard.slice(0, MAX_CHIPS)
+      }
+
+      quick.forEach(t => {
         const chip = document.createElement('button')
         chip.type = 'button'
-        chip.textContent = t.name.replace(/ \(.*\)$/, '')
-        chip.title = (t.description || t.name) + (t.attribution ? '\n\n' + t.attribution : '')
+        chip.className = 'mw-quick-chip'
+        chip.textContent = t.name.replace(/ \(.*\)$/, '').slice(0, 22)
+        chip.title = (t.description || t.name)
         chip.style.cssText = `
           padding: 4px 8px; font-size: 11px; border-radius: 12px; cursor: pointer;
           border: 1px solid rgba(124,58,237,0.35); background: rgba(124,58,237,0.15);
@@ -427,27 +778,9 @@
         chip.onclick = () => injectTemplate(t)
         chipsWrap.appendChild(chip)
       })
-
-      const more = document.createElement('select')
-      more.style.cssText = 'font-size:11px;padding:3px 6px;border-radius:6px;background:#222;color:#fff;border:1px solid #444;max-width:110px;'
-      const opt0 = document.createElement('option')
-      opt0.value = ''
-      opt0.textContent = 'More...'
-      more.appendChild(opt0)
-      quick.slice(MAX_CHIPS).forEach(t => {
-        const o = document.createElement('option')
-        o.value = t.name
-        o.textContent = t.name
-        more.appendChild(o)
-      })
-      more.onchange = () => {
-        const t = quick.find(x => x.name === more.value)
-        if (t) injectTemplate(t)
-        more.value = ''
-      }
-      if (quick.length > MAX_CHIPS) chipsWrap.appendChild(more)
     }
 
+    chipsWrap.appendChild(searchInput)
     renderChips()
     setTimeout(renderChips, 1500)
 
@@ -467,23 +800,25 @@
       startImprove()
     }
 
-    const proBtn = document.createElement('button')
-    proBtn.type = 'button'
-    proBtn.textContent = 'Pro'
-    proBtn.title = 'Detailed prompt library (with attribution)'
-    proBtn.style.cssText = `
+    const libraryBtn = document.createElement('button')
+    libraryBtn.type = 'button'
+    libraryBtn.textContent = 'Library'
+    libraryBtn.title = 'Browse and search all prompt templates'
+    libraryBtn.style.cssText = `
       padding: 4px 10px; font-size: 11px; font-weight: 600; border-radius: 6px; cursor: pointer;
-      border: 1px solid rgba(251,191,36,0.4); background: rgba(251,191,36,0.12); color: #fcd34d;
+      border: 1px solid rgba(124,58,237,0.4); background: rgba(124,58,237,0.12); color: #c4b5fd;
     `
-    proBtn.onclick = (e) => {
+    libraryBtn.onclick = (e) => {
       e.preventDefault()
       e.stopPropagation()
-      openProLibrary()
+      libraryState = { q: '', category: '', tier: '', favoritesOnly: false }
+      openLibrary()
     }
 
     dock.appendChild(label)
+    dock.appendChild(memoryBadge)
     dock.appendChild(chipsWrap)
-    dock.appendChild(proBtn)
+    dock.appendChild(libraryBtn)
     dock.appendChild(improveBtn)
 
     const parent = inputField.parentElement

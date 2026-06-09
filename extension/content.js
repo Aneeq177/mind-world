@@ -2067,6 +2067,28 @@ async function tryAutoSave() {
 
 function showSaveToast() {
 
+  let toast = document.getElementById('mw-save-toast')
+
+  if (!toast) {
+
+    toast = document.createElement('div')
+
+    toast.id = 'mw-save-toast'
+
+    toast.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:2147483646;padding:10px 16px;background:#111;border:1px solid rgba(110,231,183,0.4);border-radius:8px;color:#6ee7b7;font-size:13px;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;box-shadow:0 4px 20px rgba(0,0,0,0.4);opacity:0;transition:opacity 0.2s;pointer-events:none'
+
+    document.body.appendChild(toast)
+
+  }
+
+  toast.textContent = 'Saved to memory'
+
+  toast.style.opacity = '1'
+
+  setTimeout(() => { toast.style.opacity = '0' }, 2500)
+
+
+
   const statusEl = document.getElementById('mw-status')
 
   if (!statusEl) return

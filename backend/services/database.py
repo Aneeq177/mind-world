@@ -162,6 +162,20 @@ def update_personal_profile(user_id: str, profile_data: dict, is_profile_enabled
     result = supabase.table("personal_profiles").upsert(row, on_conflict="user_id").execute()
     return result.data[0] if result.data else {}
 
+def _sort_templates(templates: list[dict], sort: str = "popular") -> list[dict]:
+    if sort == "popular":
+        templates.sort(key=lambda t: (-(t.get("use_count") or 0), t.get("name") or ""))
+    elif sort == "az":
+        templates.sort(key=lambda t: (t.get("name") or "").lower())
+    else:
+        templates.sort(key=lambda t: (
+            1 if (t.get("tier") or "standard") == "pro" else 0,
+            t.get("category") or "",
+            t.get("name") or "",
+        ))
+    return templates
+
+
 def get_prompt_templates() -> list[dict]:
     supabase = get_supabase()
     result = supabase.table("prompt_templates")\
@@ -170,12 +184,112 @@ def get_prompt_templates() -> list[dict]:
         .order("name")\
         .execute()
     templates = result.data if result.data else []
-    templates.sort(key=lambda t: (
-        1 if (t.get("tier") or "standard") == "pro" else 0,
-        t.get("category") or "",
-        t.get("name") or "",
-    ))
-    return templates
+    return _sort_templates(templates, "category")
+
+
+def search_prompt_templates(
+    query: str = "",
+    category: str = "",
+    tag: str = "",
+    tier: str = "",
+    limit: int = 50,
+    offset: int = 0,
+    sort: str = "popular",
+) -> tuple[list[dict], int]:
+    supabase = get_supabase()
+    q = supabase.table("prompt_templates").select("*", count="exact")
+
+    if category:
+        q = q.eq("category", category)
+    if tier:
+        q = q.eq("tier", tier)
+    if tag:
+        q = q.contains("tags", [tag.lower()])
+
+    result = q.execute()
+    templates = result.data if result.data else []
+
+    if query:
+        needle = query.lower().strip()
+        templates = [
+            t for t in templates
+            if needle in (t.get("search_text") or "").lower()
+            or needle in (t.get("name") or "").lower()
+            or needle in (t.get("description") or "").lower()
+            or any(needle in (tg or "").lower() for tg in (t.get("tags") or []))
+        ]
+
+    templates = _sort_templates(templates, sort)
+    total = len(templates)
+    page = templates[offset:offset + limit]
+    return page, total
+
+
+def get_template_categories() -> list[dict]:
+    templates = get_prompt_templates()
+    counts: dict[str, int] = {}
+    for t in templates:
+        cat = t.get("category") or "Other"
+        counts[cat] = counts.get(cat, 0) + 1
+    return [
+        {"category": cat, "count": count}
+        for cat, count in sorted(counts.items(), key=lambda x: (-x[1], x[0]))
+    ]
+
+
+def suggest_prompt_templates(draft: str, limit: int = 5) -> list[dict]:
+    if not draft or not draft.strip():
+        return []
+
+    draft_lower = draft.lower()
+    words = [w for w in draft_lower.split() if len(w) > 2]
+    templates = get_prompt_templates()
+
+    scored = []
+    for t in templates:
+        score = 0
+        name = (t.get("name") or "").lower()
+        desc = (t.get("description") or "").lower()
+        search = (t.get("search_text") or "").lower()
+        tags = [tg.lower() for tg in (t.get("tags") or [])]
+        category = (t.get("category") or "").lower()
+
+        for w in words:
+            if w in name:
+                score += 4
+            if w in desc:
+                score += 2
+            if w in search:
+                score += 1
+            if any(w in tg for tg in tags):
+                score += 3
+            if w in category:
+                score += 1
+
+        if score > 0:
+            score += min((t.get("use_count") or 0) // 10, 5)
+            scored.append((score, t))
+
+    scored.sort(key=lambda x: -x[0])
+    return [t for _, t in scored[:limit]]
+
+
+def increment_template_use(name: str) -> bool:
+    supabase = get_supabase()
+    result = supabase.table("prompt_templates")\
+        .select("id, use_count")\
+        .eq("name", name)\
+        .limit(1)\
+        .execute()
+    if not result.data:
+        return False
+    row = result.data[0]
+    new_count = (row.get("use_count") or 0) + 1
+    supabase.table("prompt_templates")\
+        .update({"use_count": new_count})\
+        .eq("id", row["id"])\
+        .execute()
+    return True
 
 def get_prompt_template_by_name(name: str) -> dict | None:
     supabase = get_supabase()

@@ -40,9 +40,16 @@ def health():
 async def process_files(
     claude_file: UploadFile | None = File(None),
     chatgpt_file: UploadFile | None = File(None),
-    api_key: str = Form(...),
+    api_key: str = Form(""),
     email: str = Form(...)
 ):
+    effective_api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
+    if not effective_api_key:
+        raise HTTPException(
+            status_code=400,
+            detail="Anthropic API key required for import (add in extension settings or server config)"
+        )
+
     if not claude_file and not chatgpt_file:
         raise HTTPException(
             status_code=400,
@@ -80,7 +87,7 @@ async def process_files(
             )
 
         chats, embeddings = embed_and_position(df)
-        chats = label_clusters(chats, api_key)
+        chats = label_clusters(chats, effective_api_key)
 
         try:
             email = email.lower().strip()
@@ -154,6 +161,13 @@ class EngineerPromptRequest(BaseModel):
     conversation_ids: Optional[list[str]] = None
     api_key: Optional[str] = None
     template: Optional[str] = None
+
+
+class ContextPreviewRequest(BaseModel):
+    email: str
+    draft: str
+    limit: int = 5
+
 
 class UpdateProfileSettingsRequest(BaseModel):
     email: str
@@ -311,9 +325,37 @@ async def engineer_prompt(request: EngineerPromptRequest):
             embedding = model.encode([request.message])[0]
             selected = search_conversations(user_id, embedding, limit=5)
 
+        if selected:
+            from services.database import get_supabase
+            supabase = get_supabase()
+            ids = [c["id"] for c in selected if c.get("id")]
+            if ids:
+                detail_result = supabase.table("knowledge_nodes")\
+                    .select("id, full_text, preview, num_messages, source_app")\
+                    .in_("id", ids)\
+                    .execute()
+                detail_map = {d["id"]: d for d in (detail_result.data or [])}
+                for conv in selected:
+                    extra = detail_map.get(conv.get("id"), {})
+                    if not conv.get("full_text"):
+                        conv["full_text"] = extra.get("full_text")
+                    if not conv.get("preview"):
+                        conv["preview"] = extra.get("preview")
+                    conv["source_app"] = conv.get("source_app") or extra.get("source_app")
+                    conv["num_messages"] = conv.get("num_messages") or extra.get("num_messages")
+
+        sources_used = []
         context_parts = []
         for conv in selected:
             full_text = conv.get('full_text') or conv.get('preview') or ''
+            sim = conv.get('similarity')
+            sources_used.append({
+                "id": conv.get("id"),
+                "title": conv.get("title") or "Untitled",
+                "preview": (conv.get("preview") or full_text[:120] or "")[:120],
+                "source": conv.get("source_app") or conv.get("source") or "unknown",
+                "similarity": round(float(sim) * 100, 1) if sim is not None else None,
+            })
             if full_text:
                 context_parts.append(
                     f"Conversation: {conv.get('title', 'Untitled')}\n"
@@ -432,13 +474,67 @@ WHAT I NEED FROM YOU
 
         return {
             "engineered_prompt": formatted,
-            "conversations_used": len(context_parts)
+            "conversations_used": len(context_parts),
+            "sources_used": sources_used,
         }
 
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/context_preview")
+async def context_preview(request: ContextPreviewRequest):
+    """Return relevant past conversations for a draft without engineering a prompt."""
+    try:
+        from sentence_transformers import SentenceTransformer
+        from services.database import search_conversations
+
+        email = request.email.lower().strip()
+        user_id = get_or_create_user(email)
+        draft = (request.draft or "").strip()
+        if len(draft) < 3:
+            return {"sources": [], "total_conversations": 0}
+
+        model = SentenceTransformer("all-MiniLM-L6-v2")
+        embedding = model.encode([draft])[0]
+        results = search_conversations(user_id, embedding, limit=min(request.limit, 8))
+
+        from services.database import get_supabase
+        supabase = get_supabase()
+        detail_map = {}
+        if results:
+            ids = [r["id"] for r in results if r.get("id")]
+            if ids:
+                detail_result = supabase.table("knowledge_nodes")\
+                    .select("id, source_app, preview")\
+                    .in_("id", ids)\
+                    .execute()
+                detail_map = {d["id"]: d for d in (detail_result.data or [])}
+
+        sources = []
+        for conv in (results or []):
+            sim = conv.get("similarity")
+            extra = detail_map.get(conv.get("id"), {})
+            preview = conv.get("preview") or extra.get("preview") or ""
+            sources.append({
+                "id": conv.get("id"),
+                "title": conv.get("title") or "Untitled",
+                "preview": preview[:150],
+                "source": extra.get("source_app") or "unknown",
+                "similarity": round(float(sim) * 100, 1) if sim is not None else None,
+            })
+        count_result = supabase.table("knowledge_nodes")\
+            .select("id", count="exact")\
+            .eq("user_id", user_id)\
+            .execute()
+        total = count_result.count if count_result.count is not None else len(sources)
+
+        return {"sources": sources, "total_conversations": total}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/generate_clarifying_questions")
 async def generate_clarifying_questions(request: ClarifyingQuestionsRequest):
@@ -511,6 +607,75 @@ async def get_templates():
         return {"templates": templates}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/templates/search")
+async def search_templates(
+    q: str = "",
+    category: str = "",
+    tag: str = "",
+    tier: str = "",
+    limit: int = 50,
+    offset: int = 0,
+    sort: str = "popular",
+):
+    try:
+        from services.database import search_prompt_templates
+        templates, total = search_prompt_templates(
+            query=q,
+            category=category,
+            tag=tag,
+            tier=tier,
+            limit=min(limit, 100),
+            offset=max(offset, 0),
+            sort=sort,
+        )
+        return {"templates": templates, "total": total, "limit": limit, "offset": offset}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/templates/categories")
+async def template_categories():
+    try:
+        from services.database import get_template_categories
+        return {"categories": get_template_categories()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class TemplateSuggestRequest(BaseModel):
+    draft: str
+    limit: int = 5
+
+
+class TemplateTrackRequest(BaseModel):
+    name: str
+
+
+@app.post("/templates/suggest")
+async def suggest_templates(request: TemplateSuggestRequest):
+    try:
+        from services.database import suggest_prompt_templates
+        templates = suggest_prompt_templates(request.draft, min(request.limit, 10))
+        return {"templates": templates}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/templates/track_use")
+async def track_template_use(request: TemplateTrackRequest):
+    try:
+        from services.database import increment_template_use
+        ok = increment_template_use(request.name)
+        if not ok:
+            raise HTTPException(status_code=404, detail="Template not found")
+        return {"success": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/update_profile_settings")
 async def update_profile_settings(request: UpdateProfileSettingsRequest):
@@ -683,11 +848,17 @@ async def save_conversation(request: SaveConversationRequest, background_tasks: 
         embed_text = f"{convo.get('title', 'Untitled')}. {full_text[:500]}"
         embedding = embed_single(embed_text)
 
-        platform = convo.get('platform', 'claude.ai')
+        platform = (convo.get('platform') or convo.get('source') or '').lower()
         if 'chatgpt' in platform:
             source = 'chatgpt'
-        else:
+        elif 'gemini' in platform:
+            source = 'gemini'
+        elif 'perplexity' in platform:
+            source = 'perplexity'
+        elif 'claude' in platform:
             source = 'claude'
+        else:
+            source = convo.get('source') or 'claude'
 
         row = {
             "id": conv_id,

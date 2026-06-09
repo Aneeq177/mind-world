@@ -71,6 +71,36 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true
   }
 
+  if (message.type === 'SEARCH_TEMPLATES') {
+    handleSearchTemplates(message).then(sendResponse)
+    return true
+  }
+
+  if (message.type === 'GET_TEMPLATE_CATEGORIES') {
+    handleGetTemplateCategories().then(sendResponse)
+    return true
+  }
+
+  if (message.type === 'SUGGEST_TEMPLATES') {
+    handleSuggestTemplates(message.draft, message.limit).then(sendResponse)
+    return true
+  }
+
+  if (message.type === 'TRACK_TEMPLATE_USE') {
+    handleTrackTemplateUse(message.name).then(sendResponse)
+    return true
+  }
+
+  if (message.type === 'CONTEXT_PREVIEW') {
+    handleContextPreview(message.draft, message.limit).then(sendResponse)
+    return true
+  }
+
+  if (message.type === 'GET_MEMORY_STATS') {
+    handleMemoryStats().then(sendResponse)
+    return true
+  }
+
   if (message.type === 'PROMPT_FEEDBACK') {
     handlePromptFeedback(message).then(sendResponse)
     return true
@@ -235,7 +265,8 @@ async function handleEngineerPrompt(userMessage, templateStr, conversationIds) {
     const data = await response.json()
     return {
       engineeredPrompt: data.prompt || data.engineered_prompt,
-      conversationsUsed: data.conversations_used || 0
+      conversationsUsed: data.conversations_used || 0,
+      sourcesUsed: data.sources_used || []
     }
   } catch (error) {
     return { error: error.message }
@@ -272,7 +303,7 @@ async function handleGenerateQuestions(goal, templateStr) {
 
 async function handleGetTemplates(forceRefresh = false) {
   try {
-    const cacheKey = 'mw_templates_v2'
+    const cacheKey = 'mw_templates_v3'
     if (!forceRefresh) {
       const cached = await chrome.storage.local.get([cacheKey, 'mw_templates_at'])
       const cacheAge = Date.now() - (cached.mw_templates_at || 0)
@@ -295,6 +326,132 @@ async function handleGetTemplates(forceRefresh = false) {
     return { templates, proCount: templates.filter(t => (t.tier || '').toLowerCase() === 'pro').length }
   } catch (error) {
     return { templates: [], error: error.message }
+  }
+}
+
+async function handleSearchTemplates(message) {
+  try {
+    const params = new URLSearchParams()
+    if (message.q) params.set('q', message.q)
+    if (message.category) params.set('category', message.category)
+    if (message.tag) params.set('tag', message.tag)
+    if (message.tier) params.set('tier', message.tier)
+    if (message.sort) params.set('sort', message.sort)
+    params.set('limit', String(message.limit || 50))
+    params.set('offset', String(message.offset || 0))
+
+    const response = await fetch(`${API_BASE}/templates/search?${params}`)
+    if (!response.ok) {
+      return { templates: [], total: 0, error: 'search_failed' }
+    }
+    const data = await response.json()
+    return {
+      templates: data.templates || [],
+      total: data.total || 0
+    }
+  } catch (error) {
+    return { templates: [], total: 0, error: error.message }
+  }
+}
+
+async function handleGetTemplateCategories() {
+  try {
+    const cacheKey = 'mw_template_categories'
+    const cached = await chrome.storage.local.get([cacheKey, 'mw_categories_at'])
+    const cacheAge = Date.now() - (cached.mw_categories_at || 0)
+    if (cached[cacheKey] && cacheAge < 600000) {
+      return { categories: cached[cacheKey] }
+    }
+
+    const response = await fetch(`${API_BASE}/templates/categories`)
+    if (!response.ok) {
+      return { categories: [], error: 'fetch_failed' }
+    }
+    const data = await response.json()
+    const categories = data.categories || []
+    await chrome.storage.local.set({
+      [cacheKey]: categories,
+      mw_categories_at: Date.now()
+    })
+    return { categories }
+  } catch (error) {
+    return { categories: [], error: error.message }
+  }
+}
+
+async function handleSuggestTemplates(draft, limit) {
+  try {
+    const response = await fetch(`${API_BASE}/templates/suggest`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ draft: draft || '', limit: limit || 5 })
+    })
+    if (!response.ok) {
+      return { templates: [], error: 'suggest_failed' }
+    }
+    const data = await response.json()
+    return { templates: data.templates || [] }
+  } catch (error) {
+    return { templates: [], error: error.message }
+  }
+}
+
+async function handleTrackTemplateUse(name) {
+  try {
+    if (!name) return { error: 'missing_name' }
+    const response = await fetch(`${API_BASE}/templates/track_use`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
+    })
+    if (!response.ok) return { error: 'track_failed' }
+    return { success: true }
+  } catch (error) {
+    return { error: error.message }
+  }
+}
+
+async function handleContextPreview(draft, limit) {
+  try {
+    const { email } = await getCredentials()
+    if (!email) return { sources: [], totalConversations: 0, error: 'not_logged_in' }
+
+    const response = await fetch(`${API_BASE}/context_preview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, draft: draft || '', limit: limit || 5 })
+    })
+    if (!response.ok) {
+      return { sources: [], totalConversations: 0, error: 'preview_failed' }
+    }
+    const data = await response.json()
+    return {
+      sources: data.sources || [],
+      totalConversations: data.total_conversations || 0
+    }
+  } catch (error) {
+    return { sources: [], totalConversations: 0, error: error.message }
+  }
+}
+
+async function handleMemoryStats() {
+  try {
+    const { email } = await getCredentials()
+    if (!email) return { conversationCount: 0, platformCount: 0, error: 'not_logged_in' }
+
+    const response = await fetch(`${API_BASE}/user_stats`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email })
+    })
+    if (!response.ok) return { conversationCount: 0, platformCount: 0 }
+    const data = await response.json()
+    return {
+      conversationCount: data.conversation_count || 0,
+      platformCount: data.platform_count || 0
+    }
+  } catch (error) {
+    return { conversationCount: 0, platformCount: 0, error: error.message }
   }
 }
 
