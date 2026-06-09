@@ -11,8 +11,6 @@ from typing import Optional
 from pydantic import BaseModel
 from models import BlendRequest
 from services.parser import parse_claude, parse_chatgpt
-from services.embedder import embed_and_position
-from services.blender import label_clusters, blend_conversations
 from services.database import (
     get_or_create_user,
     store_conversations,
@@ -85,6 +83,9 @@ async def process_files(
                 status_code=400,
                 detail="No conversations found"
             )
+
+        from services.embedder import embed_and_position
+        from services.blender import label_clusters
 
         chats, embeddings = embed_and_position(df)
         chats = label_clusters(chats, effective_api_key)
@@ -807,6 +808,7 @@ async def blend(request: BlendRequest):
         if not selected:
             raise HTTPException(status_code=404, detail="Conversations not found")
             
+        from services.blender import blend_conversations
         return blend_conversations(selected, request.question, api_key)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
