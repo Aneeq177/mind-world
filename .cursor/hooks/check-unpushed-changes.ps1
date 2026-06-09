@@ -29,7 +29,14 @@ if ($upstream) {
     }
 }
 
-$hasLocalChanges = -not [string]::IsNullOrWhiteSpace($porcelain)
+# Only tracked modifications count — ignore untracked (??) local files
+$trackedChanges = @()
+if ($porcelain) {
+    $trackedChanges = $porcelain -split "`n" | Where-Object {
+        $_ -and $_ -notmatch '^\?\? '
+    }
+}
+$hasLocalChanges = $trackedChanges.Count -gt 0
 $hasUnpushedCommits = $ahead -gt 0
 
 if (-not $hasLocalChanges -and -not $hasUnpushedCommits) {
