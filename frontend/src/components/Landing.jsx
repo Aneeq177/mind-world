@@ -221,10 +221,13 @@ export default function Landing() {
 
     return (
       <div style={{
-        width: '100vw', minHeight: '100vh',
+        width: '100vw',
+        height: '100vh',
         overflowY: 'auto',
+        overflowX: 'hidden',
+        WebkitOverflowScrolling: 'touch',
         display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
-        padding: 'max(32px, calc(50vh - 380px)) 24px 48px',
+        padding: '32px 24px 48px',
         boxSizing: 'border-box',
         background: '#000008',
         backgroundImage: 'radial-gradient(ellipse at center, #0a0a1a 0%, #000008 100%)'

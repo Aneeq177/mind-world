@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { useStore } from './store'
 import Landing from './components/Landing'
@@ -7,6 +8,17 @@ import Terms from './components/Terms'
 
 function MainApp() {
   const phase = useStore(s => s.phase)
+
+  useEffect(() => {
+    const lockScroll = phase === 'map'
+    document.body.style.overflow = lockScroll ? 'hidden' : ''
+    document.documentElement.style.overflow = lockScroll ? 'hidden' : ''
+    return () => {
+      document.body.style.overflow = ''
+      document.documentElement.style.overflow = ''
+    }
+  }, [phase])
+
   return (
     <div style={{ width: '100vw', height: '100vh', position: 'relative' }}>
       {(phase === 'landing' || phase === 'processing') && <Landing />}

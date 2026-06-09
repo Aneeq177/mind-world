@@ -1,9 +1,12 @@
 const S = {
   page: {
-    width: '100vw', minHeight: '100vh',
+    width: '100vw',
+    height: '100vh',
     background: '#0a0a0f', color: 'white',
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
     overflowY: 'auto',
+    overflowX: 'hidden',
+    WebkitOverflowScrolling: 'touch',
   },
   inner: { maxWidth: '720px', margin: '0 auto', padding: '64px 24px 96px' },
   back: {
