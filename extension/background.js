@@ -504,21 +504,49 @@ async function processSaveQueue() {
 
     if (!email) return
 
+    let anySuccess = false
     for (const conversation of queue) {
       try {
-        await fetch(`${API_BASE}/save_conversation`, {
+        const res = await fetch(`${API_BASE}/save_conversation`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, conversation, visibility: defaultVisibility || 'private' })
         })
+        if (res.ok) anySuccess = true
       } catch (err) {
         // do nothing
       }
+    }
+
+    if (anySuccess) {
+      const hostPatterns = [
+        'https://claude.ai/*',
+        'https://chatgpt.com/*',
+        'https://gemini.google.com/*',
+        'https://perplexity.ai/*'
+      ]
+      chrome.tabs.query({ url: hostPatterns }, (tabs) => {
+        tabs.forEach((tab) => {
+          if (tab.id) {
+            chrome.tabs.sendMessage(tab.id, { type: 'SAVE_CONFIRMED' }).catch(() => {})
+          }
+        })
+      })
     }
   } catch (err) {
     // do nothing
   }
 }
+
+chrome.commands.onCommand.addListener((command) => {
+  if (command !== 'improve-prompt') return
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    const tabId = tabs[0]?.id
+    if (tabId) {
+      chrome.tabs.sendMessage(tabId, { type: 'TRIGGER_IMPROVE' }).catch(() => {})
+    }
+  })
+})
 
 // Process any items queued while the service worker was asleep
 processSaveQueue()

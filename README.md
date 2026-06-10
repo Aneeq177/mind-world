@@ -1,68 +1,74 @@
----
-title: Mind World
-emoji: 🌍
-colorFrom: purple
-colorTo: blue
-sdk: streamlit
-sdk_version: 1.31.0
-app_file: public_app.py
-pinned: false
----
-
 # Mind World
 
-A visual map of your Claude conversation history. Conversations are embedded using sentence transformers, reduced to 2D with UMAP, and displayed as an interactive star map grouped by topic region.
+A Chrome extension that helps you write better AI prompts while you type — using template chips and one-click **Improve**, backed by your conversation memory.
 
-## Features
+**Product:** Chrome extension (daily use)  
+**Secondary:** [mind-world.app](https://mind-world.app) — bulk import and 2D memory map
 
-- **Conversation map** — all chats plotted spatially by semantic similarity, colored by topic region
-- **Time Machine** — slider to replay how your conversation world grew over time
-- **Context Blender** — select 2–4 conversations, extract their key intelligence via Claude, and open a blended context in a new Claude chat
+## What it does
 
-## Setup
+1. Install the extension and enter your email.
+2. Optionally upload past Claude/ChatGPT exports (popup or web app).
+3. On Claude, ChatGPT, or Gemini: use **template chips** or click **Improve** (Alt+Shift+M).
+4. Mind World silently finds relevant past chats and returns a clearer, structured prompt.
+5. New conversations auto-save in the background.
 
-**Prerequisites:** Python 3.12+, a Claude conversation export (`conversations.json`)
+See [VISION.md](VISION.md) for v1 scope and [ARCHITECTURE.md](ARCHITECTURE.md) for how it is built.
+
+## Live URLs
+
+| Component | URL |
+|-----------|-----|
+| Web app | https://mind-world.app |
+| Backend API | https://mind-world-app-mv4yv.ondigitalocean.app |
+| API docs | https://mind-world-app-mv4yv.ondigitalocean.app/docs |
+
+## Repository structure
+
+```
+mind-world/
+├── extension/     # Chrome extension (primary product)
+├── backend/       # FastAPI + embeddings pipeline
+├── frontend/      # React map app (Vercel)
+├── VISION.md      # Product scope and v1 finish line
+├── ARCHITECTURE.md
+└── public_app.py  # Legacy Streamlit demo (frozen)
+```
+
+## Extension development
+
+Load unpacked in Chrome:
+
+1. Open `chrome://extensions`
+2. Enable Developer mode
+3. Load unpacked → select the `extension/` folder
+4. Reload after code changes
+
+**Important:** Extension scripts must be UTF-8 encoded (not UTF-16 from PowerShell redirects).
+
+## Backend (local)
 
 ```bash
+cd backend
 python -m venv venv
-venv\Scripts\activate        # Windows
-# source venv/bin/activate   # Mac/Linux
-
+venv\Scripts\activate   # Windows
 pip install -r requirements.txt
-pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu
 ```
 
-Create a `.env` file with your Anthropic API key (needed for the Context Blender):
-
-```
-ANTHROPIC_API_KEY=sk-ant-...
-```
-
-## Usage
-
-Run the pipeline once to process your export, then launch the app:
+Set `ANTHROPIC_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` in `.env`, then:
 
 ```bash
-python parse_chats.py        # Parse conversations.json → chats_parsed.csv
-python embed_and_position.py # Embed + UMAP → chats_positioned.json
-streamlit run app.py         # Launch the app
+uvicorn main:app --reload
 ```
 
-After the first run, you only need `streamlit run app.py` unless your export changes.
+## Frontend (local)
 
-## How to export your Claude conversations
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-1. Go to [claude.ai](https://claude.ai) → Settings → Account
-2. Click **Export Data** and download the zip
-3. Extract `conversations.json` into this directory
+## Legacy Hugging Face demo
 
-## File overview
-
-| File | Purpose |
-|------|---------|
-| `parse_chats.py` | Parses raw Claude export into a clean CSV |
-| `embed_and_position.py` | Generates embeddings and 2D UMAP coordinates |
-| `app.py` | Streamlit app — the map, time machine, and blender |
-| `inspect_data.py` | Debug helper to inspect the raw export structure |
-| `chats_parsed.csv` | Generated — parsed conversations |
-| `chats_positioned.json` | Generated — conversations with x/y coordinates |
+The original Streamlit 2D map lives in `public_app.py` and deploys to Hugging Face Spaces. The React app at mind-world.app is the canonical web experience for v1.

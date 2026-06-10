@@ -606,6 +606,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch {
       convCount.textContent = '—'
       platformsCount.textContent = '—'
+      const onboarding = document.getElementById('onboarding')
+      if (onboarding) onboarding.style.display = 'block'
+      if (openMap) openMap.style.display = 'none'
+      setOnboardingMode(true)
     }
   }
 })

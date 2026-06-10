@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '../store'
-import { searchConversations, loadTeamMap } from '../api'
+import { searchConversations } from '../api'
 import MapPlot from './MapPlot'
 import BlenderPanel from './BlenderPanel'
 import ConvoList from './ConvoList'
 import DetailPanel from './DetailPanel'
-import IntegrationsModal from './IntegrationsModal'
 
 const PANEL_BG = 'rgba(8,8,18,0.96)'
 
@@ -59,27 +58,17 @@ export default function MapView() {
   const setFilterSource = useStore(s => s.setFilterSource)
   const setFilterRegion = useStore(s => s.setFilterRegion)
   
-  const worldMode = useStore(s => s.worldMode)
-  const teamConversations = useStore(s => s.teamConversations)
-  const setWorldMode = useStore(s => s.setWorldMode)
-  const setTeamConversations = useStore(s => s.setTeamConversations)
-  const restoreMyConversations = useStore(s => s.restoreMyConversations)
-
   const isMobile = useIsMobile()
 
   const [sortBy, setSortBy] = useState('recent')
   const [leftOpen, setLeftOpen] = useState(false)
   const [rightOpen, setRightOpen] = useState(false)
   const [timeIdx, setTimeIdx] = useState(Number.MAX_SAFE_INTEGER)
-  const [showIntegrations, setShowIntegrations] = useState(false)
-
   // MW-006: Semantic search
   const [searchQuery, setSearchQuery] = useState('')
   const [searchMatchIds, setSearchMatchIds] = useState(new Set())
   const [isSearching, setIsSearching] = useState(false)
   const searchTimerRef = useRef(null)
-
-  const [viewportTab, setViewportTab] = useState('all')
 
   useEffect(() => {
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
@@ -122,14 +111,10 @@ export default function MapView() {
   }, [conversations])
 
   const filtered = useMemo(() => conversations.filter(c => {
-    const cType = c.type || 'ai_chat'
-    if (viewportTab === 'ai_chat' && cType !== 'ai_chat') return false
-    if (viewportTab === 'document' && cType !== 'document') return false
-
     if (filterSource !== 'all' && c.source !== filterSource) return false
     if (filterRegion !== 'all' && c.region !== filterRegion) return false
     return true
-  }), [conversations, filterSource, filterRegion, viewportTab])
+  }), [conversations, filterSource, filterRegion])
 
   const regionColors = useMemo(() => {
     const map = {}
@@ -216,7 +201,7 @@ export default function MapView() {
       }
     : {
         position: 'fixed',
-        top: '88px',
+        top: '48px',
         bottom: '52px',
         width: '320px',
         zIndex: 100,
@@ -282,7 +267,7 @@ export default function MapView() {
     }}>
 
       {/* ── Map: fills between top bar and time machine bar ── */}
-      <div style={{ position: 'fixed', top: '88px', left: 0, right: 0, bottom: '52px', overflow: 'hidden' }}>
+      <div style={{ position: 'fixed', top: '48px', left: 0, right: 0, bottom: '52px', overflow: 'hidden' }}>
         <MapPlot
           conversations={timeFiltered}
           newIds={newIds}
@@ -417,64 +402,6 @@ export default function MapView() {
           {!isMobile && <span>Mind World</span>}
         </div>
 
-        {/* Mode Toggle */}
-        <div style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', padding: '2px', flexShrink: 0 }}>
-          <button
-            onClick={() => {
-              setWorldMode('my')
-              restoreMyConversations()
-              clearBlend()
-              setSelected(null)
-            }}
-            style={{
-              padding: '4px 12px',
-              background: worldMode === 'my' ? 'rgba(124,58,237,0.3)' : 'transparent',
-              border: 'none',
-              borderRadius: '6px',
-              color: worldMode === 'my' ? '#fff' : '#888',
-              fontSize: '0.75rem',
-              cursor: 'pointer',
-              fontWeight: worldMode === 'my' ? '600' : '400',
-              transition: 'all 0.2s'
-            }}
-          >
-            My World
-          </button>
-          <button
-            onClick={async () => {
-              if (worldMode === 'team') return;
-              setWorldMode('team')
-              clearBlend()
-              setSelected(null)
-              if (teamConversations) {
-                setTeamConversations(teamConversations, useStore.getState().teamSources || useStore.getState().sources)
-              } else {
-                try {
-                  const data = await loadTeamMap(email)
-                  setTeamConversations(data.conversations, data.sources)
-                } catch (e) {
-                  console.error(e)
-                  setWorldMode('my')
-                  restoreMyConversations()
-                }
-              }
-            }}
-            style={{
-              padding: '4px 12px',
-              background: worldMode === 'team' ? 'rgba(52,211,153,0.3)' : 'transparent',
-              border: 'none',
-              borderRadius: '6px',
-              color: worldMode === 'team' ? '#fff' : '#888',
-              fontSize: '0.75rem',
-              cursor: 'pointer',
-              fontWeight: worldMode === 'team' ? '600' : '400',
-              transition: 'all 0.2s'
-            }}
-          >
-            Team World
-          </button>
-        </div>
-
         {/* Stats — hidden on mobile */}
         {!isMobile && (
           <div style={{ display: 'flex', gap: '12px', fontSize: '0.72rem', color: '#555', flexShrink: 0 }}>
@@ -561,27 +488,6 @@ export default function MapView() {
 
         <div style={{ display: 'flex', gap: '8px' }}>
           <button
-            onClick={() => setShowIntegrations(true)}
-            style={{
-              padding: isMobile ? '5px 8px' : '5px 14px',
-              background: 'none',
-              border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: '7px',
-              color: '#555',
-              fontSize: isMobile ? '0.7rem' : '0.75rem',
-              cursor: 'pointer',
-              flexShrink: 0,
-              transition: 'all 0.15s',
-              whiteSpace: 'nowrap',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}
-          >
-            ⚙ Integrations
-          </button>
-          
-          <button
             onClick={() => {
               setSelected(null)
               clearBlend()
@@ -607,46 +513,6 @@ export default function MapView() {
             {isMobile ? '↩' : '← New Upload'}
           </button>
         </div>
-      </div>
-
-      {/* ── Tabbed Viewports ── */}
-      <div style={{
-        position: 'fixed',
-        top: '48px',
-        left: 0,
-        right: 0,
-        height: '40px',
-        zIndex: 198,
-        background: 'rgba(8, 8, 18, 0.85)',
-        backdropFilter: 'blur(8px)',
-        borderBottom: '1px solid rgba(255,255,255,0.05)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: '24px',
-      }}>
-        {['ai_chat', 'document', 'all'].map(tab => {
-          const labels = { ai_chat: 'AI Memory Map', document: 'Static Knowledge', all: 'Unified View' }
-          const active = viewportTab === tab
-          return (
-            <button
-              key={tab}
-              onClick={() => setViewportTab(tab)}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: active ? 'white' : '#666',
-                fontWeight: active ? '600' : '400',
-                fontSize: '0.8rem',
-                cursor: 'pointer',
-                position: 'relative',
-              }}
-            >
-              {labels[tab]}
-              {active && <div style={{ position: 'absolute', bottom: '-10px', left: 0, right: 0, height: '2px', background: '#7c3aed' }} />}
-            </button>
-          )
-        })}
       </div>
 
       {/* ── Search result count badge ── */}
@@ -727,7 +593,6 @@ export default function MapView() {
         </div>
       )}
 
-      <IntegrationsModal isOpen={showIntegrations} onClose={() => setShowIntegrations(false)} />
     </div>
   )
 }

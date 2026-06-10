@@ -1,8 +1,7 @@
 ﻿// Mind World Content Script v2
 
-// Smarter injection with preview panel
-
-
+// v1: input dock + Improve only. Legacy sidebar is disabled.
+const MW_LEGACY_SIDEBAR = false
 
 let sidebar = null
 
@@ -325,6 +324,7 @@ function init() {
 
 
 function injectSidebar() {
+  if (!MW_LEGACY_SIDEBAR) return
 
   const existing = document.getElementById('mind-world-sidebar')
 
@@ -659,28 +659,6 @@ function watchInputField() {
 
 
 
-    // Standard input event
-
-    inputField.addEventListener('input', handleInput)
-
-
-
-    // ChatGPT and some editors use keyup instead
-
-    inputField.addEventListener('keyup', handleInput)
-
-
-
-    // Also watch for paste events
-
-    inputField.addEventListener('paste', (e) => {
-
-      setTimeout(() => handleInput(e), 100)
-
-    })
-
-
-
     if (typeof injectPromptBuilderButton === 'function') {
 
       injectPromptBuilderButton(inputField)
@@ -890,6 +868,7 @@ function handleInput(e) {
 
 
 async function performSearch(query) {
+  if (!MW_LEGACY_SIDEBAR) return
 
   const response_status = await chrome.runtime.sendMessage({ type: 'GET_STATUS' })
 
@@ -962,6 +941,7 @@ async function performSearch(query) {
 
 
 function showSidebar() {
+  if (!MW_LEGACY_SIDEBAR) return
 
   if (!sidebar) injectSidebar()
 
@@ -1511,7 +1491,9 @@ function startAutoSave() {
 
     (hostname.includes('chatgpt.com') && /\/c\/[a-zA-Z0-9-]+/.test(path)) ||
 
-    (hostname.includes('gemini.google.com') && /\/app\/[a-zA-Z0-9]+/.test(path))
+    (hostname.includes('gemini.google.com') && /\/app\/[a-zA-Z0-9]+/.test(path)) ||
+
+    (hostname.includes('perplexity.ai') && path.length > 1)
 
   )
 
@@ -1895,10 +1877,6 @@ async function triggerAccumulatedSave(conversationId, messages) {
 
   lastSavedAt.set(conversationId, Date.now())
 
-
-
-  showSaveToast()
-
 }
 
 
@@ -2051,8 +2029,6 @@ async function tryAutoSave() {
 
       lastSavedMessageCount.set(conversationId, messages.length)
 
-      showSaveToast()
-
     }
 
   } catch (err) {
@@ -2120,3 +2096,7 @@ function escapeHtml(text) {
 }
 
 // Prompt Builder UI lives in input-dock.js (template chips + Improve popover)
+
+chrome.runtime.onMessage.addListener((message) => {
+  if (message.type === 'SAVE_CONFIRMED') showSaveToast()
+})

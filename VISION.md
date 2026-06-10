@@ -149,31 +149,31 @@ Tag **`v1.0.0`** and **freeze features** when all of these pass:
 
 ### Extension
 
-- [ ] Fresh install → email saved → clear next step (import or start chatting)
-- [ ] Template chip inserts scaffold into Claude, ChatGPT, and Gemini inputs
-- [ ] Improve works with 0 prior conversations (structures vague draft only)
-- [ ] Improve works with 10+ saved conversations (pulls relevant memory silently)
-- [ ] Alt+Shift+M triggers Improve
-- [ ] Auto-save confirms subtly; conversation appears in Supabase
-- [ ] Sidebar does not auto-open on every keystroke (if kept, it is opt-in only)
+- [x] Fresh install → email saved → clear next step (import or start chatting)
+- [x] Template chip inserts scaffold into Claude, ChatGPT, and Gemini inputs
+- [x] Improve works with 0 prior conversations (structures vague draft only)
+- [x] Improve works with 10+ saved conversations (pulls relevant memory silently)
+- [x] Alt+Shift+M triggers Improve
+- [x] Auto-save confirms subtly; conversation appears in Supabase
+- [x] Sidebar does not auto-open on every keystroke (legacy sidebar disabled in v1)
 
 ### Web app
 
-- [ ] Upload export → map renders with real cluster labels (not all “Topic N”)
-- [ ] Load existing map works for the same email as the extension
-- [ ] Semantic search on map highlights matching dots
-- [ ] Manual blend in web sidebar works (optional power feature)
+- [x] Upload export → map renders with real cluster labels (not all “Topic N”)
+- [x] Load existing map works for the same email as the extension
+- [x] Semantic search on map highlights matching dots
+- [x] Manual blend in web sidebar works (optional power feature)
 
 ### Backend & ops
 
-- [ ] Chrome Web Store listing live (or unlisted beta with install instructions)
-- [ ] One test account completes the full loop on production URLs
-- [ ] No mock data injected in production frontend
+- [ ] Chrome Web Store listing live (or unlisted beta with install instructions) — verify manually
+- [ ] One test account completes the full loop on production URLs — verify manually
+- [x] No mock data injected in production frontend
 
 ### Documentation
 
-- [ ] `ARCHITECTURE.md` exists: extension → backend → Supabase diagram
-- [ ] README points to extension as product, web as import/visualization
+- [x] `ARCHITECTURE.md` exists: extension → backend → Supabase diagram
+- [x] README points to extension as product, web as import/visualization
 
 **After v1.0.0:** Bug fixes and platform DOM updates only. No new features until real users have been watched using the product.
 

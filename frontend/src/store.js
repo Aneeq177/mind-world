@@ -30,15 +30,10 @@ export const useStore = create((set) => ({
   setCredentials: (email, apiKey) => set({ email, apiKey }),
   setPhase: (phase) => set({ phase }),
   setConversations: (conversations, sources) => {
-    const mockDocs = [
-      { id: 'mock-doc-1', type: 'document', source_app: 'notion', title: 'Notion Architecture Guidelines', x: 500, y: 500, created_at: new Date().toISOString(), region: 'Architecture', preview: 'Mock Notion document for testing the new Static Knowledge UI.' },
-      { id: 'mock-doc-2', type: 'document', source_app: 'confluence', title: 'Confluence Meeting Notes', x: 520, y: 480, created_at: new Date().toISOString(), region: 'Planning', preview: 'Mock Confluence document for testing the new Static Knowledge UI.' }
-    ]
-    const updated = [...conversations, ...mockDocs]
     set({
-      conversations: updated,
-      myConversations: updated,
-      totalConversations: updated.length,
+      conversations,
+      myConversations: conversations,
+      totalConversations: conversations.length,
       sources
     })
   },

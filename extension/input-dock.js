@@ -912,6 +912,10 @@
     }
   })
 
+  chrome.runtime.onMessage.addListener((message) => {
+    if (message.type === 'TRIGGER_IMPROVE') startImprove()
+  })
+
   document.addEventListener('click', (e) => {
     const host = document.getElementById(POPOVER_ID)
     if (!host || popoverState.mode === 'closed') return
