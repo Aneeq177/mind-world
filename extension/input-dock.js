@@ -800,18 +800,18 @@
     const dock = document.createElement('div')
     dock.id = DOCK_ID
     dock.style.cssText = `
-      display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
-      padding: 6px 8px;
+      display: flex; flex-direction: column; align-items: stretch; gap: 8px;
+      padding: 10px;
       background: rgba(17,17,17,0.92);
       border: 1px solid rgba(124,58,237,0.25);
-      border-radius: 8px;
+      border-radius: 10px;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       z-index: 9999;
     `
 
     const label = document.createElement('span')
     label.textContent = 'Mind World'
-    label.style.cssText = 'font-size:11px;color:#a78bfa;font-weight:600;margin-right:4px;'
+    label.style.cssText = 'font-size:11px;color:#a78bfa;font-weight:600;'
 
     const memoryBadge = document.createElement('button')
     memoryBadge.type = 'button'
@@ -855,7 +855,7 @@
     updateMemoryBadge()
 
     const chipsWrap = document.createElement('div')
-    chipsWrap.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;flex:1;align-items:center;'
+    chipsWrap.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;align-items:center;max-height:220px;overflow:auto;'
 
     async function renderChips() {
       const existing = chipsWrap.querySelectorAll('.mw-quick-chip')
@@ -938,7 +938,7 @@
     improveBtn.textContent = 'Improve'
     improveBtn.title = 'Improve this prompt (Alt+Shift+M)'
     improveBtn.style.cssText = `
-      padding: 5px 12px; font-size: 12px; font-weight: 600; border-radius: 6px;
+      width: 100%; padding: 7px 12px; font-size: 12px; font-weight: 600; border-radius: 6px;
       border: none; background: #7c3aed; color: #fff; cursor: pointer;
     `
     improveBtn.onmouseover = () => { improveBtn.style.background = '#6d28d9' }
@@ -954,7 +954,7 @@
     libraryBtn.textContent = 'Templates'
     libraryBtn.title = 'AI-picked templates based on what you type'
     libraryBtn.style.cssText = `
-      padding: 4px 10px; font-size: 11px; font-weight: 600; border-radius: 6px; cursor: pointer;
+      width: 100%; padding: 6px 10px; font-size: 11px; font-weight: 600; border-radius: 6px; cursor: pointer;
       border: 1px solid rgba(124,58,237,0.4); background: rgba(124,58,237,0.12); color: #c4b5fd;
     `
     libraryBtn.onclick = (e) => {
@@ -964,8 +964,27 @@
       openLibrary()
     }
 
-    dock.appendChild(label)
-    dock.appendChild(memoryBadge)
+    const headerRow = document.createElement('div')
+    headerRow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;'
+    const titleWrap = document.createElement('div')
+    titleWrap.style.cssText = 'display:flex;align-items:center;gap:6px;min-width:0;'
+
+    const collapseBtn = document.createElement('button')
+    collapseBtn.type = 'button'
+    collapseBtn.title = 'Collapse sidebar'
+    collapseBtn.textContent = '−'
+    collapseBtn.style.cssText = `
+      width: 22px; height: 22px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.18);
+      background: rgba(255,255,255,0.04); color: #c4b5fd; cursor: pointer; font-size: 14px;
+      line-height: 1;
+    `
+
+    titleWrap.appendChild(label)
+    titleWrap.appendChild(memoryBadge)
+    headerRow.appendChild(titleWrap)
+    headerRow.appendChild(collapseBtn)
+
+    dock.appendChild(headerRow)
     dock.appendChild(chipsWrap)
     dock.appendChild(libraryBtn)
     dock.appendChild(improveBtn)
@@ -974,27 +993,54 @@
     dock.dataset.mwDockMode = 'side'
     dock.style.position = 'fixed'
     dock.style.right = '12px'
-    dock.style.bottom = '18vh'
-    dock.style.maxWidth = '260px'
-    dock.style.flexWrap = 'nowrap'
+    dock.style.top = '96px'
+    dock.style.width = '320px'
+    dock.style.maxWidth = 'min(320px, calc(100vw - 24px))'
+    dock.style.maxHeight = 'calc(100vh - 120px)'
+    dock.style.overflowY = 'auto'
     dock.style.boxShadow = '0 8px 24px rgba(0,0,0,0.35)'
 
     const mediaNarrow = window.matchMedia('(max-width: 1180px)')
-    function applyDockLayout() {
-      if (mediaNarrow.matches) {
-        dock.style.flexDirection = 'column'
-        dock.style.alignItems = 'stretch'
+    let sidebarCollapsed = false
+    function applyCollapsedState() {
+      if (sidebarCollapsed) {
+        dock.style.width = '56px'
+        dock.style.padding = '8px'
+        dock.style.overflow = 'hidden'
+        label.style.display = 'none'
+        memoryBadge.style.display = 'none'
         chipsWrap.style.display = 'none'
-        label.style.marginRight = '0'
-        memoryBadge.style.width = '100%'
-        memoryBadge.style.textAlign = 'center'
+        libraryBtn.style.display = 'none'
+        improveBtn.style.display = 'none'
+        collapseBtn.textContent = '+'
+        collapseBtn.title = 'Expand sidebar'
       } else {
-        dock.style.flexDirection = 'row'
-        dock.style.alignItems = 'center'
-        chipsWrap.style.display = 'flex'
-        label.style.marginRight = '4px'
-        memoryBadge.style.width = ''
+        dock.style.width = mediaNarrow.matches ? '260px' : '320px'
+        dock.style.padding = '10px'
+        dock.style.overflowY = 'auto'
+        label.style.display = ''
+        memoryBadge.style.display = ''
+        chipsWrap.style.display = mediaNarrow.matches ? 'none' : 'flex'
+        libraryBtn.style.display = ''
+        improveBtn.style.display = ''
+        collapseBtn.textContent = '−'
+        collapseBtn.title = 'Collapse sidebar'
       }
+    }
+
+    function applyDockLayout() {
+      dock.style.right = mediaNarrow.matches ? '8px' : '12px'
+      dock.style.top = mediaNarrow.matches ? '72px' : '96px'
+      memoryBadge.style.width = ''
+      memoryBadge.style.textAlign = 'left'
+      applyCollapsedState()
+      positionPopover()
+    }
+    collapseBtn.onclick = (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      sidebarCollapsed = !sidebarCollapsed
+      applyCollapsedState()
       positionPopover()
     }
     applyDockLayout()
