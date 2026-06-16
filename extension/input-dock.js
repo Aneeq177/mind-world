@@ -9,7 +9,10 @@
 
   let cachedTemplates = []
   let cachedCategories = []
-  let libraryState = { q: '', category: '', tier: '', favoritesOnly: false }
+  let libraryState = { intent: '', category: '', tier: '', favoritesOnly: false }
+  let chipsDebounce = null
+  let chipsRequestId = 0
+  let refreshDockChips = null
 
   function formatEngineeredPrompt(text) {
     if (!text) return ''
@@ -202,6 +205,12 @@
       .mw-pop .lib-item-desc { font-size: 10px; color: #888; margin-top: 2px;
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .mw-pop .lib-item-meta { font-size: 9px; color: #666; margin-top: 2px; }
+      .mw-pop .lib-item-reason { font-size: 10px; color: #a78bfa; margin-top: 3px; }
+      .mw-pop .lib-section-label {
+        font-size: 10px; font-weight: 600; color: #a78bfa;
+        text-transform: uppercase; letter-spacing: 0.04em; margin: 4px 0 2px;
+      }
+      .mw-pop .lib-loading { font-size: 11px; color: #888; text-align: center; padding: 20px; }
       .mw-pop .lib-star {
         background: none; border: none; cursor: pointer; font-size: 14px;
         padding: 0; line-height: 1; color: #555; flex-shrink: 0;
@@ -552,21 +561,31 @@
     return out
   }
 
-  async function fetchLibraryTemplates() {
-    const hasFilters = libraryState.q || libraryState.category || libraryState.tier
-    if (hasFilters) {
+  async function fetchSuggestedTemplates(draft, limit, category, tier) {
+    try {
       const res = await chrome.runtime.sendMessage({
-        type: 'SEARCH_TEMPLATES',
-        q: libraryState.q,
-        category: libraryState.category,
-        tier: libraryState.tier,
-        sort: 'popular',
-        limit: 80
+        type: 'SUGGEST_TEMPLATES',
+        draft: draft || '',
+        limit: limit || 8,
+        category: category || '',
+        tier: tier || ''
       })
       if (res.templates && res.templates.length) return res.templates
-    }
+    } catch (e) { /* fallback below */ }
     await loadTemplates(true)
-    return cachedTemplates.length ? cachedTemplates : FALLBACK_TEMPLATES
+    const list = cachedTemplates.length ? cachedTemplates : FALLBACK_TEMPLATES
+    return list.filter(t => !isProTemplate(t)).slice(0, limit || 8)
+  }
+
+  function getSuggestionDraft(extraIntent) {
+    const chat = getInputText(anchoredInput)
+    const intent = (extraIntent || libraryState.intent || '').trim()
+    if (chat && intent) return chat + '\n\n' + intent
+    return intent || chat
+  }
+
+  function isBrowseMode() {
+    return !!(libraryState.category || libraryState.tier || libraryState.favoritesOnly)
   }
 
   async function openLibrary() {
@@ -574,9 +593,9 @@
     const pop = popoverShadow.getElementById('mw-pop-inner')
     if (pop) pop.classList.add('library')
     const title = popoverShadow.getElementById('mw-pop-title')
-    if (title) title.textContent = 'Template Library'
+    if (title) title.textContent = 'Templates for you'
 
-    openPopover('library', '<p class="note">Loading templates...</p>', `
+    openPopover('library', '<p class="lib-loading">Finding templates that fit what you\'re working on...</p>', `
       <button class="btn-ghost" id="mw-pop-close">Close</button>
     `)
     popoverShadow.getElementById('mw-pop-close').onclick = closePopover
@@ -584,19 +603,18 @@
     const catRes = await chrome.runtime.sendMessage({ type: 'GET_TEMPLATE_CATEGORIES' })
     cachedCategories = catRes.categories || []
 
+    let suggestDebounce = null
+    let suggestRequestId = 0
+
     async function renderLibrary() {
       const favs = await getFavorites()
-      const list = await fetchLibraryTemplates()
-      let filtered = filterTemplatesLocal(
-        list,
-        libraryState.q,
-        libraryState.category,
-        libraryState.tier,
-        libraryState.favoritesOnly,
-        favs
-      )
+      const body = popoverShadow.getElementById('mw-pop-body')
+      if (!body) return
 
-      let pillsHtml = `<button type="button" class="lib-pill${!libraryState.category && !libraryState.tier && !libraryState.favoritesOnly ? ' active' : ''}" data-cat="">All</button>`
+      const browsing = isBrowseMode()
+      const draft = getSuggestionDraft()
+
+      let pillsHtml = `<button type="button" class="lib-pill${!browsing ? ' active' : ''}" data-for-you="1">For you</button>`
       pillsHtml += `<button type="button" class="lib-pill${libraryState.favoritesOnly ? ' active' : ''}" data-fav="1">Favorites</button>`
       pillsHtml += `<button type="button" class="lib-pill pro-pill${libraryState.tier === 'pro' ? ' active' : ''}" data-tier="pro">Pro</button>`
       cachedCategories.slice(0, 10).forEach(c => {
@@ -604,56 +622,41 @@
         pillsHtml += `<button type="button" class="lib-pill${active}" data-cat="${escapeHtml(c.category)}">${escapeHtml(c.category)} (${c.count})</button>`
       })
 
-      let listHtml = ''
-      if (!filtered.length) {
-        listHtml = '<p class="lib-empty">No templates match. Try another search or category.</p>'
-      } else {
-        filtered.slice(0, 60).forEach(t => {
-          const isPro = (t.tier || '').toLowerCase() === 'pro' || isProTemplate(t)
-          const starred = favs.includes(t.name)
-          listHtml += `<div class="lib-item${isPro ? ' pro' : ''}" data-name="${escapeHtml(t.name)}">
-            <button type="button" class="lib-star${starred ? ' on' : ''}" data-star="${escapeHtml(t.name)}" title="Favorite">${starred ? '\u2605' : '\u2606'}</button>
-            <div class="lib-item-body">
-              <div class="lib-item-name">${escapeHtml(t.name)}</div>
-              <div class="lib-item-desc">${escapeHtml(t.description || '')}</div>
-              <div class="lib-item-meta">${escapeHtml(t.category || '')}${t.use_count ? ' \u00b7 ' + t.use_count + ' uses' : ''}</div>
-            </div>
-          </div>`
-        })
-      }
-
-      const body = popoverShadow.getElementById('mw-pop-body')
-      if (!body) return
       body.innerHTML = `
-        <input type="text" class="lib-search" id="mw-lib-search" placeholder="Search templates..." value="${escapeHtml(libraryState.q)}" />
+        <input type="text" class="lib-search" id="mw-lib-intent" placeholder="Describe what you want help with (optional)..." value="${escapeHtml(libraryState.intent)}" />
+        <p class="note" style="margin:0;text-align:left;">Mind World picks templates from what you type — no keywords needed.</p>
         <div class="lib-filters" id="mw-lib-filters">${pillsHtml}</div>
-        <div class="lib-list" id="mw-lib-list">${listHtml}</div>
-        <p class="note">${filtered.length} template${filtered.length !== 1 ? 's' : ''}</p>
+        <div class="lib-list" id="mw-lib-list"><p class="lib-loading">Loading...</p></div>
+        <p class="note" id="mw-lib-count"></p>
       `
 
-      const searchInput = popoverShadow.getElementById('mw-lib-search')
-      let debounce = null
-      if (searchInput) {
-        searchInput.oninput = () => {
-          clearTimeout(debounce)
-          debounce = setTimeout(async () => {
-            libraryState.q = searchInput.value.trim()
-            await renderLibrary()
-          }, 250)
+      const intentInput = popoverShadow.getElementById('mw-lib-intent')
+      if (intentInput) {
+        intentInput.oninput = () => {
+          clearTimeout(suggestDebounce)
+          suggestDebounce = setTimeout(async () => {
+            libraryState.intent = intentInput.value.trim()
+            if (!isBrowseMode()) await loadSuggestions()
+          }, 700)
         }
-        searchInput.onkeydown = (e) => e.stopPropagation()
+        intentInput.onkeydown = (e) => e.stopPropagation()
       }
 
       popoverShadow.querySelectorAll('.lib-pill').forEach(btn => {
         btn.onclick = async () => {
-          if (btn.dataset.fav) {
+          if (btn.dataset.forYou) {
+            libraryState.category = ''
+            libraryState.tier = ''
+            libraryState.favoritesOnly = false
+          } else if (btn.dataset.fav) {
             libraryState.favoritesOnly = !libraryState.favoritesOnly
             libraryState.category = ''
             libraryState.tier = ''
           } else if (btn.dataset.tier) {
             libraryState.tier = libraryState.tier === 'pro' ? '' : 'pro'
             libraryState.favoritesOnly = false
-          } else {
+            libraryState.category = ''
+          } else if (btn.dataset.cat !== undefined) {
             libraryState.category = btn.dataset.cat || ''
             libraryState.favoritesOnly = false
             libraryState.tier = ''
@@ -662,36 +665,98 @@
         }
       })
 
-      popoverShadow.querySelectorAll('.lib-star').forEach(btn => {
-        btn.onclick = async (e) => {
-          e.stopPropagation()
-          await toggleFavorite(btn.dataset.star)
-          await renderLibrary()
-        }
-      })
+      async function loadSuggestions() {
+        const reqId = ++suggestRequestId
+        const listEl = popoverShadow.getElementById('mw-lib-list')
+        const countEl = popoverShadow.getElementById('mw-lib-count')
+        if (!listEl) return
 
-      popoverShadow.querySelectorAll('.lib-item').forEach(row => {
-        row.onclick = () => {
-          const name = row.dataset.name
-          const t = filtered.find(x => x.name === name) || cachedTemplates.find(x => x.name === name)
-          if (!t) return
-          const isPro = (t.tier || '').toLowerCase() === 'pro' || isProTemplate(t)
-          const attr = t.attribution ? '<p class="note" style="font-size:10px;">' + escapeHtml(t.attribution) + '</p>' : ''
-          openPopover('preview', attr + '<textarea id="mw-pop-preview-text" spellcheck="false"></textarea>', `
-            <button class="btn-primary" id="mw-pop-use">Use in chat</button>
-            <button class="btn-ghost" id="mw-pop-back-lib">Back</button>
-          `)
-          const ta = popoverShadow.getElementById('mw-pop-preview-text')
-          if (ta) ta.value = formatEngineeredPrompt(t.template || '')
-          popoverShadow.getElementById('mw-pop-use').onclick = () => {
-            injectTemplate(t)
-            closePopover()
+        if (browsing) {
+          await loadTemplates(true)
+          let filtered = filterTemplatesLocal(
+            cachedTemplates.length ? cachedTemplates : FALLBACK_TEMPLATES,
+            '',
+            libraryState.category,
+            libraryState.tier,
+            libraryState.favoritesOnly,
+            favs
+          )
+          renderList(filtered, listEl, countEl, favs, filtered)
+          return
+        }
+
+        listEl.innerHTML = '<p class="lib-loading">Finding the best templates...</p>'
+        const suggestions = await fetchSuggestedTemplates(
+          draft,
+          12,
+          libraryState.category,
+          libraryState.tier
+        )
+        if (reqId !== suggestRequestId) return
+        renderList(suggestions, listEl, countEl, favs, suggestions)
+      }
+
+      function renderList(filtered, listEl, countEl, favs, clickList) {
+        let listHtml = ''
+        if (!filtered.length) {
+          listHtml = '<p class="lib-empty">No templates yet. Start typing in the chat box and we\'ll suggest some.</p>'
+        } else {
+          if (!browsing && draft) {
+            listHtml += '<div class="lib-section-label">Picked for you</div>'
           }
-          popoverShadow.getElementById('mw-pop-back-lib').onclick = openLibrary
-          positionPopover()
+          filtered.slice(0, 60).forEach(t => {
+            const isPro = (t.tier || '').toLowerCase() === 'pro' || isProTemplate(t)
+            const starred = favs.includes(t.name)
+            const reason = t.suggest_reason ? `<div class="lib-item-reason">${escapeHtml(t.suggest_reason)}</div>` : ''
+            listHtml += `<div class="lib-item${isPro ? ' pro' : ''}" data-name="${escapeHtml(t.name)}">
+              <button type="button" class="lib-star${starred ? ' on' : ''}" data-star="${escapeHtml(t.name)}" title="Favorite">${starred ? '\u2605' : '\u2606'}</button>
+              <div class="lib-item-body">
+                <div class="lib-item-name">${escapeHtml(t.name)}</div>
+                <div class="lib-item-desc">${escapeHtml(t.description || '')}</div>
+                ${reason}
+                <div class="lib-item-meta">${escapeHtml(t.category || '')}${t.use_count ? ' \u00b7 ' + t.use_count + ' uses' : ''}</div>
+              </div>
+            </div>`
+          })
         }
-      })
+        listEl.innerHTML = listHtml
+        if (countEl) {
+          countEl.textContent = browsing
+            ? `${filtered.length} template${filtered.length !== 1 ? 's' : ''} in browse`
+            : `${filtered.length} suggestion${filtered.length !== 1 ? 's' : ''} from your text`
+        }
 
+        popoverShadow.querySelectorAll('.lib-star').forEach(btn => {
+          btn.onclick = async (e) => {
+            e.stopPropagation()
+            await toggleFavorite(btn.dataset.star)
+            await renderLibrary()
+          }
+        })
+
+        popoverShadow.querySelectorAll('.lib-item').forEach(row => {
+          row.onclick = () => {
+            const name = row.dataset.name
+            const t = clickList.find(x => x.name === name) || cachedTemplates.find(x => x.name === name)
+            if (!t) return
+            const attr = t.attribution ? '<p class="note" style="font-size:10px;">' + escapeHtml(t.attribution) + '</p>' : ''
+            openPopover('preview', attr + '<textarea id="mw-pop-preview-text" spellcheck="false"></textarea>', `
+              <button class="btn-primary" id="mw-pop-use">Use in chat</button>
+              <button class="btn-ghost" id="mw-pop-back-lib">Back</button>
+            `)
+            const ta = popoverShadow.getElementById('mw-pop-preview-text')
+            if (ta) ta.value = formatEngineeredPrompt(t.template || '')
+            popoverShadow.getElementById('mw-pop-use').onclick = () => {
+              injectTemplate(t)
+              closePopover()
+            }
+            popoverShadow.getElementById('mw-pop-back-lib').onclick = openLibrary
+            positionPopover()
+          }
+        })
+      }
+
+      await loadSuggestions()
       positionPopover()
     }
 
@@ -702,7 +767,7 @@
     libraryState.tier = 'pro'
     libraryState.category = ''
     libraryState.favoritesOnly = false
-    libraryState.q = ''
+    libraryState.intent = ''
     await openLibrary()
   }
 
@@ -777,28 +842,6 @@
     const chipsWrap = document.createElement('div')
     chipsWrap.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;flex:1;align-items:center;'
 
-    const searchInput = document.createElement('input')
-    searchInput.type = 'text'
-    searchInput.placeholder = 'Search templates...'
-    searchInput.title = 'Open library to search all templates'
-    searchInput.style.cssText = `
-      flex: 1; min-width: 100px; max-width: 180px;
-      padding: 4px 8px; font-size: 11px; border-radius: 6px;
-      border: 1px solid rgba(124,58,237,0.25); background: rgba(0,0,0,0.3);
-      color: #e9d5ff;
-    `
-    searchInput.onfocus = () => {
-      libraryState.q = searchInput.value.trim()
-      openLibrary()
-    }
-    searchInput.onkeydown = (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault()
-        libraryState.q = searchInput.value.trim()
-        openLibrary()
-      }
-    }
-
     async function renderChips() {
       const existing = chipsWrap.querySelectorAll('.mw-quick-chip')
       existing.forEach(el => el.remove())
@@ -806,18 +849,32 @@
       const list = cachedTemplates.length ? cachedTemplates : FALLBACK_TEMPLATES
       const draft = getInputText(anchoredInput)
       let quick = []
+      const reqId = ++chipsRequestId
 
-      if (draft.length > 10) {
+      if (draft.length >= 3) {
+        const loading = document.createElement('span')
+        loading.className = 'mw-quick-chip'
+        loading.textContent = '…'
+        loading.style.cssText = `
+          padding: 4px 8px; font-size: 11px; border-radius: 12px;
+          border: 1px solid rgba(124,58,237,0.2); color: #888;
+        `
+        chipsWrap.appendChild(loading)
+
         try {
           const res = await chrome.runtime.sendMessage({
             type: 'SUGGEST_TEMPLATES',
             draft,
             limit: MAX_CHIPS
           })
+          if (reqId !== chipsRequestId) return
+          loading.remove()
           if (res.templates && res.templates.length) {
             quick = res.templates
           }
-        } catch (e) { /* fallback below */ }
+        } catch (e) {
+          if (reqId === chipsRequestId) loading.remove()
+        }
       }
 
       if (!quick.length) {
@@ -833,8 +890,10 @@
         const chip = document.createElement('button')
         chip.type = 'button'
         chip.className = 'mw-quick-chip'
-        chip.textContent = t.name.replace(/ \(.*\)$/, '').slice(0, 22)
-        chip.title = (t.description || t.name)
+        const shortName = t.name.replace(/ \(.*\)$/, '').slice(0, 22)
+        chip.textContent = draft.length >= 3 ? '✦ ' + shortName : shortName
+        const reason = t.suggest_reason ? ' — ' + t.suggest_reason : ''
+        chip.title = (t.description || t.name) + reason
         chip.style.cssText = `
           padding: 4px 8px; font-size: 11px; border-radius: 12px; cursor: pointer;
           border: 1px solid rgba(124,58,237,0.35); background: rgba(124,58,237,0.15);
@@ -847,9 +906,17 @@
       })
     }
 
-    chipsWrap.appendChild(searchInput)
+    refreshDockChips = renderChips
     renderChips()
-    setTimeout(renderChips, 1500)
+
+    function scheduleChipRefresh() {
+      clearTimeout(chipsDebounce)
+      chipsDebounce = setTimeout(renderChips, 800)
+    }
+
+    inputField.addEventListener('input', scheduleChipRefresh)
+    inputField.addEventListener('keyup', scheduleChipRefresh)
+    inputField.addEventListener('paste', scheduleChipRefresh)
 
     const improveBtn = document.createElement('button')
     improveBtn.type = 'button'
@@ -869,8 +936,8 @@
 
     const libraryBtn = document.createElement('button')
     libraryBtn.type = 'button'
-    libraryBtn.textContent = 'Library'
-    libraryBtn.title = 'Browse and search all prompt templates'
+    libraryBtn.textContent = 'Templates'
+    libraryBtn.title = 'AI-picked templates based on what you type'
     libraryBtn.style.cssText = `
       padding: 4px 10px; font-size: 11px; font-weight: 600; border-radius: 6px; cursor: pointer;
       border: 1px solid rgba(124,58,237,0.4); background: rgba(124,58,237,0.12); color: #c4b5fd;
@@ -878,7 +945,7 @@
     libraryBtn.onclick = (e) => {
       e.preventDefault()
       e.stopPropagation()
-      libraryState = { q: '', category: '', tier: '', favoritesOnly: false }
+      libraryState = { intent: '', category: '', tier: '', favoritesOnly: false }
       openLibrary()
     }
 

@@ -82,7 +82,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'SUGGEST_TEMPLATES') {
-    handleSuggestTemplates(message.draft, message.limit).then(sendResponse)
+    handleSuggestTemplates(
+      message.draft,
+      message.limit,
+      message.category,
+      message.tier
+    ).then(sendResponse)
     return true
   }
 
@@ -379,12 +384,17 @@ async function handleGetTemplateCategories() {
   }
 }
 
-async function handleSuggestTemplates(draft, limit) {
+async function handleSuggestTemplates(draft, limit, category, tier) {
   try {
     const response = await fetch(`${API_BASE}/templates/suggest`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ draft: draft || '', limit: limit || 5 })
+      body: JSON.stringify({
+        draft: draft || '',
+        limit: limit || 5,
+        category: category || '',
+        tier: tier || ''
+      })
     })
     if (!response.ok) {
       return { templates: [], error: 'suggest_failed' }

@@ -1,3 +1,4 @@
+# Import statements
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -9,17 +10,17 @@ from dotenv import load_dotenv
 from typing import Optional
 
 from pydantic import BaseModel
-from models import BlendRequest
-from services.parser import parse_claude, parse_chatgpt
+from models import BlendRequest # Import models from models.py
+from services.parser import parse_claude, parse_chatgpt # Import functions from parser.py
 from services.database import (
     get_or_create_user,
     store_conversations,
     get_user_conversations
-)
+) # Import functions from database.py
 
-load_dotenv()
+load_dotenv() # Load environment variables from .env file
 
-app = FastAPI(title="Mind World API", version="1.0.0")
+app = FastAPI(title="Mind World API", version="1.0.0") # Create FastAPI app
 
 app.add_middleware(
     CORSMiddleware,
@@ -28,76 +29,81 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"]
-)
+) # Add CORS middleware to allow requests from all origins
 
-@app.get("/health")
+@app.get("/health") # Simple health check (Basically just checks if the server is running)
 def health():
     return {"status": "ok", "version": "1.0.0"}
 
-@app.post("/process")
+@app.post("/process") # So /process here is the endpoint that handels the file uploads, processes them and them and then creates the 2D mind world
 async def process_files(
-    claude_file: UploadFile | None = File(None),
-    chatgpt_file: UploadFile | None = File(None),
-    api_key: str = Form(""),
+    claude_file: UploadFile | None = File(None), 
+    chatgpt_file: UploadFile | None = File(None), 
+    api_key: str = Form(""), # API key for the user (user is asked to enter their key)
     email: str = Form(...)
 ):
-    effective_api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
-    if not effective_api_key:
-        raise HTTPException(
-            status_code=400,
-            detail="Anthropic API key required for import (add in extension settings or server config)"
+    effective_api_key = api_key or os.getenv("ANTHROPIC_API_KEY") # effective_api_key is the name of the key that we will actually use
+    if not effective_api_key: # If the user does not have an API key, it will then use our key from .env and show no error. However if our key is not available then it will raise an error.
+        raise HTTPException( # We raise an error with a status code of 400 (Bad Request) if there is no key found. 
+            status_code=400, 
+            detail="Anthropic API key required for import (add in extension settings or server config)" # This is the error message that is sent if the user does not have api key
         )
 
-    if not claude_file and not chatgpt_file:
-        raise HTTPException(
+    if not claude_file and not chatgpt_file: # This code basically checks if you have uploaded atleast one of the claude or chatgpt files,, if not then it raises an error
+        raise HTTPException( #specifically raises a Bad Request error (400)
             status_code=400,
-            detail="At least one file required"
+            detail="At least one file required" # This is the error message
         )
 
-    all_dfs = []
-
-    try:
+    all_dfs = [] # This is an empty list that is being defined that will later store the parsed conversation tables for all the files that the user uploads
+# The files are stored as DataFrames which is a table like structure from pandas ( rows = conversations and columns = titles, messages, dates etc.)
+   
+   # Below is the try except block where everything under try is executed and if there is an error then the code under except is executed.
+    try: #
         if claude_file:
-            content = await claude_file.read()
-            data = json.loads(
-                content.decode('utf-8-sig', errors='replace')
+            content = await claude_file.read() # Wait for the file to upload and then read the contents of the file (claude in this case)
+            data = json.loads( # This loads the JSON file that the user uploads for claude and then converts it into a dictionary (conversts text into a dictionary)
+                content.decode('utf-8-sig', errors='replace') # This decodes the file into a string and then replaces any errors with a placeholder
             )
-            df = parse_claude(data)
-            all_dfs.append(df)
+            df = parse_claude(data) # Sends the parsed data from the claude JSON file to the parse_claude function in services/parser.py
+            all_dfs.append(df) # Adds the parsed claude dataframe to thet all_dfs list that we defined earlier that contains all the parsed conversation tables for all the files that the user uploads
 
-        if chatgpt_file:
-            content = await chatgpt_file.read()
-            df = parse_chatgpt(content)
-            all_dfs.append(df)
+        if chatgpt_file: 
+            content = await chatgpt_file.read() # Wait for the file to upload then read the chatgpt file
+            df = parse_chatgpt(content) # Here it only reads the raw text and sends it to the parse_chatgpt function in services/parser.py because it is a zip file
+            all_dfs.append(df) # Adds the parsed chatgpt dataframe to thet all_dfs list that we defined earlier that contains all the parsed conversation tables for all the files that the user uploads
 
-        if not all_dfs:
-            raise HTTPException(
+        if not all_dfs: # If the all_dfs list is empty, then it raises an error
+            raise HTTPException( #specifically raises a Bad Request error (400)
                 status_code=400,
-                detail="No conversations found"
+                detail="No conversations found" # This is the error message
             )
 
-        df = pd.concat(all_dfs, ignore_index=True)
+        df = pd.concat(all_dfs, ignore_index=True) # This concatenates all the dataframes in the all_dfs list into a single dataframe and ignores the index
 
-        if len(df) == 0:
-            raise HTTPException(
+        if len(df) == 0: # If the dataframe is empty, then it raises an error
+            raise HTTPException( #specifically raises a Bad Request error (400)
                 status_code=400,
-                detail="No conversations found"
+                detail="No conversations found" # This is the error message
             )
+# Now we are importing the embedder and blender functions from services/embedder.py and services/blender.py
+# The embedder function is used to embed the conversations into a 384-dimensional vector space and the blender function is used to label the clusters
+# The imports are purposely made inside the function because we only want to load the models when the function is called and not when the file is imported.
+        from services.embedder import embed_and_position # Loads AI models from sentence_transformers and umap (Imports from services/embedder.py)
+        from services.blender import label_clusters # Loads AI models from sentence_transformers and hdbscan (Imports from services/blender.py)
 
-        from services.embedder import embed_and_position
-        from services.blender import label_clusters
 
-        chats, embeddings = embed_and_position(df)
-        chats = label_clusters(chats, effective_api_key)
+        chats, embeddings = embed_and_position(df) # This embeds the conversations into a 384-dimensional vector space and then labels the clusters
+        chats = label_clusters(chats, effective_api_key) # This groups the chats by cluster_id, sends sample titles from each cluster to claude, claude returns a short label (e.g. "Job Search", "Python Help"), each chat then gets a 'region' (topic name) and a 'color' (hex code). Uses the same api key as the user's api key.
 
         try:
-            email = email.lower().strip()
-            user_id = get_or_create_user(email)
-            store_conversations(user_id, chats, embeddings)
+            email = email.lower().strip() # Normalizes email so You@Mail.com = you@mail.com
+            user_id = get_or_create_user(email) # Tries to find the user using the email and if not founds, it creates a new user with the email.
+            store_conversations(user_id, chats, embeddings) # Stores the conversations in the database using the user_id and the conversations and embeddings.
         except Exception as db_error:
-            print(f"DB storage error: {db_error}")
+            print(f"DB storage error: {db_error}") # This prints the error if the conversations are not stored in the database
             user_id = None
-
+# The following just counts the number of claude and chatgpt conversations and stores it in the sources dictionary
         sources = {
             "claude": sum(
                 1 for c in chats if c['source'] == 'claude'
@@ -107,20 +113,24 @@ async def process_files(
             )
         }
 
-        for chat in chats:
-            chat.pop('full_text', None)
+        for chat in chats: # Goes through each chat
+            chat.pop('full_text', None) # This removes the full_text column from each chat
+            # We end up using the full text in the database for semantic search and context blending, but not on the map.
+            # So removing the full text here helps reduce the size of the data that is sent to the frontend, making the process faster to load the map.
 
-        return {
-            "conversations": chats,
-            "total": len(chats),
-            "sources": sources,
-            "user_id": user_id
+        return { # This JSON response is sent to the frontend to display the conversations, total number of conversations, sources and user_id
+            "conversations": chats, # list of chats ready to draw as orbs on the map
+            "total": len(chats), # total number of conversations
+            "sources": sources, # number of claude and chatgpt conversations
+            "user_id": user_id # user_id of the user who uploaded the files
         }
 
-    except HTTPException:
+    except HTTPException: # If there is an error, it raises an error with a status code of 500 (Internal Server Error)
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+# Marks the end of the process_files function
+
 
 class SearchRequest(BaseModel):
     query: str
@@ -648,20 +658,27 @@ async def template_categories():
 class TemplateSuggestRequest(BaseModel):
     draft: str
     limit: int = 5
-
-
-class TemplateTrackRequest(BaseModel):
-    name: str
+    category: str = ""
+    tier: str = ""
 
 
 @app.post("/templates/suggest")
 async def suggest_templates(request: TemplateSuggestRequest):
     try:
-        from services.database import suggest_prompt_templates
-        templates = suggest_prompt_templates(request.draft, min(request.limit, 10))
-        return {"templates": templates}
+        from services.template_suggester import suggest_templates_with_ai
+        templates = suggest_templates_with_ai(
+            request.draft,
+            min(request.limit, 12),
+            category=request.category or "",
+            tier=request.tier or "",
+        )
+        return {"templates": templates, "ai": True}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class TemplateTrackRequest(BaseModel):
+    name: str
 
 
 @app.post("/templates/track_use")
