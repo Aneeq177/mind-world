@@ -1,6 +1,7 @@
 from supabase import create_client, Client
 import os
 import numpy as np
+from typing import Any
 
 def get_supabase() -> Client:
     url = os.getenv("SUPABASE_URL")
@@ -111,6 +112,24 @@ def search_conversations(
 
     return result.data
 
+
+def search_conversations_candidates(
+    user_id: str,
+    query_embedding: np.ndarray,
+    limit: int = 20,
+) -> list[dict]:
+    """Fetch a larger candidate set for hybrid reranking."""
+    supabase = get_supabase()
+    result = supabase.rpc(
+        "match_conversations",
+        {
+            "query_embedding": query_embedding.tolist(),
+            "match_user_id": user_id,
+            "match_count": max(5, limit),
+        },
+    ).execute()
+    return result.data or []
+
 def get_user_conversations(user_id: str) -> list[dict]:
     supabase = get_supabase()
 
@@ -158,6 +177,25 @@ def update_personal_profile(user_id: str, profile_data: dict, is_profile_enabled
         "profile_data": profile_data,
         "is_profile_enabled": is_profile_enabled,
         "updated_at": "now()"
+    }
+    result = supabase.table("personal_profiles").upsert(row, on_conflict="user_id").execute()
+    return result.data[0] if result.data else {}
+
+
+def update_personal_profile_inferred(
+    user_id: str,
+    profile_data: dict[str, Any],
+    last_signal_at: str,
+) -> dict:
+    """Persist inferred profile updates without changing user opt-in state."""
+    supabase = get_supabase()
+    existing = get_personal_profile(user_id)
+    row = {
+        "user_id": user_id,
+        "profile_data": profile_data,
+        "is_profile_enabled": bool(existing.get("is_profile_enabled", False)),
+        "last_inferred_at": last_signal_at,
+        "last_signal_at": last_signal_at,
     }
     result = supabase.table("personal_profiles").upsert(row, on_conflict="user_id").execute()
     return result.data[0] if result.data else {}

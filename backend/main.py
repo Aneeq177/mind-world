@@ -17,6 +17,11 @@ from services.database import (
     store_conversations,
     get_user_conversations
 ) # Import functions from database.py
+from services.personalization import (
+    extract_relevant_profile_facts,
+    hybrid_score_conversations,
+    infer_profile_delta,
+)
 
 load_dotenv() # Load environment variables from .env file
 
@@ -140,7 +145,11 @@ class SearchRequest(BaseModel):
 @app.post("/search")
 async def search(request: SearchRequest):
     try:
-        from services.database import search_conversations
+        from services.database import (
+            search_conversations,
+            search_conversations_candidates,
+            get_personal_profile,
+        )
         from sentence_transformers import SentenceTransformer
 
         email = request.email.lower().strip()
@@ -149,11 +158,24 @@ async def search(request: SearchRequest):
         model = SentenceTransformer('all-MiniLM-L6-v2')
         query_embedding = model.encode([request.query])[0]
 
-        results = search_conversations(
-            user_id,
-            query_embedding,
-            request.limit
-        )
+        profile = get_personal_profile(user_id)
+        if profile.get("is_profile_enabled"):
+            candidates = search_conversations_candidates(
+                user_id,
+                query_embedding,
+                max(15, request.limit * 4),
+            )
+            results = hybrid_score_conversations(
+                candidates,
+                request.query,
+                profile.get("profile_data", {}),
+            )[:request.limit]
+        else:
+            results = search_conversations(
+                user_id,
+                query_embedding,
+                request.limit
+            )
 
         return {"results": results, "query": request.query}
 
@@ -299,7 +321,12 @@ async def engineer_prompt(request: EngineerPromptRequest):
     try:
         import anthropic
         from sentence_transformers import SentenceTransformer
-        from services.database import search_conversations, get_personal_profile, get_prompt_template_by_name
+        from services.database import (
+            search_conversations,
+            search_conversations_candidates,
+            get_personal_profile,
+            get_prompt_template_by_name,
+        )
 
         api_key = request.api_key or os.getenv("ANTHROPIC_API_KEY")
         if not api_key:
@@ -334,7 +361,20 @@ async def engineer_prompt(request: EngineerPromptRequest):
         else:
             model = SentenceTransformer("all-MiniLM-L6-v2")
             embedding = model.encode([request.message])[0]
-            selected = search_conversations(user_id, embedding, limit=5)
+            profile = get_personal_profile(user_id)
+            if profile.get("is_profile_enabled"):
+                candidates = search_conversations_candidates(
+                    user_id,
+                    embedding,
+                    limit=20,
+                )
+                selected = hybrid_score_conversations(
+                    candidates,
+                    request.message,
+                    profile.get("profile_data", {}),
+                )[:5]
+            else:
+                selected = search_conversations(user_id, embedding, limit=5)
 
         if selected:
             from services.database import get_supabase
@@ -380,12 +420,17 @@ async def engineer_prompt(request: EngineerPromptRequest):
         profile = get_personal_profile(user_id)
         profile_context = ""
         if profile and profile.get("is_profile_enabled"):
-            profile_data = profile.get("profile_data", {})
-            if profile_data:
+            profile_data = profile.get("profile_data") or {}
+            relevant_profile_facts = extract_relevant_profile_facts(
+                profile_data,
+                request.message,
+                min_confidence=0.62,
+                max_facts=6,
+            )
+            if relevant_profile_facts:
                 profile_context = "\n[USER'S PERSONAL PROFILE (Use this as background context)]\n"
-                for key, value in profile_data.items():
-                    if value:
-                        profile_context += f"- {key.capitalize()}: {value}\n"
+                for fact in relevant_profile_facts:
+                    profile_context += f"- {fact}\n"
                 profile_context += "\n"
 
         template_body = ""
@@ -410,6 +455,7 @@ OUTPUT FORMAT (required — plain text for pasting into a chat box):
             system_prompt = f"""You are an expert prompt engineer. Transform the user's rough message into a clear, readable prompt for an AI assistant.
 
 Use past conversations and profile only for relevant facts. Never invent details.
+If profile signals are sparse or weak, default to light-touch personalization.
 
 Use this structure (include only sections that have content):
 
@@ -835,6 +881,23 @@ class SaveConversationRequest(BaseModel):
     conversation: dict
     visibility: str = 'private'
 
+
+async def run_profile_inference_from_delta(user_id: str, conversation_delta_text: str):
+    from services.database import get_personal_profile, update_personal_profile_inferred
+    from datetime import datetime, timezone
+
+    existing = get_personal_profile(user_id)
+    merged_profile = infer_profile_delta(
+        existing.get("profile_data", {}),
+        conversation_delta_text,
+    )
+    update_personal_profile_inferred(
+        user_id=user_id,
+        profile_data=merged_profile,
+        last_signal_at=datetime.now(timezone.utc).isoformat(),
+    )
+
+
 @app.post("/save_conversation")
 async def save_conversation(request: SaveConversationRequest, background_tasks: BackgroundTasks):
     try:
@@ -911,6 +974,7 @@ async def save_conversation(request: SaveConversationRequest, background_tasks: 
         }, on_conflict="conversation_id,user_id").execute()
 
         background_tasks.add_task(run_recluster, email)
+        background_tasks.add_task(run_profile_inference_from_delta, user_id, full_text[:2500])
 
         return {"success": True, "id": conv_id}
 
