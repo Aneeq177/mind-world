@@ -275,10 +275,25 @@
     const rect = anchor && anchor.getBoundingClientRect
       ? anchor.getBoundingClientRect()
       : { bottom: 80, right: 24, left: window.innerWidth - 380 }
-    const popW = 360
-    let left = Math.min(rect.left || 24, window.innerWidth - popW - 12)
-    let top = (rect.top || 200) - pop.offsetHeight - 8
-    if (top < 8) top = (rect.bottom || 100) + 8
+    const popW = Math.min(pop.offsetWidth || 440, window.innerWidth - 24)
+    const anchorIsSideRail = !!(dockHost && dockHost.dataset && dockHost.dataset.mwDockMode === 'side')
+    let left
+    let top
+
+    if (anchorIsSideRail) {
+      left = (rect.left || window.innerWidth - 72) - popW - 10
+      top = (rect.top || 120) + (((rect.height || 0) - pop.offsetHeight) / 2)
+      if (left < 8) left = 8
+    } else {
+      left = Math.min(rect.left || 24, window.innerWidth - popW - 12)
+      top = (rect.top || 200) - pop.offsetHeight - 8
+      if (top < 8) top = (rect.bottom || 100) + 8
+    }
+
+    if (top < 8) top = 8
+    if (top + pop.offsetHeight > window.innerHeight - 8) {
+      top = Math.max(8, window.innerHeight - pop.offsetHeight - 8)
+    }
     host.style.left = left + 'px'
     host.style.top = top + 'px'
   }
@@ -786,7 +801,7 @@
     dock.id = DOCK_ID
     dock.style.cssText = `
       display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
-      padding: 6px 8px; margin-bottom: 6px;
+      padding: 6px 8px;
       background: rgba(17,17,17,0.92);
       border: 1px solid rgba(124,58,237,0.25);
       border-radius: 8px;
@@ -955,14 +970,42 @@
     dock.appendChild(libraryBtn)
     dock.appendChild(improveBtn)
 
-    const parent = inputField.parentElement
-    if (parent) {
-      parent.insertBefore(dock, inputField)
-      dockHost = dock
-    } else {
-      inputField.insertAdjacentElement('beforebegin', dock)
-      dockHost = dock
+    // Keep dock off the chat input stack so it never steals vertical space.
+    dock.dataset.mwDockMode = 'side'
+    dock.style.position = 'fixed'
+    dock.style.right = '12px'
+    dock.style.bottom = '18vh'
+    dock.style.maxWidth = '260px'
+    dock.style.flexWrap = 'nowrap'
+    dock.style.boxShadow = '0 8px 24px rgba(0,0,0,0.35)'
+
+    const mediaNarrow = window.matchMedia('(max-width: 1180px)')
+    function applyDockLayout() {
+      if (mediaNarrow.matches) {
+        dock.style.flexDirection = 'column'
+        dock.style.alignItems = 'stretch'
+        chipsWrap.style.display = 'none'
+        label.style.marginRight = '0'
+        memoryBadge.style.width = '100%'
+        memoryBadge.style.textAlign = 'center'
+      } else {
+        dock.style.flexDirection = 'row'
+        dock.style.alignItems = 'center'
+        chipsWrap.style.display = 'flex'
+        label.style.marginRight = '4px'
+        memoryBadge.style.width = ''
+      }
+      positionPopover()
     }
+    applyDockLayout()
+    if (typeof mediaNarrow.addEventListener === 'function') {
+      mediaNarrow.addEventListener('change', applyDockLayout)
+    } else if (typeof mediaNarrow.addListener === 'function') {
+      mediaNarrow.addListener(applyDockLayout)
+    }
+
+    document.body.appendChild(dock)
+    dockHost = dock
   }
 
   window.injectPromptBuilderButton = function (inputField) {
