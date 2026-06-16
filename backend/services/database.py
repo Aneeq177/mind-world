@@ -163,18 +163,26 @@ def get_user_integration(user_id: str, provider: str) -> dict:
     return result.data[0] if result.data else None
 
 def get_personal_profile(user_id: str) -> dict:
+    from services.personalization import normalize_profile_data
+
     supabase = get_supabase()
     result = supabase.table("personal_profiles")\
         .select("*")\
         .eq("user_id", user_id)\
         .execute()
-    return result.data[0] if result.data else {"user_id": user_id, "profile_data": {}, "is_profile_enabled": False}
+    if not result.data:
+        return {"user_id": user_id, "profile_data": {}, "is_profile_enabled": False}
+    row = dict(result.data[0])
+    row["profile_data"] = normalize_profile_data(row.get("profile_data"))
+    return row
 
 def update_personal_profile(user_id: str, profile_data: dict, is_profile_enabled: bool) -> dict:
+    from services.personalization import normalize_profile_data
+
     supabase = get_supabase()
     row = {
         "user_id": user_id,
-        "profile_data": profile_data,
+        "profile_data": normalize_profile_data(profile_data),
         "is_profile_enabled": is_profile_enabled,
         "updated_at": "now()"
     }
@@ -188,11 +196,13 @@ def update_personal_profile_inferred(
     last_signal_at: str,
 ) -> dict:
     """Persist inferred profile updates without changing user opt-in state."""
+    from services.personalization import normalize_profile_data
+
     supabase = get_supabase()
     existing = get_personal_profile(user_id)
     row = {
         "user_id": user_id,
-        "profile_data": profile_data,
+        "profile_data": normalize_profile_data(profile_data),
         "is_profile_enabled": bool(existing.get("is_profile_enabled", False)),
         "last_inferred_at": last_signal_at,
         "last_signal_at": last_signal_at,

@@ -9,6 +9,8 @@ from services.personalization import (
     build_fallback_structured_questions,
     normalize_structured_questions,
     extract_confirmed_anchor_facts,
+    extract_relevant_profile_facts,
+    normalize_profile_data,
 )
 
 
@@ -97,3 +99,22 @@ def test_should_prompt_confirmation_when_unconfirmed():
         "domains": ["coding"],
     }
     assert should_prompt_confirmation(profile) is False
+
+
+def test_malformed_profile_data_does_not_crash_engineer_helpers():
+    malformed = {
+        "domains": "coding",
+        "preferences": "concise",
+        "confirmed_anchors": "software engineering",
+        "active_projects": "mind-world",
+    }
+    normalized = normalize_profile_data(malformed)
+    assert isinstance(normalized["domains"], dict)
+    assert extract_relevant_profile_facts(normalized, "help debug python") == []
+    assert extract_confirmed_anchor_facts(normalized) == []
+    ranked = hybrid_score_conversations(
+        [{"id": "1", "title": "api", "preview": "python", "similarity": 0.5, "created_at": "2026-06-15T00:00:00+00:00"}],
+        "python api",
+        normalized,
+    )
+    assert ranked[0]["id"] == "1"

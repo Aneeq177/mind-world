@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import json
 import math
 import re
 from typing import Any
@@ -85,6 +86,55 @@ def _utcnow_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _as_mapping(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return {}
+        try:
+            parsed = json.loads(stripped)
+            if isinstance(parsed, dict):
+                return parsed
+        except json.JSONDecodeError:
+            pass
+    return {}
+
+
+def _as_list(value: Any) -> list[Any]:
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return []
+        try:
+            parsed = json.loads(stripped)
+            if isinstance(parsed, list):
+                return parsed
+        except json.JSONDecodeError:
+            pass
+    return []
+
+
+def normalize_profile_data(raw: Any) -> dict[str, Any]:
+    """Coerce profile_data from DB/API into a safe dict shape."""
+    if isinstance(raw, str):
+        raw = _as_mapping(raw) or {}
+    if not isinstance(raw, dict):
+        return {}
+    profile = dict(raw)
+    profile["domains"] = _as_mapping(profile.get("domains"))
+    profile["preferences"] = _as_mapping(profile.get("preferences"))
+    profile["active_projects"] = _as_list(profile.get("active_projects"))
+    profile["confirmed_anchors"] = _as_mapping(profile.get("confirmed_anchors"))
+    profile["adaptive_weights"] = _as_mapping(profile.get("adaptive_weights"))
+    profile["quality_metrics"] = _as_mapping(profile.get("quality_metrics"))
+    profile["constraints"] = _as_list(profile.get("constraints"))
+    return profile
+
+
 def _parse_ts(value: str | None) -> datetime | None:
     if not value:
         return None
@@ -119,10 +169,10 @@ def infer_profile_delta(
     existing_profile_data: dict[str, Any] | None,
     conversation_delta_text: str,
 ) -> dict[str, Any]:
-    profile = dict(existing_profile_data or {})
-    domains = dict(profile.get("domains") or {})
-    preferences = dict(profile.get("preferences") or {})
-    active_projects = list(profile.get("active_projects") or [])
+    profile = normalize_profile_data(existing_profile_data)
+    domains = dict(_as_mapping(profile.get("domains")))
+    preferences = dict(_as_mapping(profile.get("preferences")))
+    active_projects = list(_as_list(profile.get("active_projects")))
 
     snippet = (conversation_delta_text or "")[:MAX_SNIPPET_CHARS]
     lowered = snippet.lower()
@@ -195,7 +245,10 @@ def get_top_domains(
     max_domains: int = 3,
 ) -> list[tuple[str, float]]:
     ranked: list[tuple[str, float]] = []
-    for domain, info in ((profile_data or {}).get("domains") or {}).items():
+    data = normalize_profile_data(profile_data)
+    for domain, info in _as_mapping(data.get("domains")).items():
+        if not isinstance(info, dict):
+            continue
         conf = decay_confidence(
             float(info.get("confidence", 0.0) or 0.0),
             info.get("last_observed_at"),
@@ -214,8 +267,8 @@ def compute_summary_confidence(profile_data: dict[str, Any] | None) -> float:
 
 
 def build_inferred_summary(profile_data: dict[str, Any] | None) -> str:
-    data = profile_data or {}
-    confirmed = data.get("confirmed_anchors") or {}
+    data = normalize_profile_data(profile_data)
+    confirmed = _as_mapping(data.get("confirmed_anchors"))
     if confirmed.get("summary"):
         return str(confirmed["summary"])
 
@@ -239,8 +292,8 @@ def has_enough_history(conversation_count: int, profile_data: dict[str, Any] | N
 
 
 def should_prompt_confirmation(profile_data: dict[str, Any] | None) -> bool:
-    data = profile_data or {}
-    confirmed = data.get("confirmed_anchors") or {}
+    data = normalize_profile_data(profile_data)
+    confirmed = _as_mapping(data.get("confirmed_anchors"))
     if not confirmed.get("confirmed_at"):
         return True
     ts = _parse_ts(confirmed.get("confirmed_at"))
@@ -250,7 +303,7 @@ def should_prompt_confirmation(profile_data: dict[str, Any] | None) -> bool:
     if age_days >= CONFIRMATION_STALE_DAYS:
         return True
     # Re-prompt if inferred domains drift from confirmed domains.
-    confirmed_domains = set(confirmed.get("domains") or [])
+    confirmed_domains = set(_as_list(confirmed.get("domains")))
     inferred_domains = {name for name, _ in get_top_domains(data, min_confidence=0.5, max_domains=3)}
     if inferred_domains and confirmed_domains and not inferred_domains.intersection(confirmed_domains):
         return True
@@ -262,8 +315,8 @@ def apply_summary_confirmation(
     action: str,
     correction_ids: list[str] | None = None,
 ) -> dict[str, Any]:
-    profile = dict(profile_data or {})
-    confirmed = dict(profile.get("confirmed_anchors") or {})
+    profile = normalize_profile_data(profile_data)
+    confirmed = dict(_as_mapping(profile.get("confirmed_anchors")))
     now = _utcnow_iso()
     action_l = (action or "").strip().lower()
 
@@ -290,7 +343,7 @@ def apply_summary_confirmation(
                 "confirmed_at": now,
                 "source": "user_correction",
             })
-        domains_map = dict(profile.get("domains") or {})
+        domains_map = dict(_as_mapping(profile.get("domains")))
         for domain_id in ids:
             if domain_id == "other":
                 continue
@@ -314,13 +367,16 @@ def apply_summary_confirmation(
 
 
 def extract_confirmed_anchor_facts(profile_data: dict[str, Any] | None) -> list[str]:
-    confirmed = (profile_data or {}).get("confirmed_anchors") or {}
+    data = normalize_profile_data(profile_data)
+    confirmed = _as_mapping(data.get("confirmed_anchors"))
     summary = str(confirmed.get("summary") or "").strip()
     if not summary:
         return []
     facts = [f"User-verified focus areas: {summary}."]
     for pref_key in ("concise", "step_by_step", "examples", "formal_tone"):
-        pref = ((profile_data or {}).get("preferences") or {}).get(pref_key) or {}
+        pref = _as_mapping(data.get("preferences")).get(pref_key) or {}
+        if not isinstance(pref, dict):
+            continue
         conf = decay_confidence(float(pref.get("confidence", 0.0) or 0.0), pref.get("last_observed_at"))
         if pref.get("value") and conf >= MIN_FACT_CONFIDENCE:
             if pref_key == "concise":
@@ -335,7 +391,8 @@ def build_fallback_structured_questions(
     profile_data: dict[str, Any] | None,
 ) -> list[dict[str, Any]]:
     goal_l = (goal or "").lower()
-    confirmed_domains = set(((profile_data or {}).get("confirmed_anchors") or {}).get("domains") or [])
+    data = normalize_profile_data(profile_data)
+    confirmed_domains = set(_as_list(_as_mapping(data.get("confirmed_anchors")).get("domains")))
     questions: list[dict[str, Any]] = []
 
     if "coding" not in confirmed_domains and any(k in goal_l for k in ("code", "bug", "api", "debug")):
@@ -440,16 +497,20 @@ def extract_relevant_profile_facts(
 ) -> list[str]:
     query_l = (query or "").lower()
     facts: list[tuple[float, str]] = []
-    data = profile_data or {}
+    data = normalize_profile_data(profile_data)
 
-    for domain, info in (data.get("domains") or {}).items():
+    for domain, info in _as_mapping(data.get("domains")).items():
+        if not isinstance(info, dict):
+            continue
         conf = decay_confidence(float(info.get("confidence", 0.0) or 0.0), info.get("last_observed_at"))
         if conf < max(min_confidence, MIN_DOMAIN_CONFIDENCE):
             continue
         if domain in query_l or any(k in query_l for k in DOMAIN_PATTERNS.get(domain, [])):
             facts.append((conf, f"User often asks about {domain} topics ({int(conf * 100)}% confidence)."))
 
-    for pref, info in (data.get("preferences") or {}).items():
+    for pref, info in _as_mapping(data.get("preferences")).items():
+        if not isinstance(info, dict):
+            continue
         conf = decay_confidence(float(info.get("confidence", 0.0) or 0.0), info.get("last_observed_at"))
         if not info.get("value") or conf < min_confidence:
             continue
@@ -462,7 +523,9 @@ def extract_relevant_profile_facts(
         elif pref == "formal_tone":
             facts.append((conf, "User tends to prefer a professional tone."))
 
-    for proj in (data.get("active_projects") or []):
+    for proj in _as_list(data.get("active_projects")):
+        if not isinstance(proj, dict):
+            continue
         name = str(proj.get("name", "")).strip()
         conf = decay_confidence(float(proj.get("confidence", 0.0) or 0.0), proj.get("last_observed_at"))
         if not name or conf < min_confidence:
@@ -480,15 +543,20 @@ def hybrid_score_conversations(
     profile_data: dict[str, Any] | None,
 ) -> list[dict[str, Any]]:
     query_l = (query or "").lower()
-    projects = [str(p.get("name", "")).lower() for p in (profile_data or {}).get("active_projects", []) if isinstance(p, dict)]
-    domain_weights = {
-        name: decay_confidence(float(item.get("confidence", 0.0) or 0.0), item.get("last_observed_at"))
-        for name, item in ((profile_data or {}).get("domains") or {}).items()
-    }
+    data = normalize_profile_data(profile_data)
+    projects = [str(p.get("name", "")).lower() for p in _as_list(data.get("active_projects")) if isinstance(p, dict)]
+    domain_weights = {}
+    for name, item in _as_mapping(data.get("domains")).items():
+        if not isinstance(item, dict):
+            continue
+        domain_weights[name] = decay_confidence(
+            float(item.get("confidence", 0.0) or 0.0),
+            item.get("last_observed_at"),
+        )
 
     now = datetime.now(timezone.utc)
     reranked: list[dict[str, Any]] = []
-    adaptive_weights = ((profile_data or {}).get("adaptive_weights") or {})
+    adaptive_weights = _as_mapping(data.get("adaptive_weights"))
     recency_boost = max(0.8, min(1.2, float(adaptive_weights.get("retrieval_recency_boost", 1.0) or 1.0)))
     domain_boost = max(0.8, min(1.2, float(adaptive_weights.get("retrieval_domain_boost", 1.0) or 1.0)))
 
@@ -526,9 +594,9 @@ def apply_edit_feedback_adaptation(
     Lightweight online adaptation from prompt edit signals.
     Only coarse weights are updated to stay privacy-safe.
     """
-    profile = dict(profile_data or {})
-    adaptive = dict(profile.get("adaptive_weights") or {})
-    quality = dict(profile.get("quality_metrics") or {})
+    profile = normalize_profile_data(profile_data)
+    adaptive = dict(_as_mapping(profile.get("adaptive_weights")))
+    quality = dict(_as_mapping(profile.get("quality_metrics")))
     now = _utcnow_iso()
 
     norm_distance = float((diff_metrics or {}).get("normalized_edit_distance", 0.0) or 0.0)
