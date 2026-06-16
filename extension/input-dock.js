@@ -599,6 +599,8 @@
         goalHash: await hashText(goal || ''),
         engineeredPromptHash: await hashText(engineered),
         finalPromptHash: await hashText(editedPrompt),
+        engineeredPromptPreview: engineered.slice(0, 2500),
+        finalPromptPreview: editedPrompt.slice(0, 2500),
         edited: !acceptedUnedited,
         acceptedUnedited,
         latencyMs: (lastImproveTelemetry && lastImproveTelemetry.latencyMs) || 0,

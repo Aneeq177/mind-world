@@ -132,6 +132,7 @@ def normalize_profile_data(raw: Any) -> dict[str, Any]:
     profile["adaptive_weights"] = _as_mapping(profile.get("adaptive_weights"))
     profile["quality_metrics"] = _as_mapping(profile.get("quality_metrics"))
     profile["constraints"] = _as_list(profile.get("constraints"))
+    profile["llm_pending_snippets"] = _as_list(profile.get("llm_pending_snippets"))
     return profile
 
 
@@ -260,6 +261,10 @@ def get_top_domains(
 
 
 def compute_summary_confidence(profile_data: dict[str, Any] | None) -> float:
+    data = normalize_profile_data(profile_data)
+    llm_conf = float(data.get("llm_summary_confidence", 0.0) or 0.0)
+    if llm_conf > 0:
+        return round(llm_conf, 3)
     domains = get_top_domains(profile_data, min_confidence=0.25, max_domains=4)
     if not domains:
         return 0.0
@@ -271,6 +276,10 @@ def build_inferred_summary(profile_data: dict[str, Any] | None) -> str:
     confirmed = _as_mapping(data.get("confirmed_anchors"))
     if confirmed.get("summary"):
         return str(confirmed["summary"])
+
+    llm_summary = str(data.get("llm_synthesized_summary") or "").strip()
+    if llm_summary:
+        return llm_summary
 
     domains = get_top_domains(profile_data, min_confidence=MIN_DOMAIN_CONFIDENCE, max_domains=3)
     labels = [DOMAIN_LABELS.get(name, name.replace("_", " ")) for name, _ in domains]

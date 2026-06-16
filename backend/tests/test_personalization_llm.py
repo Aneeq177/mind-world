@@ -1,0 +1,51 @@
+from services.personalization_llm import (
+    merge_llm_profile_delta,
+    queue_snippet_for_llm_extraction,
+    should_run_llm_extraction,
+    synthesis_is_stale,
+    get_display_summary,
+    get_quick_corrections,
+    infer_profile_delta_llm,
+)
+
+
+def test_merge_llm_profile_delta_merges_domains():
+    existing = {"domains": {"coding": {"confidence": 0.5, "last_observed_at": "2026-01-01T00:00:00+00:00"}}}
+    delta = {"domains": {"coding": {"confidence": 0.9, "label": "Software engineering"}}}
+    merged = merge_llm_profile_delta(existing, delta)
+    assert merged["domains"]["coding"]["confidence"] >= 0.5
+    assert merged["domains"]["coding"]["label"] == "Software engineering"
+
+
+def test_queue_snippet_triggers_batch_threshold():
+    profile = queue_snippet_for_llm_extraction({}, "one")
+    profile = queue_snippet_for_llm_extraction(profile, "two")
+    assert should_run_llm_extraction(profile) is False
+    profile = queue_snippet_for_llm_extraction(profile, "three")
+    assert should_run_llm_extraction(profile) is True
+
+
+def test_infer_profile_delta_llm_without_api_key_falls_back():
+    merged = infer_profile_delta_llm({}, "help me debug python fastapi api", api_key=None, force=True)
+    assert merged.get("domains")
+
+
+def test_get_display_summary_prefers_llm_synthesis():
+    profile = {"llm_synthesized_summary": "building AI tools and applying to grad school"}
+    assert "grad school" in get_display_summary(profile)
+
+
+def test_get_quick_corrections_uses_llm_options():
+    profile = {
+        "llm_quick_corrections": [
+            {"id": "startup", "label": "Mostly startup product work"},
+            {"id": "phd", "label": "Mostly PhD applications"},
+        ]
+    }
+    options = get_quick_corrections(profile)
+    assert any(o["id"] == "startup" for o in options)
+    assert any(o["id"] == "other" for o in options)
+
+
+def test_synthesis_is_stale_without_timestamp():
+    assert synthesis_is_stale({}) is True

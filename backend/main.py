@@ -21,16 +21,11 @@ from services.personalization import (
     extract_relevant_profile_facts,
     extract_confirmed_anchor_facts,
     hybrid_score_conversations,
-    infer_profile_delta,
     apply_edit_feedback_adaptation,
-    build_inferred_summary,
     compute_summary_confidence,
     has_enough_history,
     should_prompt_confirmation,
     apply_summary_confirmation,
-    build_fallback_structured_questions,
-    normalize_structured_questions,
-    QUICK_CORRECTION_OPTIONS,
 )
 
 load_dotenv() # Load environment variables from .env file
@@ -231,6 +226,8 @@ class PromptFeedbackRequest(BaseModel):
     goal_hash: Optional[str] = None
     engineered_prompt_hash: Optional[str] = None
     final_prompt_hash: Optional[str] = None
+    engineered_prompt_preview: Optional[str] = None
+    final_prompt_preview: Optional[str] = None
     diff_metrics: Optional[dict] = None
     accepted_unedited: Optional[bool] = False
     edited: Optional[bool] = False
@@ -391,19 +388,31 @@ async def engineer_prompt(request: EngineerPromptRequest):
             model = SentenceTransformer("all-MiniLM-L6-v2")
             embedding = model.encode([request.message])[0]
             profile = get_personal_profile(user_id)
+            profile_data = profile.get("profile_data") or {}
             if profile.get("is_profile_enabled"):
                 candidates = search_conversations_candidates(
                     user_id,
                     embedding,
                     limit=20,
                 )
-                selected = hybrid_score_conversations(
+                candidates = hybrid_score_conversations(
                     candidates,
                     request.message,
-                    profile.get("profile_data", {}),
-                )[:5]
+                    profile_data,
+                )[:15]
             else:
-                selected = search_conversations(user_id, embedding, limit=5)
+                candidates = search_conversations_candidates(
+                    user_id,
+                    embedding,
+                    limit=15,
+                )
+            from services.personalization_llm import rerank_conversations_llm
+            selected = rerank_conversations_llm(
+                request.message,
+                candidates,
+                api_key,
+                limit=5,
+            )
 
         if selected:
             from services.database import get_supabase
@@ -458,12 +467,20 @@ async def engineer_prompt(request: EngineerPromptRequest):
             profile_context += "\n"
         if profile and profile.get("is_profile_enabled"):
             adaptive = profile_data.get("adaptive_weights") or {}
-            relevant_profile_facts = extract_relevant_profile_facts(
+            from services.personalization_llm import pick_relevant_profile_facts_llm
+            relevant_profile_facts = pick_relevant_profile_facts_llm(
                 profile_data,
                 request.message,
-                min_confidence=0.62,
+                api_key,
                 max_facts=6,
             )
+            if not relevant_profile_facts:
+                relevant_profile_facts = extract_relevant_profile_facts(
+                    profile_data,
+                    request.message,
+                    min_confidence=0.62,
+                    max_facts=6,
+                )
             if relevant_profile_facts:
                 profile_context += "[INFERRED PERSONAL PROFILE (background context)]\n"
                 for fact in relevant_profile_facts:
@@ -642,7 +659,19 @@ async def context_preview(request: ContextPreviewRequest):
 @app.post("/personalization_summary")
 async def personalization_summary(request: PersonalizationSummaryRequest):
     try:
-        from services.database import get_or_create_user, get_personal_profile, get_supabase
+        from services.database import (
+            get_or_create_user,
+            get_personal_profile,
+            update_personal_profile_inferred,
+            get_supabase,
+        )
+        from services.personalization_llm import (
+            synthesize_profile_llm,
+            synthesis_is_stale,
+            get_display_summary,
+            get_quick_corrections,
+        )
+        from datetime import datetime, timezone
 
         email = request.email.lower().strip()
         user_id = get_or_create_user(email)
@@ -656,9 +685,28 @@ async def personalization_summary(request: PersonalizationSummaryRequest):
             .execute()
         conversation_count = conv_result.count if conv_result.count is not None else len(conv_result.data or [])
 
+        if conversation_count >= 8 and synthesis_is_stale(profile_data):
+            samples = supabase.table("knowledge_nodes")\
+                .select("id, title, preview, source_app, created_at")\
+                .eq("user_id", user_id)\
+                .order("updated_at", desc=True)\
+                .limit(25)\
+                .execute()
+            synthesized = synthesize_profile_llm(
+                profile_data,
+                samples.data or [],
+                os.getenv("ANTHROPIC_API_KEY"),
+            )
+            update_personal_profile_inferred(
+                user_id=user_id,
+                profile_data=synthesized,
+                last_signal_at=datetime.now(timezone.utc).isoformat(),
+            )
+            profile_data = synthesized
+
         enough_history = has_enough_history(conversation_count, profile_data)
         summary_confidence = compute_summary_confidence(profile_data)
-        inferred_summary = build_inferred_summary(profile_data)
+        inferred_summary = get_display_summary(profile_data)
         should_show = enough_history and should_prompt_confirmation(profile_data)
 
         return {
@@ -667,7 +715,7 @@ async def personalization_summary(request: PersonalizationSummaryRequest):
             "inferred_summary": inferred_summary,
             "summary_confidence": summary_confidence,
             "conversation_count": conversation_count,
-            "quick_corrections": QUICK_CORRECTION_OPTIONS,
+            "quick_corrections": get_quick_corrections(profile_data),
             "confirmed_summary": (profile_data.get("confirmed_anchors") or {}).get("summary"),
         }
     except Exception as e:
@@ -725,17 +773,21 @@ async def confirm_personalization_summary(request: ConfirmPersonalizationSummary
 @app.post("/generate_clarifying_questions")
 async def generate_clarifying_questions(request: ClarifyingQuestionsRequest):
     try:
-        import anthropic
-        import json
-        from services.database import get_or_create_user, get_personal_profile, increment_personalization_counter
+        from sentence_transformers import SentenceTransformer
+        from services.database import (
+            get_or_create_user,
+            get_personal_profile,
+            increment_personalization_counter,
+            search_conversations_candidates,
+        )
+        from services.personalization_llm import generate_clarifying_questions_llm
 
         api_key = request.api_key or os.getenv("ANTHROPIC_API_KEY")
         if not api_key:
             raise HTTPException(status_code=400, detail="API key required")
 
         profile_data: dict = {}
-        confirmed_domains: set[str] = set()
-        profile_facts: list[str] = []
+        memory_previews: list[dict] = []
         inference_used = False
         user_id = None
         if request.email:
@@ -743,70 +795,26 @@ async def generate_clarifying_questions(request: ClarifyingQuestionsRequest):
             user_id = get_or_create_user(email)
             profile = get_personal_profile(user_id)
             profile_data = profile.get("profile_data") or {}
-            confirmed_domains = set((profile_data.get("confirmed_anchors") or {}).get("domains") or [])
-            profile_facts = extract_confirmed_anchor_facts(profile_data)
-            inferred_facts = extract_relevant_profile_facts(profile_data, request.goal, min_confidence=0.55, max_facts=4)
-            profile_facts.extend([f for f in inferred_facts if f not in profile_facts])
-            inference_used = bool(profile_facts)
+            inference_used = bool(profile_data)
 
-        client = anthropic.Anthropic(api_key=api_key)
+            model = SentenceTransformer("all-MiniLM-L6-v2")
+            embedding = model.encode([request.goal])[0]
+            candidates = search_conversations_candidates(user_id, embedding, limit=8)
+            memory_previews = [
+                {
+                    "title": c.get("title", ""),
+                    "preview": (c.get("preview") or "")[:180],
+                    "similarity": c.get("similarity"),
+                }
+                for c in (candidates or [])[:5]
+            ]
 
-        system_prompt = """You are an expert prompt engineer helping refine a user's draft goal.
-Ask at most 2 high-value clarifying questions. Each question MUST be answerable by tapping one option.
-
-Rules:
-- Use known user profile facts when available; do NOT ask about things already confirmed.
-- Prefer inferring from profile/history over asking.
-- Every question must include 3-5 concise tap options.
-- allow_other should be true only when truly needed.
-
-Return ONLY valid JSON:
-{
-  "questions": [
-    {
-      "id": "short_id",
-      "prompt": "Question text?",
-      "options": [{"id": "opt1", "label": "Option label"}, {"id": "opt2", "label": "Option label"}],
-      "allow_other": false
-    }
-  ]
-}
-No markdown, no code fences."""
-
-        user_content = f"User goal:\n{request.goal}"
-        if request.template and request.template != "none":
-            user_content += f"\n\nTemplate context: {request.template}"
-        if profile_facts:
-            user_content += "\n\nKnown user context:\n" + "\n".join(f"- {fact}" for fact in profile_facts)
-        if confirmed_domains:
-            user_content += f"\n\nAlready confirmed domains (do not re-ask): {', '.join(sorted(confirmed_domains))}"
-
-        response = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=500,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_content}],
+        questions = generate_clarifying_questions_llm(
+            request.goal,
+            profile_data,
+            memory_previews,
+            api_key,
         )
-
-        questions: list[dict] = []
-        try:
-            text = response.content[0].text.strip()
-            if text.startswith("```json"):
-                text = text[7:]
-            if text.startswith("```"):
-                text = text[3:]
-            if text.endswith("```"):
-                text = text[:-3]
-            parsed = json.loads(text.strip())
-            if isinstance(parsed, dict):
-                questions = normalize_structured_questions(parsed.get("questions") or [])
-            elif isinstance(parsed, list):
-                questions = normalize_structured_questions(parsed)
-        except json.JSONDecodeError:
-            questions = []
-
-        if not questions:
-            questions = build_fallback_structured_questions(request.goal, profile_data)
 
         if user_id:
             increment_personalization_counter(user_id, "clarifying_questions_generated_total", 1)
@@ -910,14 +918,28 @@ async def track_template_use(request: TemplateTrackRequest):
 async def update_profile_settings(request: UpdateProfileSettingsRequest):
     try:
         from services.database import get_or_create_user, get_personal_profile, update_personal_profile
+        from services.personalization_llm import merge_popup_profile_llm
+
         email = request.email.lower().strip()
         user_id = get_or_create_user(email)
         
         profile_data = request.profile_data
+        popup_keys = {"background", "situation", "goals", "constraints", "preferences"}
         if profile_data is None:
             existing = get_personal_profile(user_id)
             profile_data = existing.get("profile_data", {})
-            
+        else:
+            existing = get_personal_profile(user_id)
+            popup_fields = {k: profile_data[k] for k in popup_keys if profile_data.get(k)}
+            if popup_fields:
+                profile_data = merge_popup_profile_llm(
+                    existing.get("profile_data", {}),
+                    popup_fields,
+                    os.getenv("ANTHROPIC_API_KEY"),
+                )
+            else:
+                profile_data = {**(existing.get("profile_data") or {}), **profile_data}
+
         update_personal_profile(user_id, profile_data, request.is_profile_enabled)
         return {"success": True}
     except Exception as e:
@@ -938,13 +960,12 @@ async def get_profile_settings(request: GetProfileSettingsRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/prompt_feedback")
-async def prompt_feedback(request: PromptFeedbackRequest):
+async def prompt_feedback(request: PromptFeedbackRequest, background_tasks: BackgroundTasks):
     try:
         from services.database import (
             get_or_create_user,
             log_prompt_feedback,
             get_personal_profile,
-            update_personal_profile_inferred,
             increment_personalization_counter,
         )
         event_type = (request.event_type or "rating").strip().lower()
@@ -957,16 +978,16 @@ async def prompt_feedback(request: PromptFeedbackRequest):
         if event_type == "edit_feedback":
             profile = get_personal_profile(user_id)
             if profile.get("is_profile_enabled"):
-                updated_profile = apply_edit_feedback_adaptation(
+                engineered = (request.engineered_prompt_preview or request.prompt_preview or "")[:2500]
+                final = (request.final_prompt_preview or "")[:2500]
+                background_tasks.add_task(
+                    run_llm_edit_feedback,
+                    user_id,
                     profile.get("profile_data") or {},
+                    engineered,
+                    final,
                     request.diff_metrics or {},
                     bool(request.accepted_unedited),
-                )
-                from datetime import datetime, timezone
-                update_personal_profile_inferred(
-                    user_id=user_id,
-                    profile_data=updated_profile,
-                    last_signal_at=datetime.now(timezone.utc).isoformat(),
                 )
                 adaptation_applied = True
 
@@ -1089,16 +1110,49 @@ class SaveConversationRequest(BaseModel):
 
 async def run_profile_inference_from_delta(user_id: str, conversation_delta_text: str):
     from services.database import get_personal_profile, update_personal_profile_inferred
+    from services.personalization_llm import infer_profile_delta_llm
     from datetime import datetime, timezone
 
     existing = get_personal_profile(user_id)
-    merged_profile = infer_profile_delta(
+    merged_profile = infer_profile_delta_llm(
         existing.get("profile_data", {}),
         conversation_delta_text,
+        os.getenv("ANTHROPIC_API_KEY"),
     )
     update_personal_profile_inferred(
         user_id=user_id,
         profile_data=merged_profile,
+        last_signal_at=datetime.now(timezone.utc).isoformat(),
+    )
+
+
+async def run_llm_edit_feedback(
+    user_id: str,
+    profile_data: dict,
+    engineered_prompt: str,
+    final_prompt: str,
+    diff_metrics: dict,
+    accepted_unedited: bool,
+):
+    from services.database import update_personal_profile_inferred
+    from services.personalization_llm import apply_edit_feedback_llm
+    from datetime import datetime, timezone
+
+    updated = apply_edit_feedback_adaptation(
+        profile_data,
+        diff_metrics,
+        accepted_unedited,
+    )
+    if engineered_prompt and final_prompt and engineered_prompt.strip() != final_prompt.strip():
+        updated = apply_edit_feedback_llm(
+            updated,
+            engineered_prompt,
+            final_prompt,
+            os.getenv("ANTHROPIC_API_KEY"),
+        )
+    update_personal_profile_inferred(
+        user_id=user_id,
+        profile_data=updated,
         last_signal_at=datetime.now(timezone.utc).isoformat(),
     )
 

@@ -560,6 +560,8 @@ async function handlePromptFeedback(message) {
         goal_hash: message.goalHash || '',
         engineered_prompt_hash: message.engineeredPromptHash || '',
         final_prompt_hash: message.finalPromptHash || '',
+        engineered_prompt_preview: message.engineeredPromptPreview || '',
+        final_prompt_preview: message.finalPromptPreview || '',
         diff_metrics: message.diffMetrics || {},
         accepted_unedited: !!message.acceptedUnedited,
         edited: !!message.edited,
