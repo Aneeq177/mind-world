@@ -13,6 +13,53 @@
   let chipsDebounce = null
   let chipsRequestId = 0
   let refreshDockChips = null
+  let lastImproveTelemetry = null
+
+  async function hashText(input) {
+    try {
+      const text = String(input || '')
+      const enc = new TextEncoder().encode(text)
+      const digest = await crypto.subtle.digest('SHA-256', enc)
+      return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('')
+    } catch (e) {
+      return ''
+    }
+  }
+
+  function levenshteinDistance(a, b, maxChars = 1200) {
+    const left = String(a || '').slice(0, maxChars)
+    const right = String(b || '').slice(0, maxChars)
+    const m = left.length
+    const n = right.length
+    if (!m) return n
+    if (!n) return m
+    const prev = new Array(n + 1)
+    const curr = new Array(n + 1)
+    for (let j = 0; j <= n; j++) prev[j] = j
+    for (let i = 1; i <= m; i++) {
+      curr[0] = i
+      const li = left.charCodeAt(i - 1)
+      for (let j = 1; j <= n; j++) {
+        const cost = li === right.charCodeAt(j - 1) ? 0 : 1
+        curr[j] = Math.min(
+          prev[j] + 1,
+          curr[j - 1] + 1,
+          prev[j - 1] + cost
+        )
+      }
+      for (let j = 0; j <= n; j++) prev[j] = curr[j]
+    }
+    return prev[n]
+  }
+
+  async function emitPromptEditFeedback(payload) {
+    try {
+      await chrome.runtime.sendMessage({
+        type: 'PROMPT_EDIT_FEEDBACK',
+        ...payload
+      })
+    } catch (e) { /* telemetry best-effort */ }
+  }
 
   function formatEngineeredPrompt(text) {
     if (!text) return ''
@@ -156,6 +203,17 @@
         border-radius: 6px; padding: 8px; color: #fff; font-size: 12px;
       }
       .mw-pop .q-block { margin-bottom: 8px; }
+      .mw-pop .q-chip-row { display:flex; gap:6px; margin-top:6px; }
+      .mw-pop .q-chip {
+        padding: 4px 10px; border-radius: 999px; font-size: 11px; cursor: pointer;
+        border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.04); color: #ddd;
+      }
+      .mw-pop .q-chip.active {
+        border-color: rgba(124,58,237,0.6); background: rgba(124,58,237,0.25); color: #f3e8ff;
+      }
+      .mw-pop .q-freeform {
+        margin-top: 6px;
+      }
       .mw-pop .actions { display: flex; gap: 8px; flex-wrap: wrap; }
       .mw-pop button {
         flex: 1; min-width: 90px;
@@ -328,13 +386,15 @@
     popoverState.mode = mode
   }
 
-  async function runEngineer(message, templateName) {
+  async function runEngineer(message, templateName, metadata = {}) {
+    const requestStartedAt = Date.now()
     openPopover('loading', '<p class="note">Searching your memory and improving prompt...</p>', '')
     try {
       const res = await chrome.runtime.sendMessage({
         type: 'ENGINEER_PROMPT',
         message,
-        template: templateName || 'none'
+        template: templateName || 'none',
+        clarification_count: metadata.clarificationCount || 0
       })
       if (res.error) {
         const msg = res.error === 'not_logged_in'
@@ -346,12 +406,29 @@
         popoverShadow.getElementById('mw-pop-close').onclick = closePopover
         return
       }
+      emitPromptEditFeedback({
+        eventType: 'improve_request',
+        rating: 1,
+        acceptedUnedited: false,
+        edited: false,
+        latencyMs: res.latencyMs || (Date.now() - requestStartedAt),
+        diffMetrics: {
+          clarification_count: metadata.clarificationCount || 0,
+          conversations_used: res.conversationsUsed || 0
+        }
+      })
       showPreviewResult(
         res.engineeredPrompt,
         res.conversationsUsed || 0,
         message,
         templateName,
-        res.sourcesUsed || []
+        res.sourcesUsed || [],
+        {
+          startedAt: requestStartedAt,
+          latencyMs: res.latencyMs || (Date.now() - requestStartedAt),
+          clarificationCount: metadata.clarificationCount || 0,
+          originalDraft: metadata.originalDraft || message
+        }
       )
     } catch (e) {
       openPopover('preview', '<p class="err">Network error. Try again.</p>', `
@@ -439,7 +516,7 @@
     positionPopover()
   }
 
-  function showPreviewResult(text, conversationsUsed, goal, templateName, sourcesUsed) {
+  function showPreviewResult(text, conversationsUsed, goal, templateName, sourcesUsed, telemetry) {
     const note = conversationsUsed > 0
       ? 'Improved using your draft + past conversations below'
       : 'Engineered from your draft'
@@ -454,6 +531,13 @@
     `)
     const ta = popoverShadow.getElementById('mw-pop-preview-text')
     if (ta) ta.value = formatEngineeredPrompt(text)
+    lastImproveTelemetry = {
+      startedAt: telemetry && telemetry.startedAt ? telemetry.startedAt : Date.now(),
+      latencyMs: telemetry && telemetry.latencyMs ? telemetry.latencyMs : 0,
+      clarificationCount: telemetry && telemetry.clarificationCount ? telemetry.clarificationCount : 0,
+      originalDraft: (telemetry && telemetry.originalDraft) ? telemetry.originalDraft : goal,
+      engineeredPrompt: formatEngineeredPrompt(text)
+    }
     const toggle = popoverShadow.getElementById('mw-sources-toggle')
     const list = popoverShadow.getElementById('mw-sources-list')
     if (toggle && list) {
@@ -472,8 +556,34 @@
         showImportGuide()
       }
     }
-    popoverShadow.getElementById('mw-pop-replace').onclick = () => {
-      if (typeof injectIntoChat === 'function') injectIntoChat(ta.value, false)
+    popoverShadow.getElementById('mw-pop-replace').onclick = async () => {
+      const editedPrompt = ta ? ta.value : ''
+      if (typeof injectIntoChat === 'function') injectIntoChat(editedPrompt, false)
+      const engineered = (lastImproveTelemetry && lastImproveTelemetry.engineeredPrompt) || ''
+      const distance = levenshteinDistance(engineered, editedPrompt)
+      const maxLen = Math.max(engineered.length, editedPrompt.length, 1)
+      const normDistance = distance / maxLen
+      const acceptedUnedited = distance === 0
+      const payload = {
+        eventType: 'edit_feedback',
+        rating: acceptedUnedited ? 1 : -1,
+        templateUsed: templateName || 'none',
+        conversationsUsed: conversationsUsed || 0,
+        goalHash: await hashText(goal || ''),
+        engineeredPromptHash: await hashText(engineered),
+        finalPromptHash: await hashText(editedPrompt),
+        edited: !acceptedUnedited,
+        acceptedUnedited,
+        latencyMs: (lastImproveTelemetry && lastImproveTelemetry.latencyMs) || 0,
+        diffMetrics: {
+          engineered_length: engineered.length,
+          final_length: editedPrompt.length,
+          edit_distance: distance,
+          normalized_edit_distance: Number(normDistance.toFixed(6)),
+          clarification_count: (lastImproveTelemetry && lastImproveTelemetry.clarificationCount) || 0
+        }
+      }
+      emitPromptEditFeedback(payload)
       closePopover()
     }
     popoverShadow.getElementById('mw-pop-close').onclick = closePopover
@@ -507,22 +617,49 @@
           await runEngineer(draft, templateName)
           return
         }
-        let qHtml = '<p class="note">Your message is short — answer briefly:</p>'
+        let qHtml = '<p class="note">Quick tap answers (optional text if needed):</p>'
         questions.forEach((q, i) => {
-          qHtml += `<div class="q-block"><label>${i + 1}. ${q}</label><input type="text" id="mw-clarify-${i}" /></div>`
+          qHtml += `
+            <div class="q-block" data-q-index="${i}">
+              <label>${i + 1}. ${q}</label>
+              <div class="q-chip-row">
+                <button type="button" class="q-chip" data-choice="yes" data-q="${i}">Yes</button>
+                <button type="button" class="q-chip" data-choice="no" data-q="${i}">No</button>
+              </div>
+              <input class="q-freeform" type="text" id="mw-clarify-${i}" placeholder="Optional detail..." />
+            </div>`
         })
         openPopover('clarify', qHtml, `
           <button class="btn-primary" id="mw-pop-engineer">Generate prompt</button>
           <button class="btn-ghost" id="mw-pop-skip">Skip</button>
         `)
-        popoverShadow.getElementById('mw-pop-skip').onclick = () => runEngineer(draft, templateName)
+        const choiceState = {}
+        popoverShadow.querySelectorAll('.q-chip').forEach(btn => {
+          btn.onclick = () => {
+            const q = btn.dataset.q
+            const val = btn.dataset.choice
+            choiceState[q] = val
+            popoverShadow.querySelectorAll(`.q-chip[data-q="${q}"]`).forEach(el => el.classList.remove('active'))
+            btn.classList.add('active')
+          }
+        })
+        popoverShadow.getElementById('mw-pop-skip').onclick = () => runEngineer(draft, templateName, {
+          clarificationCount: 0,
+          originalDraft: draft
+        })
         popoverShadow.getElementById('mw-pop-engineer').onclick = async () => {
-          const answers = questions.map((_, i) => {
+          const answers = questions.map((q, i) => {
             const inp = popoverShadow.getElementById('mw-clarify-' + i)
-            return inp ? inp.value.trim() : ''
-          }).filter(Boolean).join('\n')
+            const text = inp ? inp.value.trim() : ''
+            const choice = choiceState[String(i)] || ''
+            if (!choice && !text) return ''
+            return `Q: ${q}\nA: ${choice || 'n/a'}${text ? ` (${text})` : ''}`
+          }).filter(Boolean).join('\n\n')
           const combined = 'Goal: ' + draft + '\n\nClarifying answers:\n' + answers
-          await runEngineer(combined, templateName)
+          await runEngineer(combined, templateName, {
+            clarificationCount: Object.keys(choiceState).length,
+            originalDraft: draft
+          })
         }
         positionPopover()
       } catch (e) {

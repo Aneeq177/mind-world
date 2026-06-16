@@ -111,6 +111,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true
   }
 
+  if (message.type === 'PROMPT_EDIT_FEEDBACK') {
+    handlePromptFeedback(message).then(sendResponse)
+    return true
+  }
+
   if (message.type === 'COMPANY_SEARCH') {
     handleCompanySearch(message.query, message.limit).then(sendResponse)
     return true
@@ -243,6 +248,7 @@ async function handleSummarize(conversationIds, currentQuery) {
 
 async function handleEngineerPrompt(userMessage, templateStr, conversationIds) {
   try {
+    const startedAt = Date.now()
     const { email, apiKey } = await getCredentials()
     if (!email) return { error: 'not_logged_in' }
 
@@ -271,7 +277,8 @@ async function handleEngineerPrompt(userMessage, templateStr, conversationIds) {
     return {
       engineeredPrompt: data.prompt || data.engineered_prompt,
       conversationsUsed: data.conversations_used || 0,
-      sourcesUsed: data.sources_used || []
+      sourcesUsed: data.sources_used || [],
+      latencyMs: Date.now() - startedAt
     }
   } catch (error) {
     return { error: error.message }
@@ -475,11 +482,19 @@ async function handlePromptFeedback(message) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         email,
-        rating: message.rating,
+        rating: (typeof message.rating === 'number') ? message.rating : 1,
+        event_type: message.eventType || 'rating',
         goal: message.goal || '',
         prompt_preview: message.promptPreview || '',
         template_used: message.templateUsed || '',
-        conversations_used: message.conversationsUsed || 0
+        conversations_used: message.conversationsUsed || 0,
+        goal_hash: message.goalHash || '',
+        engineered_prompt_hash: message.engineeredPromptHash || '',
+        final_prompt_hash: message.finalPromptHash || '',
+        diff_metrics: message.diffMetrics || {},
+        accepted_unedited: !!message.acceptedUnedited,
+        edited: !!message.edited,
+        latency_ms: message.latencyMs || null
       })
     })
 

@@ -221,6 +221,10 @@ def hybrid_score_conversations(
 
     now = datetime.now(timezone.utc)
     reranked: list[dict[str, Any]] = []
+    adaptive_weights = ((profile_data or {}).get("adaptive_weights") or {})
+    recency_boost = max(0.8, min(1.2, float(adaptive_weights.get("retrieval_recency_boost", 1.0) or 1.0)))
+    domain_boost = max(0.8, min(1.2, float(adaptive_weights.get("retrieval_domain_boost", 1.0) or 1.0)))
+
     for conv in conversations:
         sim = float(conv.get("similarity", 0.0) or 0.0)
         created_at = _parse_ts(conv.get("created_at"))
@@ -236,7 +240,7 @@ def hybrid_score_conversations(
             elif any(k in query_l and k in text for k in DOMAIN_PATTERNS.get(domain, [])):
                 domain_match = max(domain_match, weight)
 
-        hybrid = (sim * 0.75) + (recency * 0.15) + (domain_match * 0.07) + (project_match * 0.03)
+        hybrid = (sim * 0.75) + (recency * (0.15 * recency_boost)) + (domain_match * (0.07 * domain_boost)) + (project_match * 0.03)
         enriched = dict(conv)
         enriched["hybrid_score"] = round(hybrid, 6)
         enriched["recency_score"] = round(recency, 6)
@@ -244,3 +248,67 @@ def hybrid_score_conversations(
 
     reranked.sort(key=lambda c: c.get("hybrid_score", 0.0), reverse=True)
     return reranked
+
+
+def apply_edit_feedback_adaptation(
+    profile_data: dict[str, Any] | None,
+    diff_metrics: dict[str, Any] | None,
+    accepted_unedited: bool,
+) -> dict[str, Any]:
+    """
+    Lightweight online adaptation from prompt edit signals.
+    Only coarse weights are updated to stay privacy-safe.
+    """
+    profile = dict(profile_data or {})
+    adaptive = dict(profile.get("adaptive_weights") or {})
+    quality = dict(profile.get("quality_metrics") or {})
+    now = _utcnow_iso()
+
+    norm_distance = float((diff_metrics or {}).get("normalized_edit_distance", 0.0) or 0.0)
+    prompt_len = int((diff_metrics or {}).get("engineered_length", 0) or 0)
+
+    # EMA update for edit trend.
+    prev_trend = float(quality.get("ema_normalized_edit_distance", 0.0) or 0.0)
+    quality["ema_normalized_edit_distance"] = round((prev_trend * 0.8) + (norm_distance * 0.2), 6)
+    quality["last_feedback_at"] = now
+
+    total = int(quality.get("feedback_count", 0) or 0) + 1
+    unedited = int(quality.get("unedited_accept_count", 0) or 0) + (1 if accepted_unedited else 0)
+    quality["feedback_count"] = total
+    quality["unedited_accept_count"] = unedited
+    quality["unedited_accept_rate"] = round(unedited / max(1, total), 6)
+
+    # Adapt formatting/detail preference weight.
+    detail_weight = float(adaptive.get("detail_level", 0.5) or 0.5)
+    if accepted_unedited:
+        detail_weight = min(1.0, detail_weight + 0.03)
+    elif norm_distance > 0.35:
+        detail_weight = max(0.0, detail_weight - 0.05)
+    elif norm_distance < 0.12:
+        detail_weight = min(1.0, detail_weight + 0.02)
+
+    concise_bias = float(adaptive.get("concise_bias", 0.5) or 0.5)
+    if prompt_len > 900 and norm_distance > 0.25:
+        concise_bias = min(1.0, concise_bias + 0.05)
+    elif prompt_len < 400 and norm_distance > 0.25:
+        concise_bias = max(0.0, concise_bias - 0.04)
+
+    recency_boost = float(adaptive.get("retrieval_recency_boost", 1.0) or 1.0)
+    domain_boost = float(adaptive.get("retrieval_domain_boost", 1.0) or 1.0)
+    if accepted_unedited:
+        recency_boost = min(1.2, recency_boost + 0.01)
+        domain_boost = min(1.2, domain_boost + 0.01)
+    else:
+        recency_boost = max(0.8, recency_boost - 0.01)
+        domain_boost = max(0.8, domain_boost - 0.005)
+
+    adaptive["detail_level"] = round(detail_weight, 4)
+    adaptive["concise_bias"] = round(concise_bias, 4)
+    adaptive["retrieval_recency_boost"] = round(recency_boost, 4)
+    adaptive["retrieval_domain_boost"] = round(domain_boost, 4)
+    adaptive["last_updated_at"] = now
+
+    profile["adaptive_weights"] = adaptive
+    profile["quality_metrics"] = quality
+    profile["last_observed_at"] = now
+    return profile

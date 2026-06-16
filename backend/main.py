@@ -21,6 +21,7 @@ from services.personalization import (
     extract_relevant_profile_facts,
     hybrid_score_conversations,
     infer_profile_delta,
+    apply_edit_feedback_adaptation,
 )
 
 load_dotenv() # Load environment variables from .env file
@@ -212,11 +213,19 @@ class GetProfileSettingsRequest(BaseModel):
 
 class PromptFeedbackRequest(BaseModel):
     email: str
-    rating: int  # 1 or -1
+    rating: int = 1  # 1 or -1
+    event_type: Optional[str] = "rating"
     goal: Optional[str] = None
     prompt_preview: Optional[str] = None
     template_used: Optional[str] = None
     conversations_used: Optional[int] = 0
+    goal_hash: Optional[str] = None
+    engineered_prompt_hash: Optional[str] = None
+    final_prompt_hash: Optional[str] = None
+    diff_metrics: Optional[dict] = None
+    accepted_unedited: Optional[bool] = False
+    edited: Optional[bool] = False
+    latency_ms: Optional[int] = None
 
 class ClarifyingQuestionsRequest(BaseModel):
     goal: str
@@ -419,8 +428,10 @@ async def engineer_prompt(request: EngineerPromptRequest):
 
         profile = get_personal_profile(user_id)
         profile_context = ""
+        adaptive = {}
         if profile and profile.get("is_profile_enabled"):
             profile_data = profile.get("profile_data") or {}
+            adaptive = profile_data.get("adaptive_weights") or {}
             relevant_profile_facts = extract_relevant_profile_facts(
                 profile_data,
                 request.message,
@@ -452,10 +463,16 @@ OUTPUT FORMAT (required — plain text for pasting into a chat box):
 - Output ONLY the final prompt. No preamble or commentary."""
 
         if has_history:
+            concise_bias = float(adaptive.get("concise_bias", 0.5) or 0.5)
+            detail_level = float(adaptive.get("detail_level", 0.5) or 0.5)
+            adaptation_hint = "Prefer concise output." if concise_bias >= 0.62 else "Allow moderate detail when useful."
+            if detail_level >= 0.65:
+                adaptation_hint = "Include a little extra implementation detail when ambiguity exists."
             system_prompt = f"""You are an expert prompt engineer. Transform the user's rough message into a clear, readable prompt for an AI assistant.
 
 Use past conversations and profile only for relevant facts. Never invent details.
 If profile signals are sparse or weak, default to light-touch personalization.
+Adaptive preference hint: {adaptation_hint}
 
 Use this structure (include only sections that have content):
 
@@ -483,9 +500,12 @@ WHAT I NEED FROM YOU
 {format_rules}"""
             user_content = f"User's message:\n{request.message}\n\nRelevant past conversations:\n{conv_context}\n{profile_context}"
         else:
+            concise_bias = float(adaptive.get("concise_bias", 0.5) or 0.5)
+            adaptation_hint = "Keep sections compact and direct." if concise_bias >= 0.62 else "Balance concise and explanatory wording."
             system_prompt = f"""You are an expert prompt engineer. Transform the user's rough message into a clear, readable prompt for an AI assistant.
 
 If a template scaffold is provided, adapt its structure to the user's situation.
+Adaptive preference hint: {adaptation_hint}
 
 Use this structure when helpful:
 
@@ -775,20 +795,60 @@ async def get_profile_settings(request: GetProfileSettingsRequest):
 @app.post("/prompt_feedback")
 async def prompt_feedback(request: PromptFeedbackRequest):
     try:
-        from services.database import get_or_create_user, log_prompt_feedback
+        from services.database import (
+            get_or_create_user,
+            log_prompt_feedback,
+            get_personal_profile,
+            update_personal_profile_inferred,
+            increment_personalization_counter,
+        )
+        event_type = (request.event_type or "rating").strip().lower()
         if request.rating not in (-1, 1):
             raise HTTPException(status_code=400, detail="Rating must be 1 or -1")
         email = request.email.lower().strip()
         user_id = get_or_create_user(email)
+
+        adaptation_applied = False
+        if event_type == "edit_feedback":
+            profile = get_personal_profile(user_id)
+            if profile.get("is_profile_enabled"):
+                updated_profile = apply_edit_feedback_adaptation(
+                    profile.get("profile_data") or {},
+                    request.diff_metrics or {},
+                    bool(request.accepted_unedited),
+                )
+                from datetime import datetime, timezone
+                update_personal_profile_inferred(
+                    user_id=user_id,
+                    profile_data=updated_profile,
+                    last_signal_at=datetime.now(timezone.utc).isoformat(),
+                )
+                adaptation_applied = True
+
         log_prompt_feedback(
             user_id=user_id,
             rating=request.rating,
+            event_type=event_type,
             goal=request.goal or "",
             prompt_preview=request.prompt_preview or "",
             template_used=request.template_used or "",
             conversations_used=request.conversations_used or 0,
+            goal_hash=request.goal_hash or "",
+            engineered_prompt_hash=request.engineered_prompt_hash or "",
+            final_prompt_hash=request.final_prompt_hash or "",
+            diff_metrics=request.diff_metrics or {},
+            accepted_unedited=bool(request.accepted_unedited),
+            edited=bool(request.edited),
+            latency_ms=request.latency_ms,
         )
-        return {"success": True}
+        increment_personalization_counter(user_id, "feedback_events_total", 1)
+        if bool(request.accepted_unedited):
+            increment_personalization_counter(user_id, "feedback_unedited_accept_total", 1)
+        if event_type == "edit_feedback":
+            increment_personalization_counter(user_id, "feedback_edit_events_total", 1)
+        if request.latency_ms and request.latency_ms > 0:
+            increment_personalization_counter(user_id, "feedback_latency_samples_total", 1)
+        return {"success": True, "adaptation_applied": adaptation_applied}
     except HTTPException:
         raise
     except Exception as e:

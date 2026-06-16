@@ -345,13 +345,63 @@ def log_prompt_feedback(
     prompt_preview: str = "",
     template_used: str = "",
     conversations_used: int = 0,
+    event_type: str = "rating",
+    goal_hash: str = "",
+    engineered_prompt_hash: str = "",
+    final_prompt_hash: str = "",
+    diff_metrics: dict | None = None,
+    accepted_unedited: bool = False,
+    edited: bool = False,
+    latency_ms: int | None = None,
 ) -> None:
     supabase = get_supabase()
     supabase.table("prompt_feedback").insert({
         "user_id": user_id,
         "rating": rating,
+        "event_type": event_type or "rating",
         "goal": goal[:500] if goal else "",
         "prompt_preview": prompt_preview[:2000] if prompt_preview else "",
         "template_used": template_used or "",
         "conversations_used": conversations_used,
+        "goal_hash": goal_hash[:128] if goal_hash else "",
+        "engineered_prompt_hash": engineered_prompt_hash[:128] if engineered_prompt_hash else "",
+        "final_prompt_hash": final_prompt_hash[:128] if final_prompt_hash else "",
+        "diff_metrics": diff_metrics or {},
+        "accepted_unedited": bool(accepted_unedited),
+        "edited": bool(edited),
+        "latency_ms": latency_ms if latency_ms is not None else None,
     }).execute()
+
+
+def increment_personalization_counter(user_id: str, key: str, amount: int = 1) -> None:
+    supabase = get_supabase()
+    from datetime import date
+    day = date.today().isoformat()
+    key = (key or "").strip().lower()
+    if not key:
+        return
+    try:
+        existing = supabase.table("personalization_metric_counters")\
+            .select("id,value")\
+            .eq("user_id", user_id)\
+            .eq("metric_day", day)\
+            .eq("key", key)\
+            .limit(1)\
+            .execute()
+        if existing.data:
+            row = existing.data[0]
+            supabase.table("personalization_metric_counters")\
+                .update({"value": int(row.get("value", 0)) + int(amount)})\
+                .eq("id", row["id"])\
+                .execute()
+            return
+    except Exception:
+        # Fall through to blind upsert for compatibility
+        pass
+
+    supabase.table("personalization_metric_counters").upsert({
+        "user_id": user_id,
+        "metric_day": day,
+        "key": key,
+        "value": int(amount),
+    }, on_conflict="user_id,metric_day,key").execute()
