@@ -141,12 +141,7 @@ def merge_llm_profile_delta(
 def should_run_llm_extraction(profile_data: dict[str, Any] | None) -> bool:
     data = normalize_profile_data(profile_data)
     pending = data.get("llm_pending_snippets") or []
-    if len(pending) >= EXTRACTION_BATCH_SIZE:
-        return True
-    last = data.get("last_llm_extract_at")
-    if not last and pending:
-        return True
-    return False
+    return len(pending) >= EXTRACTION_BATCH_SIZE
 
 
 def queue_snippet_for_llm_extraction(
