@@ -19,9 +19,18 @@ from services.database import (
 ) # Import functions from database.py
 from services.personalization import (
     extract_relevant_profile_facts,
+    extract_confirmed_anchor_facts,
     hybrid_score_conversations,
     infer_profile_delta,
     apply_edit_feedback_adaptation,
+    build_inferred_summary,
+    compute_summary_confidence,
+    has_enough_history,
+    should_prompt_confirmation,
+    apply_summary_confirmation,
+    build_fallback_structured_questions,
+    normalize_structured_questions,
+    QUICK_CORRECTION_OPTIONS,
 )
 
 load_dotenv() # Load environment variables from .env file
@@ -229,8 +238,19 @@ class PromptFeedbackRequest(BaseModel):
 
 class ClarifyingQuestionsRequest(BaseModel):
     goal: str
+    email: Optional[str] = None
     template: Optional[str] = None
     api_key: Optional[str] = None
+
+
+class PersonalizationSummaryRequest(BaseModel):
+    email: str
+
+
+class ConfirmPersonalizationSummaryRequest(BaseModel):
+    email: str
+    action: str  # confirm | correct | skip
+    correction_ids: Optional[list[str]] = None
 
 @app.post("/summarize")
 async def summarize(request: SummarizeRequest):
@@ -429,8 +449,14 @@ async def engineer_prompt(request: EngineerPromptRequest):
         profile = get_personal_profile(user_id)
         profile_context = ""
         adaptive = {}
+        profile_data = (profile.get("profile_data") or {}) if profile else {}
+        confirmed_facts = extract_confirmed_anchor_facts(profile_data)
+        if confirmed_facts:
+            profile_context = "\n[USER-VERIFIED PERSONALIZATION ANCHORS]\n"
+            for fact in confirmed_facts:
+                profile_context += f"- {fact}\n"
+            profile_context += "\n"
         if profile and profile.get("is_profile_enabled"):
-            profile_data = profile.get("profile_data") or {}
             adaptive = profile_data.get("adaptive_weights") or {}
             relevant_profile_facts = extract_relevant_profile_facts(
                 profile_data,
@@ -439,7 +465,7 @@ async def engineer_prompt(request: EngineerPromptRequest):
                 max_facts=6,
             )
             if relevant_profile_facts:
-                profile_context = "\n[USER'S PERSONAL PROFILE (Use this as background context)]\n"
+                profile_context += "[INFERRED PERSONAL PROFILE (background context)]\n"
                 for fact in relevant_profile_facts:
                     profile_context += f"- {fact}\n"
                 profile_context += "\n"
@@ -613,64 +639,183 @@ async def context_preview(request: ContextPreviewRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/personalization_summary")
+async def personalization_summary(request: PersonalizationSummaryRequest):
+    try:
+        from services.database import get_or_create_user, get_personal_profile, get_supabase
+
+        email = request.email.lower().strip()
+        user_id = get_or_create_user(email)
+        profile = get_personal_profile(user_id)
+        profile_data = profile.get("profile_data") or {}
+
+        supabase = get_supabase()
+        conv_result = supabase.table("knowledge_nodes")\
+            .select("id", count="exact")\
+            .eq("user_id", user_id)\
+            .execute()
+        conversation_count = conv_result.count if conv_result.count is not None else len(conv_result.data or [])
+
+        enough_history = has_enough_history(conversation_count, profile_data)
+        summary_confidence = compute_summary_confidence(profile_data)
+        inferred_summary = build_inferred_summary(profile_data)
+        should_show = enough_history and should_prompt_confirmation(profile_data)
+
+        return {
+            "has_enough_history": enough_history,
+            "should_show_confirmation": should_show,
+            "inferred_summary": inferred_summary,
+            "summary_confidence": summary_confidence,
+            "conversation_count": conversation_count,
+            "quick_corrections": QUICK_CORRECTION_OPTIONS,
+            "confirmed_summary": (profile_data.get("confirmed_anchors") or {}).get("summary"),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/confirm_personalization_summary")
+async def confirm_personalization_summary(request: ConfirmPersonalizationSummaryRequest):
+    try:
+        from services.database import (
+            get_or_create_user,
+            get_personal_profile,
+            update_personal_profile_inferred,
+            increment_personalization_counter,
+        )
+        from datetime import datetime, timezone
+
+        email = request.email.lower().strip()
+        user_id = get_or_create_user(email)
+        profile = get_personal_profile(user_id)
+        profile_data = profile.get("profile_data") or {}
+        action_l = (request.action or "").strip().lower()
+        if action_l == "shown":
+            increment_personalization_counter(user_id, "summary_shown_total", 1)
+            return {
+                "success": True,
+                "confirmed_summary": (profile_data.get("confirmed_anchors") or {}).get("summary"),
+            }
+        updated = apply_summary_confirmation(
+            profile_data,
+            request.action,
+            request.correction_ids or [],
+        )
+        update_personal_profile_inferred(
+            user_id=user_id,
+            profile_data=updated,
+            last_signal_at=datetime.now(timezone.utc).isoformat(),
+        )
+
+        if action_l == "confirm":
+            increment_personalization_counter(user_id, "summary_confirmed_total", 1)
+        elif action_l == "correct":
+            increment_personalization_counter(user_id, "summary_corrected_total", 1)
+        elif action_l == "skip":
+            increment_personalization_counter(user_id, "summary_skipped_total", 1)
+
+        return {
+            "success": True,
+            "confirmed_summary": (updated.get("confirmed_anchors") or {}).get("summary"),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/generate_clarifying_questions")
 async def generate_clarifying_questions(request: ClarifyingQuestionsRequest):
     try:
         import anthropic
         import json
-        
+        from services.database import get_or_create_user, get_personal_profile, increment_personalization_counter
+
         api_key = request.api_key or os.getenv("ANTHROPIC_API_KEY")
         if not api_key:
             raise HTTPException(status_code=400, detail="API key required")
-            
-        client = anthropic.Anthropic(api_key=api_key)
-        
-        system_prompt = """You are an expert AI assistant designed to help users engineer the perfect prompt.
-The user has provided an initial goal. Your task is to ask exactly 2-3 highly specific clarifying questions that will help you generate a better prompt.
 
-Return ONLY a valid JSON array of strings containing the questions.
-Do not include any other text, markdown formatting, or markdown code blocks (no ```json).
-Just the raw JSON array.
-Example: ["What programming language?", "What is the specific error message?"]
-"""
-        
-        user_content = f"User's goal: {request.goal}"
+        profile_data: dict = {}
+        confirmed_domains: set[str] = set()
+        profile_facts: list[str] = []
+        inference_used = False
+        user_id = None
+        if request.email:
+            email = request.email.lower().strip()
+            user_id = get_or_create_user(email)
+            profile = get_personal_profile(user_id)
+            profile_data = profile.get("profile_data") or {}
+            confirmed_domains = set((profile_data.get("confirmed_anchors") or {}).get("domains") or [])
+            profile_facts = extract_confirmed_anchor_facts(profile_data)
+            inferred_facts = extract_relevant_profile_facts(profile_data, request.goal, min_confidence=0.55, max_facts=4)
+            profile_facts.extend([f for f in inferred_facts if f not in profile_facts])
+            inference_used = bool(profile_facts)
+
+        client = anthropic.Anthropic(api_key=api_key)
+
+        system_prompt = """You are an expert prompt engineer helping refine a user's draft goal.
+Ask at most 2 high-value clarifying questions. Each question MUST be answerable by tapping one option.
+
+Rules:
+- Use known user profile facts when available; do NOT ask about things already confirmed.
+- Prefer inferring from profile/history over asking.
+- Every question must include 3-5 concise tap options.
+- allow_other should be true only when truly needed.
+
+Return ONLY valid JSON:
+{
+  "questions": [
+    {
+      "id": "short_id",
+      "prompt": "Question text?",
+      "options": [{"id": "opt1", "label": "Option label"}, {"id": "opt2", "label": "Option label"}],
+      "allow_other": false
+    }
+  ]
+}
+No markdown, no code fences."""
+
+        user_content = f"User goal:\n{request.goal}"
         if request.template and request.template != "none":
-            user_content += f"\n\nThey plan to use this template context: {request.template}"
-            
+            user_content += f"\n\nTemplate context: {request.template}"
+        if profile_facts:
+            user_content += "\n\nKnown user context:\n" + "\n".join(f"- {fact}" for fact in profile_facts)
+        if confirmed_domains:
+            user_content += f"\n\nAlready confirmed domains (do not re-ask): {', '.join(sorted(confirmed_domains))}"
+
         response = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=200,
+            max_tokens=500,
             system=system_prompt,
-            messages=[{"role": "user", "content": user_content}]
+            messages=[{"role": "user", "content": user_content}],
         )
-        
+
+        questions: list[dict] = []
         try:
-            # Try to parse the JSON response
             text = response.content[0].text.strip()
-            # Strip markdown block if Claude included it despite instructions
             if text.startswith("```json"):
                 text = text[7:]
             if text.startswith("```"):
                 text = text[3:]
             if text.endswith("```"):
                 text = text[:-3]
-                
-            questions = json.loads(text.strip())
-            if not isinstance(questions, list):
-                # Fallback format if dict returned
-                questions = [str(v) for v in questions.values()]
+            parsed = json.loads(text.strip())
+            if isinstance(parsed, dict):
+                questions = normalize_structured_questions(parsed.get("questions") or [])
+            elif isinstance(parsed, list):
+                questions = normalize_structured_questions(parsed)
         except json.JSONDecodeError:
-            # Fallback if Claude completely failed JSON formatting
-            text = response.content[0].text.strip()
-            questions = [line.strip('- *1234567890.') for line in text.split('\n') if line.strip()]
-            
-        # Ensure we return a default if everything failed
+            questions = []
+
         if not questions:
-            questions = ["Can you provide more details about your goal?", "What specific outcome are you looking for?"]
-            
-        return {"questions": questions[:3]}
-        
+            questions = build_fallback_structured_questions(request.goal, profile_data)
+
+        if user_id:
+            increment_personalization_counter(user_id, "clarifying_questions_generated_total", 1)
+
+        return {
+            "questions": questions[:3],
+            "inference_used": inference_used,
+        }
+
     except HTTPException:
         raise
     except Exception as e:

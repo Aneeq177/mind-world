@@ -66,6 +66,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true
   }
 
+  if (message.type === 'GET_PERSONALIZATION_SUMMARY') {
+    handlePersonalizationSummary().then(sendResponse)
+    return true
+  }
+
+  if (message.type === 'CONFIRM_PERSONALIZATION_SUMMARY') {
+    handleConfirmPersonalizationSummary(message.action, message.correctionIds).then(sendResponse)
+    return true
+  }
+
   if (message.type === 'GET_TEMPLATES') {
     handleGetTemplates(!!message.forceRefresh).then(sendResponse)
     return true
@@ -287,13 +297,14 @@ async function handleEngineerPrompt(userMessage, templateStr, conversationIds) {
 
 async function handleGenerateQuestions(goal, templateStr) {
   try {
-    const { apiKey } = await getCredentials()
+    const { email, apiKey } = await getCredentials()
 
     const response = await fetch(`${API_BASE}/generate_clarifying_questions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         goal: goal,
+        email: email || null,
         template: templateStr || 'none',
         api_key: apiKey || null
       })
@@ -306,7 +317,65 @@ async function handleGenerateQuestions(goal, templateStr) {
 
     const data = await response.json()
     return {
-      questions: data.questions || []
+      questions: data.questions || [],
+      inferenceUsed: !!data.inference_used
+    }
+  } catch (error) {
+    return { error: error.message }
+  }
+}
+
+async function handlePersonalizationSummary() {
+  try {
+    const { email } = await getCredentials()
+    if (!email) return { error: 'not_logged_in' }
+
+    const response = await fetch(`${API_BASE}/personalization_summary`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email })
+    })
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}))
+      return { error: err.detail || 'Failed to load personalization summary' }
+    }
+    const data = await response.json()
+    return {
+      hasEnoughHistory: !!data.has_enough_history,
+      shouldShowConfirmation: !!data.should_show_confirmation,
+      inferredSummary: data.inferred_summary || '',
+      summaryConfidence: data.summary_confidence || 0,
+      conversationCount: data.conversation_count || 0,
+      quickCorrections: data.quick_corrections || [],
+      confirmedSummary: data.confirmed_summary || ''
+    }
+  } catch (error) {
+    return { error: error.message }
+  }
+}
+
+async function handleConfirmPersonalizationSummary(action, correctionIds) {
+  try {
+    const { email } = await getCredentials()
+    if (!email) return { error: 'not_logged_in' }
+
+    const response = await fetch(`${API_BASE}/confirm_personalization_summary`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email,
+        action: action || 'skip',
+        correction_ids: correctionIds || []
+      })
+    })
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}))
+      return { error: err.detail || 'Failed to save personalization summary' }
+    }
+    const data = await response.json()
+    return {
+      success: !!data.success,
+      confirmedSummary: data.confirmed_summary || ''
     }
   } catch (error) {
     return { error: error.message }

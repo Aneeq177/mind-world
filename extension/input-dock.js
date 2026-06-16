@@ -213,6 +213,32 @@
       }
       .mw-pop .q-freeform {
         margin-top: 6px;
+        display: none;
+      }
+      .mw-pop .q-freeform.visible {
+        display: block;
+      }
+      .mw-pop .q-other-toggle {
+        margin-top: 6px;
+        background: none;
+        border: none;
+        color: #a78bfa;
+        font-size: 11px;
+        cursor: pointer;
+        padding: 0;
+        text-decoration: underline;
+      }
+      .mw-pop .mw-confirm-summary {
+        font-size: 13px;
+        color: #ddd;
+        line-height: 1.5;
+        margin: 0;
+      }
+      .mw-pop .mw-correction-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 8px;
       }
       .mw-pop .actions { display: flex; gap: 8px; flex-wrap: wrap; }
       .mw-pop button {
@@ -531,13 +557,14 @@
     `)
     const ta = popoverShadow.getElementById('mw-pop-preview-text')
     if (ta) ta.value = formatEngineeredPrompt(text)
-    lastImproveTelemetry = {
-      startedAt: telemetry && telemetry.startedAt ? telemetry.startedAt : Date.now(),
-      latencyMs: telemetry && telemetry.latencyMs ? telemetry.latencyMs : 0,
-      clarificationCount: telemetry && telemetry.clarificationCount ? telemetry.clarificationCount : 0,
-      originalDraft: (telemetry && telemetry.originalDraft) ? telemetry.originalDraft : goal,
-      engineeredPrompt: formatEngineeredPrompt(text)
-    }
+      lastImproveTelemetry = {
+        startedAt: telemetry && telemetry.startedAt ? telemetry.startedAt : Date.now(),
+        latencyMs: telemetry && telemetry.latencyMs ? telemetry.latencyMs : 0,
+        clarificationCount: telemetry && telemetry.clarificationCount ? telemetry.clarificationCount : 0,
+        usedFreeText: !!(telemetry && telemetry.usedFreeText),
+        originalDraft: (telemetry && telemetry.originalDraft) ? telemetry.originalDraft : goal,
+        engineeredPrompt: formatEngineeredPrompt(text)
+      }
     const toggle = popoverShadow.getElementById('mw-sources-toggle')
     const list = popoverShadow.getElementById('mw-sources-list')
     if (toggle && list) {
@@ -580,7 +607,8 @@
           final_length: editedPrompt.length,
           edit_distance: distance,
           normalized_edit_distance: Number(normDistance.toFixed(6)),
-          clarification_count: (lastImproveTelemetry && lastImproveTelemetry.clarificationCount) || 0
+          clarification_count: (lastImproveTelemetry && lastImproveTelemetry.clarificationCount) || 0,
+          clarification_free_text_used: !!(lastImproveTelemetry && lastImproveTelemetry.usedFreeText)
         }
       }
       emitPromptEditFeedback(payload)
@@ -590,6 +618,198 @@
     popoverState.goal = goal
     popoverState.template = templateName
     positionPopover()
+  }
+
+  async function showClarifyingQuestions(draft, templateName) {
+    openPopover('loading', '<p class="note">Preparing smart questions...</p>', '')
+    try {
+      const res = await chrome.runtime.sendMessage({
+        type: 'GENERATE_QUESTIONS',
+        goal: draft,
+        template: templateName
+      })
+      const questions = (res.questions || []).slice(0, 2)
+      if (res.error || !questions.length) {
+        await runEngineer(draft, templateName)
+        return
+      }
+
+      let qHtml = '<p class="note">Tap to answer — no typing required:</p>'
+      questions.forEach((q, i) => {
+        const prompt = typeof q === 'string' ? q : (q.prompt || '')
+        const options = (typeof q === 'object' && q.options) ? q.options : [
+          { id: 'yes', label: 'Yes' },
+          { id: 'no', label: 'No' },
+          { id: 'unsure', label: 'Not sure' }
+        ]
+        const allowOther = typeof q === 'object' ? q.allow_other !== false : true
+        qHtml += `
+          <div class="q-block" data-q-index="${i}">
+            <label>${i + 1}. ${escapeHtml(prompt)}</label>
+            <div class="q-chip-row">
+              ${options.map(opt => `
+                <button type="button" class="q-chip" data-choice="${escapeHtml(opt.id)}" data-label="${escapeHtml(opt.label)}" data-q="${i}">${escapeHtml(opt.label)}</button>
+              `).join('')}
+            </div>
+            ${allowOther ? `<button type="button" class="q-other-toggle" data-q="${i}">Other (optional)</button>` : ''}
+            <input class="q-freeform" type="text" id="mw-clarify-${i}" placeholder="Optional detail..." />
+          </div>`
+      })
+
+      openPopover('clarify', qHtml, `
+        <button class="btn-primary" id="mw-pop-engineer">Generate prompt</button>
+        <button class="btn-ghost" id="mw-pop-skip">Skip</button>
+      `)
+
+      const choiceState = {}
+      popoverShadow.querySelectorAll('.q-chip').forEach(btn => {
+        btn.onclick = () => {
+          const q = btn.dataset.q
+          choiceState[q] = { id: btn.dataset.choice, label: btn.dataset.label }
+          popoverShadow.querySelectorAll(`.q-chip[data-q="${q}"]`).forEach(el => el.classList.remove('active'))
+          btn.classList.add('active')
+          const freeform = popoverShadow.getElementById('mw-clarify-' + q)
+          if (freeform) freeform.classList.remove('visible')
+        }
+      })
+      popoverShadow.querySelectorAll('.q-other-toggle').forEach(btn => {
+        btn.onclick = () => {
+          const q = btn.dataset.q
+          const freeform = popoverShadow.getElementById('mw-clarify-' + q)
+          if (freeform) {
+            freeform.classList.toggle('visible')
+            if (freeform.classList.contains('visible')) freeform.focus()
+          }
+        }
+      })
+
+      popoverShadow.getElementById('mw-pop-skip').onclick = () => runEngineer(draft, templateName, {
+        clarificationCount: 0,
+        originalDraft: draft
+      })
+      popoverShadow.getElementById('mw-pop-engineer').onclick = async () => {
+        const answers = questions.map((q, i) => {
+          const prompt = typeof q === 'string' ? q : (q.prompt || '')
+          const inp = popoverShadow.getElementById('mw-clarify-' + i)
+          const text = inp ? inp.value.trim() : ''
+          const choice = choiceState[String(i)] || null
+          if (!choice && !text) return ''
+          const label = choice ? choice.label : ''
+          return `Q: ${prompt}\nA: ${label || 'n/a'}${text ? ` (${text})` : ''}`
+        }).filter(Boolean).join('\n\n')
+        const combined = answers
+          ? ('Goal: ' + draft + '\n\nClarifying answers:\n' + answers)
+          : draft
+        const usedFreeText = questions.some((_, i) => {
+          const inp = popoverShadow.getElementById('mw-clarify-' + i)
+          return inp && inp.value.trim().length > 0
+        })
+        await runEngineer(combined, templateName, {
+          clarificationCount: Object.keys(choiceState).length,
+          originalDraft: draft,
+          usedFreeText
+        })
+      }
+      positionPopover()
+    } catch (e) {
+      await runEngineer(draft, templateName)
+    }
+  }
+
+  async function showPersonalizationConfirm(draft, templateName, summaryData) {
+    const summary = summaryData.inferredSummary || 'your main topics'
+    const corrections = summaryData.quickCorrections || []
+    let mode = 'confirm'
+
+    function renderConfirm() {
+      chrome.runtime.sendMessage({ type: 'CONFIRM_PERSONALIZATION_SUMMARY', action: 'shown' }).catch(() => {})
+      openPopover('clarify', `
+        <p class="mw-confirm-summary">Looks like you're using Mind World for <strong>${escapeHtml(summary)}</strong> — sound right?</p>
+        <p class="note" style="text-align:left;margin:0;">One tap helps Improve stay personalized without extra typing.</p>
+      `, `
+        <button class="btn-primary" id="mw-pop-confirm-yes">Yes, that's right</button>
+        <button class="btn-ghost" id="mw-pop-confirm-adjust">Adjust</button>
+        <button class="btn-ghost" id="mw-pop-confirm-skip">Not now</button>
+      `)
+
+      popoverShadow.getElementById('mw-pop-confirm-yes').onclick = async () => {
+        await chrome.runtime.sendMessage({ type: 'CONFIRM_PERSONALIZATION_SUMMARY', action: 'confirm' })
+        if (needsClarification(draft)) {
+          await showClarifyingQuestions(draft, templateName)
+        } else {
+          await runEngineer(draft, templateName)
+        }
+      }
+      popoverShadow.getElementById('mw-pop-confirm-adjust').onclick = () => {
+        mode = 'adjust'
+        renderAdjust()
+      }
+      popoverShadow.getElementById('mw-pop-confirm-skip').onclick = async () => {
+        await chrome.runtime.sendMessage({ type: 'CONFIRM_PERSONALIZATION_SUMMARY', action: 'skip' })
+        if (needsClarification(draft)) {
+          await showClarifyingQuestions(draft, templateName)
+        } else {
+          await runEngineer(draft, templateName)
+        }
+      }
+      positionPopover()
+    }
+
+    function renderAdjust() {
+      const chips = corrections.length ? corrections : [
+        { id: 'coding', label: 'Mostly software engineering' },
+        { id: 'education', label: 'Mostly school / academics' },
+        { id: 'career', label: 'Mostly job search & career' }
+      ]
+      const selected = new Set()
+      openPopover('clarify', `
+        <p class="note" style="text-align:left;margin:0;">Tap what fits best (choose one or more):</p>
+        <div class="mw-correction-row" id="mw-correction-row">
+          ${chips.map(c => `<button type="button" class="q-chip" data-correction="${escapeHtml(c.id)}">${escapeHtml(c.label)}</button>`).join('')}
+        </div>
+      `, `
+        <button class="btn-primary" id="mw-pop-save-correction">Save & continue</button>
+        <button class="btn-ghost" id="mw-pop-back-confirm">Back</button>
+      `)
+
+      popoverShadow.querySelectorAll('[data-correction]').forEach(btn => {
+        btn.onclick = () => {
+          const id = btn.dataset.correction
+          if (selected.has(id)) {
+            selected.delete(id)
+            btn.classList.remove('active')
+          } else {
+            selected.add(id)
+            btn.classList.add('active')
+          }
+        }
+      })
+      popoverShadow.getElementById('mw-pop-back-confirm').onclick = () => {
+        mode = 'confirm'
+        renderConfirm()
+      }
+      popoverShadow.getElementById('mw-pop-save-correction').onclick = async () => {
+        const ids = Array.from(selected)
+        if (ids.length) {
+          await chrome.runtime.sendMessage({
+            type: 'CONFIRM_PERSONALIZATION_SUMMARY',
+            action: 'correct',
+            correctionIds: ids
+          })
+        } else {
+          await chrome.runtime.sendMessage({ type: 'CONFIRM_PERSONALIZATION_SUMMARY', action: 'skip' })
+        }
+        if (needsClarification(draft)) {
+          await showClarifyingQuestions(draft, templateName)
+        } else {
+          await runEngineer(draft, templateName)
+        }
+      }
+      positionPopover()
+    }
+
+    if (mode === 'confirm') renderConfirm()
+    else renderAdjust()
   }
 
   async function startImprove() {
@@ -604,67 +824,16 @@
 
     const templateName = suggestTemplateName(draft)
 
-    if (needsClarification(draft)) {
-      openPopover('loading', '<p class="note">Preparing questions...</p>', '')
-      try {
-        const res = await chrome.runtime.sendMessage({
-          type: 'GENERATE_QUESTIONS',
-          goal: draft,
-          template: templateName
-        })
-        const questions = (res.questions || []).slice(0, 2)
-        if (res.error || !questions.length) {
-          await runEngineer(draft, templateName)
-          return
-        }
-        let qHtml = '<p class="note">Quick tap answers (optional text if needed):</p>'
-        questions.forEach((q, i) => {
-          qHtml += `
-            <div class="q-block" data-q-index="${i}">
-              <label>${i + 1}. ${q}</label>
-              <div class="q-chip-row">
-                <button type="button" class="q-chip" data-choice="yes" data-q="${i}">Yes</button>
-                <button type="button" class="q-chip" data-choice="no" data-q="${i}">No</button>
-              </div>
-              <input class="q-freeform" type="text" id="mw-clarify-${i}" placeholder="Optional detail..." />
-            </div>`
-        })
-        openPopover('clarify', qHtml, `
-          <button class="btn-primary" id="mw-pop-engineer">Generate prompt</button>
-          <button class="btn-ghost" id="mw-pop-skip">Skip</button>
-        `)
-        const choiceState = {}
-        popoverShadow.querySelectorAll('.q-chip').forEach(btn => {
-          btn.onclick = () => {
-            const q = btn.dataset.q
-            const val = btn.dataset.choice
-            choiceState[q] = val
-            popoverShadow.querySelectorAll(`.q-chip[data-q="${q}"]`).forEach(el => el.classList.remove('active'))
-            btn.classList.add('active')
-          }
-        })
-        popoverShadow.getElementById('mw-pop-skip').onclick = () => runEngineer(draft, templateName, {
-          clarificationCount: 0,
-          originalDraft: draft
-        })
-        popoverShadow.getElementById('mw-pop-engineer').onclick = async () => {
-          const answers = questions.map((q, i) => {
-            const inp = popoverShadow.getElementById('mw-clarify-' + i)
-            const text = inp ? inp.value.trim() : ''
-            const choice = choiceState[String(i)] || ''
-            if (!choice && !text) return ''
-            return `Q: ${q}\nA: ${choice || 'n/a'}${text ? ` (${text})` : ''}`
-          }).filter(Boolean).join('\n\n')
-          const combined = 'Goal: ' + draft + '\n\nClarifying answers:\n' + answers
-          await runEngineer(combined, templateName, {
-            clarificationCount: Object.keys(choiceState).length,
-            originalDraft: draft
-          })
-        }
-        positionPopover()
-      } catch (e) {
-        await runEngineer(draft, templateName)
+    try {
+      const summaryRes = await chrome.runtime.sendMessage({ type: 'GET_PERSONALIZATION_SUMMARY' })
+      if (!summaryRes.error && summaryRes.shouldShowConfirmation) {
+        await showPersonalizationConfirm(draft, templateName, summaryRes)
+        return
       }
+    } catch (e) { /* continue to clarify/engineer */ }
+
+    if (needsClarification(draft)) {
+      await showClarifyingQuestions(draft, templateName)
     } else {
       await runEngineer(draft, templateName)
     }

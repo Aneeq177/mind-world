@@ -61,6 +61,25 @@ STYLE_PATTERNS: dict[str, list[str]] = {
     "formal_tone": ["formal", "professional tone"],
 }
 
+DOMAIN_LABELS: dict[str, str] = {
+    "career": "job applications and career growth",
+    "education": "school and academic work",
+    "coding": "software engineering",
+    "writing": "writing and communication",
+}
+
+QUICK_CORRECTION_OPTIONS: list[dict[str, str]] = [
+    {"id": "coding", "label": "Mostly software engineering"},
+    {"id": "education", "label": "Mostly school / academics"},
+    {"id": "career", "label": "Mostly job search & career"},
+    {"id": "writing", "label": "Mostly writing & communication"},
+    {"id": "other", "label": "Something else"},
+]
+
+MIN_HISTORY_CONVERSATIONS = 8
+MIN_SUMMARY_CONFIDENCE = 0.45
+CONFIRMATION_STALE_DAYS = 30
+
 
 def _utcnow_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -70,7 +89,12 @@ def _parse_ts(value: str | None) -> datetime | None:
     if not value:
         return None
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        ts = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        # Normalize legacy naive timestamps to UTC so subtraction
+        # with timezone-aware "now" never raises type errors.
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        return ts
     except ValueError:
         return None
 
@@ -163,6 +187,249 @@ def decay_confidence(confidence: float, last_observed_at: str | None) -> float:
     # Exponential half-life decay.
     decay = math.pow(0.5, age_days / STALE_HALF_LIFE_DAYS)
     return max(0.0, min(1.0, float(confidence) * decay))
+
+
+def get_top_domains(
+    profile_data: dict[str, Any] | None,
+    min_confidence: float = MIN_DOMAIN_CONFIDENCE,
+    max_domains: int = 3,
+) -> list[tuple[str, float]]:
+    ranked: list[tuple[str, float]] = []
+    for domain, info in ((profile_data or {}).get("domains") or {}).items():
+        conf = decay_confidence(
+            float(info.get("confidence", 0.0) or 0.0),
+            info.get("last_observed_at"),
+        )
+        if conf >= min_confidence:
+            ranked.append((domain, conf))
+    ranked.sort(key=lambda item: item[1], reverse=True)
+    return ranked[:max_domains]
+
+
+def compute_summary_confidence(profile_data: dict[str, Any] | None) -> float:
+    domains = get_top_domains(profile_data, min_confidence=0.25, max_domains=4)
+    if not domains:
+        return 0.0
+    return round(sum(conf for _, conf in domains) / len(domains), 3)
+
+
+def build_inferred_summary(profile_data: dict[str, Any] | None) -> str:
+    data = profile_data or {}
+    confirmed = data.get("confirmed_anchors") or {}
+    if confirmed.get("summary"):
+        return str(confirmed["summary"])
+
+    domains = get_top_domains(profile_data, min_confidence=MIN_DOMAIN_CONFIDENCE, max_domains=3)
+    labels = [DOMAIN_LABELS.get(name, name.replace("_", " ")) for name, _ in domains]
+    if not labels:
+        return "your AI conversations across different topics"
+
+    if len(labels) == 1:
+        return labels[0]
+    if len(labels) == 2:
+        return f"{labels[0]} and {labels[1]}"
+    return f"{labels[0]}, {labels[1]}, and {labels[2]}"
+
+
+def has_enough_history(conversation_count: int, profile_data: dict[str, Any] | None) -> bool:
+    return (
+        int(conversation_count or 0) >= MIN_HISTORY_CONVERSATIONS
+        and compute_summary_confidence(profile_data) >= MIN_SUMMARY_CONFIDENCE
+    )
+
+
+def should_prompt_confirmation(profile_data: dict[str, Any] | None) -> bool:
+    data = profile_data or {}
+    confirmed = data.get("confirmed_anchors") or {}
+    if not confirmed.get("confirmed_at"):
+        return True
+    ts = _parse_ts(confirmed.get("confirmed_at"))
+    if not ts:
+        return True
+    age_days = (datetime.now(timezone.utc) - ts).total_seconds() / 86400.0
+    if age_days >= CONFIRMATION_STALE_DAYS:
+        return True
+    # Re-prompt if inferred domains drift from confirmed domains.
+    confirmed_domains = set(confirmed.get("domains") or [])
+    inferred_domains = {name for name, _ in get_top_domains(data, min_confidence=0.5, max_domains=3)}
+    if inferred_domains and confirmed_domains and not inferred_domains.intersection(confirmed_domains):
+        return True
+    return False
+
+
+def apply_summary_confirmation(
+    profile_data: dict[str, Any] | None,
+    action: str,
+    correction_ids: list[str] | None = None,
+) -> dict[str, Any]:
+    profile = dict(profile_data or {})
+    confirmed = dict(profile.get("confirmed_anchors") or {})
+    now = _utcnow_iso()
+    action_l = (action or "").strip().lower()
+
+    if action_l == "confirm":
+        summary = build_inferred_summary(profile)
+        domains = [name for name, _ in get_top_domains(profile, min_confidence=MIN_DOMAIN_CONFIDENCE, max_domains=3)]
+        confirmed.update({
+            "summary": summary,
+            "domains": domains,
+            "confirmed_at": now,
+            "source": "inferred_confirm",
+        })
+    elif action_l == "correct":
+        ids = [str(item).strip().lower() for item in (correction_ids or []) if str(item).strip()]
+        labels = [opt["label"] for opt in QUICK_CORRECTION_OPTIONS if opt["id"] in ids and opt["id"] != "other"]
+        if labels:
+            if len(labels) == 1:
+                summary = labels[0].replace("Mostly ", "").lower()
+            else:
+                summary = " and ".join(label.replace("Mostly ", "").lower() for label in labels[:2])
+            confirmed.update({
+                "summary": summary,
+                "domains": [item for item in ids if item != "other"],
+                "confirmed_at": now,
+                "source": "user_correction",
+            })
+        domains_map = dict(profile.get("domains") or {})
+        for domain_id in ids:
+            if domain_id == "other":
+                continue
+            prior = domains_map.get(domain_id, {})
+            domains_map[domain_id] = {
+                "expertise_level": prior.get("expertise_level", "unknown"),
+                "confidence": 1.0,
+                "last_observed_at": now,
+                "evidence_count": int(prior.get("evidence_count", 0) or 0) + 1,
+                "user_verified": True,
+            }
+        profile["domains"] = domains_map
+    elif action_l == "skip":
+        confirmed["skipped_at"] = now
+    else:
+        return profile
+
+    profile["confirmed_anchors"] = confirmed
+    profile["last_observed_at"] = now
+    return profile
+
+
+def extract_confirmed_anchor_facts(profile_data: dict[str, Any] | None) -> list[str]:
+    confirmed = (profile_data or {}).get("confirmed_anchors") or {}
+    summary = str(confirmed.get("summary") or "").strip()
+    if not summary:
+        return []
+    facts = [f"User-verified focus areas: {summary}."]
+    for pref_key in ("concise", "step_by_step", "examples", "formal_tone"):
+        pref = ((profile_data or {}).get("preferences") or {}).get(pref_key) or {}
+        conf = decay_confidence(float(pref.get("confidence", 0.0) or 0.0), pref.get("last_observed_at"))
+        if pref.get("value") and conf >= MIN_FACT_CONFIDENCE:
+            if pref_key == "concise":
+                facts.append("User prefers concise responses (verified pattern).")
+            elif pref_key == "step_by_step":
+                facts.append("User values step-by-step guidance (verified pattern).")
+    return facts[:4]
+
+
+def build_fallback_structured_questions(
+    goal: str,
+    profile_data: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    goal_l = (goal or "").lower()
+    confirmed_domains = set(((profile_data or {}).get("confirmed_anchors") or {}).get("domains") or [])
+    questions: list[dict[str, Any]] = []
+
+    if "coding" not in confirmed_domains and any(k in goal_l for k in ("code", "bug", "api", "debug")):
+        questions.append({
+            "id": "stack",
+            "prompt": "Which stack should this focus on?",
+            "options": [
+                {"id": "python", "label": "Python"},
+                {"id": "javascript", "label": "JavaScript / TypeScript"},
+                {"id": "other_lang", "label": "Another language"},
+                {"id": "unsure", "label": "Not sure yet"},
+            ],
+            "allow_other": True,
+        })
+    if "career" not in confirmed_domains and any(k in goal_l for k in ("resume", "job", "interview", "application")):
+        questions.append({
+            "id": "career_stage",
+            "prompt": "What career stage is this for?",
+            "options": [
+                {"id": "internship", "label": "Internship"},
+                {"id": "new_grad", "label": "New grad / entry level"},
+                {"id": "mid_level", "label": "Mid-level"},
+                {"id": "career_switch", "label": "Career switch"},
+            ],
+            "allow_other": False,
+        })
+    if "education" not in confirmed_domains and any(k in goal_l for k in ("essay", "homework", "thesis", "school")):
+        questions.append({
+            "id": "edu_level",
+            "prompt": "What level of school is this for?",
+            "options": [
+                {"id": "high_school", "label": "High school"},
+                {"id": "undergrad", "label": "Undergraduate"},
+                {"id": "grad", "label": "Graduate school"},
+                {"id": "other_edu", "label": "Other"},
+            ],
+            "allow_other": False,
+        })
+
+    if not questions:
+        questions.append({
+            "id": "outcome",
+            "prompt": "What outcome do you want most?",
+            "options": [
+                {"id": "draft", "label": "A first draft"},
+                {"id": "plan", "label": "A step-by-step plan"},
+                {"id": "review", "label": "Feedback on existing work"},
+                {"id": "decision", "label": "Help deciding between options"},
+            ],
+            "allow_other": True,
+        })
+    return questions[:2]
+
+
+def normalize_structured_questions(raw_questions: Any) -> list[dict[str, Any]]:
+    normalized: list[dict[str, Any]] = []
+    if not isinstance(raw_questions, list):
+        return normalized
+    for idx, item in enumerate(raw_questions):
+        if isinstance(item, str):
+            normalized.append({
+                "id": f"q{idx + 1}",
+                "prompt": item.strip(),
+                "options": [
+                    {"id": "yes", "label": "Yes"},
+                    {"id": "no", "label": "No"},
+                    {"id": "unsure", "label": "Not sure"},
+                ],
+                "allow_other": True,
+            })
+            continue
+        if not isinstance(item, dict):
+            continue
+        prompt = str(item.get("prompt") or item.get("question") or "").strip()
+        if not prompt:
+            continue
+        options = []
+        for opt_idx, opt in enumerate(item.get("options") or []):
+            if isinstance(opt, str):
+                options.append({"id": f"opt_{opt_idx + 1}", "label": opt.strip()})
+            elif isinstance(opt, dict) and opt.get("label"):
+                options.append({
+                    "id": str(opt.get("id") or f"opt_{opt_idx + 1}"),
+                    "label": str(opt.get("label")).strip(),
+                })
+        if len(options) < 2:
+            continue
+        normalized.append({
+            "id": str(item.get("id") or f"q{idx + 1}"),
+            "prompt": prompt,
+            "options": options[:5],
+            "allow_other": bool(item.get("allow_other", True)),
+        })
+    return normalized[:3]
 
 
 def extract_relevant_profile_facts(
