@@ -2,29 +2,36 @@
 
 # Mind World — Project Handoff Document
 
-## 1. Ultimate Goal and Vision
+## 1. Product Vision (current focus)
 
-Mind World is a **cognitive operating system** that sits on top of all your AI interactions and turns thousands of isolated conversations into a single growing body of thought.
+**Canonical scope:** [VISION.md](VISION.md) — read that first for v1 finish line and out-of-scope list.
 
-### The One-Sentence Version
-Mind World starts as a memory layer that gives Claude and ChatGPT memory across sessions, becomes a company brain that captures institutional knowledge, and ends as a visual agent orchestration platform where you drag and drop AI workflows on a 3D map of your thinking.
+### One sentence
+Mind World is the **prompt engineer that remembers everything you've ever asked AI** — and writes your next prompt for you.
 
-### The Three Layers
+### What we ship now (v1)
 
-**Personal Layer**
-Every AI conversation you have is captured, stored, and made searchable. When you start a new conversation, Mind World surfaces what you already know. You never re-explain your situation from scratch. Your history becomes your memory.
+| Focus | Role |
+|-------|------|
+| **Memory-aware prompt engineering** | Primary product. Template chips + **Improve** (Alt+Shift+M) on the chat input. `/engineer_prompt` silently pulls relevant past conversations and returns a structured prompt. |
+| **Cross-platform conversation memory** | Engine under the hood. Auto-save + semantic search across Claude, ChatGPT, Gemini, Perplexity. Reliable enough to feed Improve — not marketed as a separate memory dashboard. |
+| **Web app (mind-world.app)** | Secondary. Bulk import + 2D map for onboarding and “see your memory” — not the daily driver. |
 
-**Company Layer**
-Every employee's AI conversations — with permission — flow into a shared company brain. When someone new joins, they don't read 200 Notion pages. They ask the company brain. Institutional knowledge stops evaporating when people leave.
+### What we are not building now
+- Company brain / team workspaces (code may exist; UI frozen until after PMF)
+- 3D agent orchestration map
+- Notion, Slack, email, or other multi-source ingestion
+- MCP / Cursor integration
+- “Memory extension” positioning — we compete on **better prompts**, not on being another Memdex or Supermemory
 
-**Orchestration Layer**
-The 3D map becomes a drag-and-drop workflow builder. Instead of chatting with one AI at a time, you set up assembly lines of specialized agents that pass work between each other automatically. The map is the visual control room where you see, manage, and debug these workflows in real time.
+### Why this is a business
+- **Wedge:** No competitor combines cross-platform chat history with live prompt engineering in the input box.
+- **Moat:** Neutral third party — Anthropic will not index ChatGPT; OpenAI will not index Claude. Capture via extension is the pragmatic layer APIs will not provide.
+- **Pricing (target):** $9/month personal. Team tier deferred until the personal wedge is proven.
+- **Long-term optionality (not current roadmap):** company brain for AI conversations, unified knowledge map, agent orchestration — only after 1,000+ DAU and validated Improve metric.
 
-### Why This Is a Real Business
-- No single AI company (Anthropic, OpenAI, Google) can build cross-platform memory because it requires ingesting competitors' data. A neutral third party can. That is Mind World's structural moat.
-- Individual users pay $9/month. Companies pay $49/user/month and never churn because switching means losing institutional memory.
-- Target acquirers: Anthropic, OpenAI, Notion, Microsoft, Salesforce.
-- Acquisition conversations: after 1,000 daily active users and $10K MRR.
+### Elevator pitch (30 seconds)
+“Mind World is a Chrome extension that makes your AI chats smarter. Template chips and a one-click Improve button rewrite what you typed using your past conversations — automatically, without searching old chats.”
 
 ---
 

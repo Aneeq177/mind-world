@@ -1,14 +1,26 @@
 # Mind World — Project Context for Antigravity
 
 ## What This Project Is
-Mind World is a cognitive operating system that turns AI 
-conversation history into a searchable, injectable memory 
-layer. It consists of:
-1. A Chrome extension that works on claude.ai, chatgpt.com, 
-   and gemini.google.com
-2. A React frontend map at mind-world.app
-3. A FastAPI backend on DigitalOcean
-4. A Supabase database with pgvector semantic search
+Mind World is a **memory-aware prompt engineering** Chrome extension.
+It helps you write better AI prompts while you type — using template
+chips and one-click **Improve**, backed by silently captured
+cross-platform conversation memory.
+
+**Product vision (canonical):** [VISION.md](VISION.md)
+
+**Focus now:**
+1. **Improve + templates** on the chat input (primary product)
+2. **Reliable memory capture + semantic search** (engine for Improve)
+3. **mind-world.app** — bulk import and 2D map (secondary onboarding)
+
+**Not in scope until after v1 / PMF:** company brain, 3D orchestration,
+Notion/Slack ingestion, MCP.
+
+**Stack:**
+1. Chrome extension — claude.ai, chatgpt.com, gemini.google.com, perplexity.ai
+2. React web app at mind-world.app (import + map)
+3. FastAPI backend on DigitalOcean
+4. Supabase + pgvector semantic search
 
 ## Live URLs
 - Frontend: https://mind-world.app (Vercel, React + Vite)
@@ -110,13 +122,15 @@ DigitalOcean: ANTHROPIC_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_KEY
 Chrome storage (user-set): mw_email, mw_api_key, 
   mw_default_visibility, mw_has_workspace
 
-## Immediate Priority
-Fix the company search returning no results. The Supabase function 
-match_company_conversations exists but returns empty results. 
-Debug by:
-1. Checking conversations have correct user_id in Supabase
-2. Checking the pgvector function parameters match what backend sends
-3. Verifying embeddings exist for team-visible conversations
+## Immediate Priority (v1)
+Ship and polish the **Improve loop** end-to-end. See [VISION.md](VISION.md).
+
+1. **Chrome Web Store** — listing live or clear beta install path
+2. **Auto-save reliability** — new conversations must persist and feed Improve
+3. **Input dock + Improve** — only default UI; legacy sidebar demoted
+4. **Production smoke test** — one fresh account completes install → Improve → better prompt
+
+Company brain, `/company_search`, and workspace UI are **frozen** until after v1.0.0 and real user validation.
 
 ## Agent Workflow — Auto-push to GitHub
 After implementing requested code changes, always commit and push to GitHub.

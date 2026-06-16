@@ -6,11 +6,18 @@ This document is the **single source of truth** for what Mind World is, what v1 
 
 ## North Star
 
-**One sentence:** A Chrome extension that helps you write better AI prompts *while you type*, using templates and one-click Improve, backed by silently captured conversation memory.
+**One sentence:** Mind World is the prompt engineer that remembers everything you've ever asked AI — and writes your next prompt for you.
+
+**What we focus on (two things only):**
+
+1. **Memory-aware prompt engineering** — templates + one-click Improve that rewrites your draft using relevant past conversations. This is the product and the competitive wedge. No competitor ships this.
+2. **Cross-platform conversation memory** — capture and semantic search across Claude, ChatGPT, Gemini, and Perplexity. This is the fuel for Improve, not the headline. It must be reliable; it does not need to be flashy.
 
 **The one metric:** Do people get noticeably better LLM responses after using Mind World than before?
 
 If yes, the product works. Everything else follows.
+
+**What we are not building now:** company brain, 3D orchestration, multi-source ingestion (Notion/Slack), MCP/IDE integration. See [v2 and Later](#v2-and-later-explicitly-after-v100) and `CLAUDE.md` long-term notes.
 
 ---
 
