@@ -119,11 +119,6 @@
     return (el.value || el.innerText || el.textContent || '').trim()
   }
 
-  function needsClarification(text) {
-    const t = (text || '').trim()
-    return t.length < 50 || t.split(/\s+/).filter(Boolean).length < 8
-  }
-
   function suggestTemplateName(text) {
     const lower = (text || '').toLowerCase()
     const rules = [
@@ -151,7 +146,12 @@
   }
 
   function ensurePopover() {
-    if (document.getElementById(POPOVER_ID)) return
+    const existing = document.getElementById(POPOVER_ID)
+    if (existing) {
+      if (!popoverShadow) popoverShadow = existing.shadowRoot
+      bindPopoverEventIsolation()
+      return
+    }
     const host = document.createElement('div')
     host.id = POPOVER_ID
     host.style.cssText = 'position:fixed;z-index:2147483647;pointer-events:none;'
@@ -197,6 +197,7 @@
       .mw-pop .q-chip {
         padding: 4px 10px; border-radius: 999px; font-size: 11px; cursor: pointer;
         border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.04); color: #ddd;
+        pointer-events: auto;
       }
       .mw-pop .q-chip.active {
         border-color: rgba(124,58,237,0.6); background: rgba(124,58,237,0.25); color: #f3e8ff;
@@ -235,6 +236,7 @@
         flex: 1; min-width: 90px;
         padding: 8px 10px; border-radius: 6px; border: none;
         font-size: 12px; font-weight: 600; cursor: pointer;
+        pointer-events: auto;
       }
       .mw-pop .btn-primary { background: #7c3aed; color: #fff; }
       .mw-pop .btn-primary:hover { background: #6d28d9; }
@@ -343,16 +345,35 @@
   }
 
   function bindPopoverEventIsolation() {
-    if (popoverEventsBound || !popoverShadow) return
-    popoverEventsBound = true
+    if (!popoverShadow) return
     const stop = (e) => e.stopPropagation()
-    popoverShadow.addEventListener('keydown', stop, true)
-    popoverShadow.addEventListener('keyup', stop, true)
-    popoverShadow.addEventListener('keypress', stop, true)
-    popoverShadow.addEventListener('input', stop, true)
-    popoverShadow.addEventListener('mousedown', stop, true)
-    popoverShadow.addEventListener('click', stop, true)
-    popoverShadow.addEventListener('pointerdown', stop, true)
+    const events = ['keydown', 'keyup', 'input', 'mousedown', 'click', 'pointerdown']
+    if (popoverEventsBound && popoverShadow._mwStopProp) {
+      events.forEach((evt) => {
+        popoverShadow.removeEventListener(evt, popoverShadow._mwStopProp, true)
+        popoverShadow.removeEventListener(evt, popoverShadow._mwStopProp, false)
+      })
+    }
+    popoverShadow._mwStopProp = stop
+    events.forEach((evt) => popoverShadow.addEventListener(evt, stop, false))
+    popoverEventsBound = true
+  }
+
+  function bindDockControl(el, onClick) {
+    if (!el) return
+    const stop = (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+    }
+    el.addEventListener('mousedown', stop)
+    el.addEventListener('click', (e) => {
+      stop(e)
+      onClick(e)
+    })
+  }
+
+  async function continueImproveFlow(draft, templateName) {
+    await showClarifyingQuestions(draft, templateName)
   }
 
   function bindPreviewTextarea(ta) {
@@ -692,24 +713,28 @@
 
       const choiceState = {}
       popoverShadow.querySelectorAll('.q-chip').forEach(btn => {
-        btn.onclick = () => {
+        btn.addEventListener('click', (e) => {
+          e.preventDefault()
+          e.stopPropagation()
           const q = btn.dataset.q
           choiceState[q] = { id: btn.dataset.choice, label: btn.dataset.label }
           popoverShadow.querySelectorAll(`.q-chip[data-q="${q}"]`).forEach(el => el.classList.remove('active'))
           btn.classList.add('active')
           const freeform = popoverShadow.getElementById('mw-clarify-' + q)
           if (freeform) freeform.classList.remove('visible')
-        }
+        })
       })
       popoverShadow.querySelectorAll('.q-other-toggle').forEach(btn => {
-        btn.onclick = () => {
+        btn.addEventListener('click', (e) => {
+          e.preventDefault()
+          e.stopPropagation()
           const q = btn.dataset.q
           const freeform = popoverShadow.getElementById('mw-clarify-' + q)
           if (freeform) {
             freeform.classList.toggle('visible')
             if (freeform.classList.contains('visible')) freeform.focus()
           }
-        }
+        })
       })
 
       popoverShadow.getElementById('mw-pop-skip').onclick = () => runEngineer(draft, templateName, {
@@ -763,11 +788,7 @@
 
       popoverShadow.getElementById('mw-pop-confirm-yes').onclick = async () => {
         await chrome.runtime.sendMessage({ type: 'CONFIRM_PERSONALIZATION_SUMMARY', action: 'confirm' })
-        if (needsClarification(draft)) {
-          await showClarifyingQuestions(draft, templateName)
-        } else {
-          await runEngineer(draft, templateName)
-        }
+        await continueImproveFlow(draft, templateName)
       }
       popoverShadow.getElementById('mw-pop-confirm-adjust').onclick = () => {
         mode = 'adjust'
@@ -775,11 +796,7 @@
       }
       popoverShadow.getElementById('mw-pop-confirm-skip').onclick = async () => {
         await chrome.runtime.sendMessage({ type: 'CONFIRM_PERSONALIZATION_SUMMARY', action: 'skip' })
-        if (needsClarification(draft)) {
-          await showClarifyingQuestions(draft, templateName)
-        } else {
-          await runEngineer(draft, templateName)
-        }
+        await continueImproveFlow(draft, templateName)
       }
       positionPopover()
     }
@@ -828,11 +845,7 @@
         } else {
           await chrome.runtime.sendMessage({ type: 'CONFIRM_PERSONALIZATION_SUMMARY', action: 'skip' })
         }
-        if (needsClarification(draft)) {
-          await showClarifyingQuestions(draft, templateName)
-        } else {
-          await runEngineer(draft, templateName)
-        }
+        await continueImproveFlow(draft, templateName)
       }
       positionPopover()
     }
@@ -866,11 +879,7 @@
       }
     } catch (e) { /* continue to clarify/engineer */ }
 
-    if (needsClarification(draft)) {
-      await showClarifyingQuestions(draft, templateName)
-    } else {
-      await runEngineer(draft, templateName)
-    }
+    await continueImproveFlow(draft, templateName)
   }
 
   async function getFavorites() {
@@ -1223,7 +1232,7 @@
       border: 1px solid rgba(124,58,237,0.25);
       border-radius: 10px;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      z-index: 9999;
+      z-index: 2147483646;
     `
 
     const label = document.createElement('span')
@@ -1360,12 +1369,11 @@
     `
     improveBtn.onmouseover = () => { improveBtn.style.background = '#6d28d9' }
     improveBtn.onmouseout = () => { improveBtn.style.background = '#7c3aed' }
-    improveBtn.onclick = (e) => {
-      e.preventDefault()
-      e.stopPropagation()
+    bindDockControl(improveBtn, () => {
       engineerRequestId++
+      if (popoverState.mode !== 'closed') closePopover()
       startImprove(true)
-    }
+    })
 
     const libraryBtn = document.createElement('button')
     libraryBtn.type = 'button'
@@ -1375,12 +1383,10 @@
       width: 100%; padding: 6px 10px; font-size: 11px; font-weight: 600; border-radius: 6px; cursor: pointer;
       border: 1px solid rgba(124,58,237,0.4); background: rgba(124,58,237,0.12); color: #c4b5fd;
     `
-    libraryBtn.onclick = (e) => {
-      e.preventDefault()
-      e.stopPropagation()
+    bindDockControl(libraryBtn, () => {
       libraryState = { intent: '', category: '', tier: '', favoritesOnly: false }
       openLibrary()
-    }
+    })
 
     const headerRow = document.createElement('div')
     headerRow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;'
@@ -1497,7 +1503,7 @@
   document.addEventListener('mousedown', (e) => {
     const host = document.getElementById(POPOVER_ID)
     if (!host || popoverState.mode === 'closed') return
-    if (popoverState.mode === 'preview') return
+    if (popoverState.mode === 'preview' || popoverState.mode === 'clarify') return
     const path = e.composedPath && e.composedPath()
     if (path && path.includes(host)) return
     if (dockHost && dockHost.contains(e.target)) return

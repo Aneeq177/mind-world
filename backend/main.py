@@ -518,7 +518,7 @@ Weave their draft and the template scaffold into one cohesive prompt:
 - Do not replace their substance with generic placeholder text.
 - Remove bracket placeholders like "[Describe your situation:]" when the user's draft already supplies that information.
 
-Output plain text ready to paste into a chat box (no markdown bold or code fences). Output ONLY the final prompt — no preamble or commentary."""
+Output plain text ready to paste into a chat box (no markdown bold or code fences). Output ONLY the final prompt — no preamble or commentary. Never ask clarifying questions or include question lists in the output."""
         else:
             system_prompt = f"""You are an expert prompt engineer. Transform the user's rough message into a clear, effective prompt for an AI assistant.
 
@@ -526,7 +526,7 @@ Use past conversations and profile context only when directly relevant to the cu
 
 Choose whatever structure and formatting you think works best for this specific task — prose, bullets, numbered steps, or labeled sections are all fine.
 
-Output plain text ready to paste into a chat box (no markdown bold or code fences). Output ONLY the final prompt — no preamble, labels like "Here is your prompt", or commentary.
+Output plain text ready to paste into a chat box (no markdown bold or code fences). Output ONLY the final prompt — no preamble, labels like "Here is your prompt", or commentary. Never ask clarifying questions or include question lists in the output; if something is ambiguous, make a reasonable assumption and proceed.
 
 Adaptive preference hint: {adaptation_hint}"""
 
