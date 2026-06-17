@@ -14,6 +14,9 @@
   let chipsRequestId = 0
   let refreshDockChips = null
   let lastImproveTelemetry = null
+  let engineerRequestId = 0
+  let improveInFlight = false
+  let popoverEventsBound = false
 
   async function hashText(input) {
     try {
@@ -336,6 +339,29 @@
     `
     popoverShadow.appendChild(pop)
     document.body.appendChild(host)
+    bindPopoverEventIsolation()
+  }
+
+  function bindPopoverEventIsolation() {
+    if (popoverEventsBound || !popoverShadow) return
+    popoverEventsBound = true
+    const stop = (e) => e.stopPropagation()
+    popoverShadow.addEventListener('keydown', stop, true)
+    popoverShadow.addEventListener('keyup', stop, true)
+    popoverShadow.addEventListener('keypress', stop, true)
+    popoverShadow.addEventListener('input', stop, true)
+    popoverShadow.addEventListener('mousedown', stop, true)
+    popoverShadow.addEventListener('click', stop, true)
+    popoverShadow.addEventListener('pointerdown', stop, true)
+  }
+
+  function bindPreviewTextarea(ta) {
+    if (!ta || ta._mwPreviewBound) return
+    ta._mwPreviewBound = true
+    const stop = (e) => e.stopPropagation()
+    ;['keydown', 'keyup', 'keypress', 'input', 'mousedown', 'click', 'pointerdown'].forEach((evt) => {
+      ta.addEventListener(evt, stop)
+    })
   }
 
   function positionPopover() {
@@ -376,6 +402,7 @@
       pop.classList.remove('library')
     }
     popoverState.mode = 'closed'
+    improveInFlight = false
     libraryState = { q: '', category: '', tier: '', favoritesOnly: false }
   }
 
@@ -400,7 +427,9 @@
   }
 
   async function runEngineer(message, templateName, metadata = {}) {
+    const requestId = ++engineerRequestId
     const requestStartedAt = Date.now()
+    improveInFlight = true
     openPopover('loading', '<p class="note">Searching your memory and improving prompt...</p>', '')
     try {
       const res = await chrome.runtime.sendMessage({
@@ -409,6 +438,7 @@
         template: templateName || 'none',
         clarification_count: metadata.clarificationCount || 0
       })
+      if (requestId !== engineerRequestId) return
       if (res.error) {
         const msg = res.error === 'not_logged_in'
           ? 'Sign in via the Mind World extension icon.'
@@ -444,10 +474,15 @@
         }
       )
     } catch (e) {
+      if (requestId !== engineerRequestId) return
       openPopover('preview', '<p class="err">Network error. Try again.</p>', `
         <button class="btn-ghost" id="mw-pop-close">Close</button>
       `)
       popoverShadow.getElementById('mw-pop-close').onclick = closePopover
+    } finally {
+      if (requestId === engineerRequestId && popoverState.mode !== 'preview') {
+        improveInFlight = false
+      }
     }
   }
 
@@ -543,8 +578,12 @@
       <button class="btn-ghost" id="mw-pop-close">Cancel</button>
     `)
     const ta = popoverShadow.getElementById('mw-pop-preview-text')
-    if (ta) ta.value = formatEngineeredPrompt(text)
-      lastImproveTelemetry = {
+    if (ta) {
+      ta.value = formatEngineeredPrompt(text)
+      bindPreviewTextarea(ta)
+      setTimeout(() => { ta.focus() }, 0)
+    }
+    lastImproveTelemetry = {
         startedAt: telemetry && telemetry.startedAt ? telemetry.startedAt : Date.now(),
         latencyMs: telemetry && telemetry.latencyMs ? telemetry.latencyMs : 0,
         clarificationCount: telemetry && telemetry.clarificationCount ? telemetry.clarificationCount : 0,
@@ -606,6 +645,7 @@
     popoverShadow.getElementById('mw-pop-close').onclick = closePopover
     popoverState.goal = goal
     popoverState.template = templateName
+    improveInFlight = false
     positionPopover()
   }
 
@@ -801,9 +841,14 @@
     else renderAdjust()
   }
 
-  async function startImprove() {
+  async function startImprove(force = false) {
+    if (!force && improveInFlight) return
+    if (!force && popoverState.mode === 'preview') return
+
+    improveInFlight = true
     const draft = getInputText(anchoredInput)
     if (!draft) {
+      improveInFlight = false
       openPopover('preview', '<p class="err">Type something in the chat box first.</p>', `
         <button class="btn-ghost" id="mw-pop-close">OK</button>
       `)
@@ -1122,7 +1167,11 @@
               <button class="btn-ghost" id="mw-pop-back-lib">Back</button>
             `)
             const ta = popoverShadow.getElementById('mw-pop-preview-text')
-            if (ta) ta.value = formatEngineeredPrompt(t.template || '')
+            if (ta) {
+              ta.value = formatEngineeredPrompt(t.template || '')
+              bindPreviewTextarea(ta)
+              setTimeout(() => { ta.focus() }, 0)
+            }
             popoverShadow.getElementById('mw-pop-use').onclick = async () => {
               const draft = getSuggestionDraft()
               if (draft && draft.length >= 3) {
@@ -1161,7 +1210,7 @@
   }
 
   function buildDockUI(inputField) {
-    if (inputField.parentElement && inputField.parentElement.querySelector('#' + DOCK_ID)) return
+    if (document.getElementById(DOCK_ID)) return
 
     loadTemplates()
 
@@ -1314,7 +1363,8 @@
     improveBtn.onclick = (e) => {
       e.preventDefault()
       e.stopPropagation()
-      startImprove()
+      engineerRequestId++
+      startImprove(true)
     }
 
     const libraryBtn = document.createElement('button')
@@ -1432,17 +1482,22 @@
   document.addEventListener('keydown', (e) => {
     if (e.altKey && e.shiftKey && e.key.toLowerCase() === 'm') {
       e.preventDefault()
-      startImprove()
+      engineerRequestId++
+      startImprove(true)
     }
   })
 
   chrome.runtime.onMessage.addListener((message) => {
-    if (message.type === 'TRIGGER_IMPROVE') startImprove()
+    if (message.type === 'TRIGGER_IMPROVE') {
+      engineerRequestId++
+      startImprove(true)
+    }
   })
 
-  document.addEventListener('click', (e) => {
+  document.addEventListener('mousedown', (e) => {
     const host = document.getElementById(POPOVER_ID)
     if (!host || popoverState.mode === 'closed') return
+    if (popoverState.mode === 'preview') return
     const path = e.composedPath && e.composedPath()
     if (path && path.includes(host)) return
     if (dockHost && dockHost.contains(e.target)) return
