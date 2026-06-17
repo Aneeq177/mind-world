@@ -199,6 +199,7 @@ class EngineerPromptRequest(BaseModel):
     conversation_ids: Optional[list[str]] = None
     api_key: Optional[str] = None
     template: Optional[str] = None
+    skip_memory: Optional[bool] = False
 
 
 class ContextPreviewRequest(BaseModel):
@@ -363,8 +364,11 @@ async def engineer_prompt(request: EngineerPromptRequest):
 
         email = request.email.lower().strip()
         user_id = get_or_create_user(email)
+        skip_memory = bool(request.skip_memory)
 
-        if request.conversation_ids:
+        if skip_memory:
+            selected = []
+        elif request.conversation_ids:
             print(f"[engineer_prompt] Looking for conversation IDs: {request.conversation_ids}")
             all_convos = get_user_conversations(user_id)
             selected = [c for c in all_convos if c["id"] in request.conversation_ids]
@@ -455,37 +459,38 @@ async def engineer_prompt(request: EngineerPromptRequest):
         conv_context = "\n\n---\n\n".join(context_parts) if context_parts else ""
         has_history = bool(conv_context.strip())
 
-        profile = get_personal_profile(user_id)
         profile_context = ""
         adaptive = {}
-        profile_data = (profile.get("profile_data") or {}) if profile else {}
-        confirmed_facts = extract_confirmed_anchor_facts(profile_data)
-        if confirmed_facts:
-            profile_context = "\n[USER-VERIFIED PERSONALIZATION ANCHORS]\n"
-            for fact in confirmed_facts:
-                profile_context += f"- {fact}\n"
-            profile_context += "\n"
-        if profile and profile.get("is_profile_enabled"):
-            adaptive = profile_data.get("adaptive_weights") or {}
-            from services.personalization_llm import pick_relevant_profile_facts_llm
-            relevant_profile_facts = pick_relevant_profile_facts_llm(
-                profile_data,
-                request.message,
-                api_key,
-                max_facts=6,
-            )
-            if not relevant_profile_facts:
-                relevant_profile_facts = extract_relevant_profile_facts(
-                    profile_data,
-                    request.message,
-                    min_confidence=0.62,
-                    max_facts=6,
-                )
-            if relevant_profile_facts:
-                profile_context += "[INFERRED PERSONAL PROFILE (background context)]\n"
-                for fact in relevant_profile_facts:
+        if not skip_memory:
+            profile = get_personal_profile(user_id)
+            profile_data = (profile.get("profile_data") or {}) if profile else {}
+            confirmed_facts = extract_confirmed_anchor_facts(profile_data)
+            if confirmed_facts:
+                profile_context = "\n[USER-VERIFIED PERSONALIZATION ANCHORS]\n"
+                for fact in confirmed_facts:
                     profile_context += f"- {fact}\n"
                 profile_context += "\n"
+            if profile and profile.get("is_profile_enabled"):
+                adaptive = profile_data.get("adaptive_weights") or {}
+                from services.personalization_llm import pick_relevant_profile_facts_llm
+                relevant_profile_facts = pick_relevant_profile_facts_llm(
+                    profile_data,
+                    request.message,
+                    api_key,
+                    max_facts=6,
+                )
+                if not relevant_profile_facts:
+                    relevant_profile_facts = extract_relevant_profile_facts(
+                        profile_data,
+                        request.message,
+                        min_confidence=0.62,
+                        max_facts=6,
+                    )
+                if relevant_profile_facts:
+                    profile_context += "[INFERRED PERSONAL PROFILE (background context)]\n"
+                    for fact in relevant_profile_facts:
+                        profile_context += f"- {fact}\n"
+                    profile_context += "\n"
 
         template_body = ""
         template_name = ""
@@ -504,7 +509,18 @@ async def engineer_prompt(request: EngineerPromptRequest):
         else:
             adaptation_hint = "Balance clarity with enough detail for the task."
 
-        system_prompt = f"""You are an expert prompt engineer. Transform the user's rough message into a clear, effective prompt for an AI assistant.
+        if skip_memory and template_name:
+            system_prompt = """You are an expert prompt engineer. The user picked a prompt template while typing their own message.
+
+Weave their draft and the template scaffold into one cohesive prompt:
+- Keep every specific detail, name, topic, and constraint from the user's draft.
+- Apply the template's persona, structure, and best practices to organize that content.
+- Do not replace their substance with generic placeholder text.
+- Remove bracket placeholders like "[Describe your situation:]" when the user's draft already supplies that information.
+
+Output plain text ready to paste into a chat box (no markdown bold or code fences). Output ONLY the final prompt — no preamble or commentary."""
+        else:
+            system_prompt = f"""You are an expert prompt engineer. Transform the user's rough message into a clear, effective prompt for an AI assistant.
 
 Use past conversations and profile context only when directly relevant to the current draft. Never invent details. Skip unrelated background.
 

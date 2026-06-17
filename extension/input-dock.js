@@ -853,6 +853,73 @@
     }
   }
 
+  async function weaveAndApplyTemplate(template, chipEl) {
+    const draft = getInputText(anchoredInput).trim()
+    const tName = template.name || ''
+    if (!draft || draft.length < 3) {
+      injectTemplate(template)
+      return
+    }
+
+    const prevLabel = chipEl ? chipEl.textContent : ''
+    if (chipEl) {
+      chipEl.disabled = true
+      chipEl.textContent = 'Weaving…'
+      chipEl.style.opacity = '0.7'
+      chipEl.style.cursor = 'wait'
+    } else {
+      openPopover('loading', '<p class="note">Weaving your message with this template...</p>', '')
+    }
+
+    try {
+      const res = await chrome.runtime.sendMessage({
+        type: 'ENGINEER_PROMPT',
+        message: draft,
+        template: tName || 'none',
+        skipMemory: true
+      })
+      if (res.error) {
+        const msg = res.error === 'not_logged_in'
+          ? 'Sign in via the Mind World extension icon to weave templates.'
+          : String(res.error)
+        openPopover('preview', '<p class="err">' + escapeHtml(msg) + '</p>', `
+          <button class="btn-ghost" id="mw-pop-close">Close</button>
+        `)
+        popoverShadow.getElementById('mw-pop-close').onclick = closePopover
+        positionPopover()
+        return
+      }
+      const woven = formatEngineeredPrompt(res.engineeredPrompt || '')
+      if (woven && typeof injectIntoChat === 'function') injectIntoChat(woven, false)
+      if (tName) {
+        chrome.runtime.sendMessage({ type: 'TRACK_TEMPLATE_USE', name: tName }).catch(() => {})
+      }
+      emitPromptEditFeedback({
+        eventType: 'template_weave',
+        rating: 1,
+        templateUsed: tName,
+        acceptedUnedited: true,
+        edited: false,
+        latencyMs: res.latencyMs || 0,
+        diffMetrics: { skip_memory: true }
+      })
+      if (!chipEl) closePopover()
+    } catch (e) {
+      openPopover('preview', '<p class="err">Could not weave template. Try again.</p>', `
+        <button class="btn-ghost" id="mw-pop-close">Close</button>
+      `)
+      popoverShadow.getElementById('mw-pop-close').onclick = closePopover
+      positionPopover()
+    } finally {
+      if (chipEl) {
+        chipEl.disabled = false
+        chipEl.textContent = prevLabel
+        chipEl.style.opacity = ''
+        chipEl.style.cursor = 'pointer'
+      }
+    }
+  }
+
   function filterTemplatesLocal(list, q, category, tier, favoritesOnly, favs) {
     let out = list.slice()
     if (category) out = out.filter(t => (t.category || '') === category)
@@ -1056,9 +1123,15 @@
             `)
             const ta = popoverShadow.getElementById('mw-pop-preview-text')
             if (ta) ta.value = formatEngineeredPrompt(t.template || '')
-            popoverShadow.getElementById('mw-pop-use').onclick = () => {
-              injectTemplate(t)
-              closePopover()
+            popoverShadow.getElementById('mw-pop-use').onclick = async () => {
+              const draft = getSuggestionDraft()
+              if (draft && draft.length >= 3) {
+                closePopover()
+                await weaveAndApplyTemplate(t)
+              } else {
+                injectTemplate(t)
+                closePopover()
+              }
             }
             popoverShadow.getElementById('mw-pop-back-lib').onclick = openLibrary
             positionPopover()
@@ -1211,7 +1284,7 @@
         `
         chip.onmouseover = () => { chip.style.background = 'rgba(124,58,237,0.35)' }
         chip.onmouseout = () => { chip.style.background = 'rgba(124,58,237,0.15)' }
-        chip.onclick = () => injectTemplate(t)
+        chip.onclick = () => weaveAndApplyTemplate(t, chip)
         chipsWrap.appendChild(chip)
       })
     }

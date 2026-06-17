@@ -57,7 +57,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'ENGINEER_PROMPT') {
-    handleEngineerPrompt(message.message, message.template, message.conversationIds).then(sendResponse)
+    handleEngineerPrompt(
+      message.message,
+      message.template,
+      message.conversationIds,
+      !!message.skipMemory
+    ).then(sendResponse)
     return true
   }
 
@@ -256,7 +261,7 @@ async function handleSummarize(conversationIds, currentQuery) {
   }
 }
 
-async function handleEngineerPrompt(userMessage, templateStr, conversationIds) {
+async function handleEngineerPrompt(userMessage, templateStr, conversationIds, skipMemory) {
   try {
     const startedAt = Date.now()
     const { email, apiKey } = await getCredentials()
@@ -266,7 +271,8 @@ async function handleEngineerPrompt(userMessage, templateStr, conversationIds) {
       email,
       message: userMessage,
       template: templateStr || 'none',
-      api_key: apiKey || null
+      api_key: apiKey || null,
+      skip_memory: !!skipMemory
     }
     if (conversationIds && conversationIds.length > 0) {
       body.conversation_ids = conversationIds
