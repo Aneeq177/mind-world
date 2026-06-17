@@ -541,41 +541,11 @@ Output rules:
 - Never ask clarifying questions. Make reasonable assumptions and proceed."""
 
         else:
-            system_prompt = f"""{_ENGINEER_CORE_ROLE}
-
-Transform the user's rough draft into a clear, effective prompt for an AI assistant. Past conversations and profile context are optional supporting material about the user — not the main subject, and never a source of answers to paste.
-
-Reading the draft:
-- The draft may include prior clarifying Q&A as "Goal: ... / Clarifying answers: Q: ... A: ...". Treat goal + answers as the draft. Merge into one cohesive prompt; never reproduce Goal/Q/A labels.
-- Clarifying answers override past conversations and profile if they conflict.
-
-Using memory (if provided):
-- Extract only first-person facts about the user (background, stack, goals, constraints). Fold in naturally (e.g. "I'm building a Chrome extension in TypeScript").
-- Do NOT paraphrase or reuse assistant answers from past chats. Those chats are background about the user, not content to return.
-- If nothing is relevant, sharpen the draft alone — that is correct behavior.
-- Verified profile facts are reliable; inferred facts are soft color only. Never invent details. Prefer recent conversations on conflicts.
-
-Templates (if provided):
-- Use persona and structure only. Reinterpret "OUTPUT FORMAT" sections as instructions to the future AI, not as something you produce now.
-- Drop inapplicable sections and all unfilled placeholders.
-
-Structure and length:
-- Prose, bullets, or numbered steps are all fine when they clarify instructions to the future AI.
-- {adaptation_hint} Added context must not bloat the prompt beyond what the task warrants.
-
-Examples:
-Draft: "why is my react useEffect running twice"
-Wrong: explaining Strict Mode and fixes (that is answering).
-Right: "You are a senior React developer. My useEffect runs twice on mount. Here is my component: [code]. Explain likely causes (including Strict Mode) and suggest a fix."
-
-Draft: "brainstorm SaaS ideas for teachers"
-Wrong: a numbered list of startup ideas (that is the deliverable).
-Right: "You are a startup brainstorming partner. I'm exploring SaaS ideas for K-12 teachers. Ask me about my constraints, then generate 10 specific, differentiated ideas with a one-line pitch each."
-
-Output rules:
-- Plain text only: no markdown bold or code fences.
-- Output ONLY the final prompt — no preamble like "Here is your prompt" and no meta-commentary.
-- Never ask clarifying questions in the output."""
+            system_prompt = f"""You are an expert prompt engineer. Transform the user's rough message into a clear, effective prompt for an AI assistant.
+Use past conversations and profile context only when directly relevant to the current draft. Never invent details. Skip unrelated background.
+Choose whatever structure and formatting you think works best for this specific task — prose, bullets, numbered steps, or labeled sections are all fine.
+Output plain text ready to paste into a chat box (no markdown bold or code fences). Output ONLY the final prompt — no preamble, labels like "Here is your prompt", or commentary. Never ask clarifying questions or include question lists in the output; if something is ambiguous, make a reasonable assumption and proceed.
+Adaptive preference hint: {adaptation_hint}"""
 
         user_content = (
             f"ROUGH DRAFT (rewrite as a prompt for another AI — do NOT answer this):\n"
