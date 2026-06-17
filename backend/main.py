@@ -495,81 +495,28 @@ async def engineer_prompt(request: EngineerPromptRequest):
             if tmpl:
                 template_body = tmpl.get("template", "")
 
-        format_rules = """
-OUTPUT FORMAT (required — plain text for pasting into a chat box):
-- Use blank lines between sections (double newline). Never use --- divider lines.
-- Section titles: ALL CAPS on their own line, ending with a colon.
-- Each bullet on its own line, starting with "• " (one bullet per line, never multiple on one line).
-- Numbered lists: one item per line.
-- No markdown **bold**; plain text only.
-- Omit empty sections entirely.
-- Output ONLY the final prompt. No preamble or commentary."""
-
-        if has_history:
-            concise_bias = float(adaptive.get("concise_bias", 0.5) or 0.5)
-            detail_level = float(adaptive.get("detail_level", 0.5) or 0.5)
-            adaptation_hint = "Prefer concise output." if concise_bias >= 0.62 else "Allow moderate detail when useful."
-            if detail_level >= 0.65:
-                adaptation_hint = "Include a little extra implementation detail when ambiguity exists."
-            system_prompt = f"""You are an expert prompt engineer. Transform the user's rough message into a clear, readable prompt for an AI assistant.
-
-Use past conversations and profile only for relevant facts. Never invent details.
-If profile signals are sparse or weak, default to light-touch personalization.
-Adaptive preference hint: {adaptation_hint}
-
-Use this structure (include only sections that have content):
-
-CONTEXT ABOUT ME
-
-• [one fact per line]
-
-WHAT I'VE ALREADY TRIED OR EXPLORED
-
-• [one item per line]
-
-CONSTRAINTS OR DECISIONS
-
-• [one item per line]
-
-MY REQUEST
-
-[2–4 sentences: specific task, audience, and success criteria]
-
-WHAT I NEED FROM YOU
-
-1. [deliverable]
-2. [deliverable]
-
-{format_rules}"""
-            user_content = f"User's message:\n{request.message}\n\nRelevant past conversations:\n{conv_context}\n{profile_context}"
+        concise_bias = float(adaptive.get("concise_bias", 0.5) or 0.5)
+        detail_level = float(adaptive.get("detail_level", 0.5) or 0.5)
+        if concise_bias >= 0.62:
+            adaptation_hint = "Prefer concise wording."
+        elif detail_level >= 0.65:
+            adaptation_hint = "Allow a little extra detail when ambiguity exists."
         else:
-            concise_bias = float(adaptive.get("concise_bias", 0.5) or 0.5)
-            adaptation_hint = "Keep sections compact and direct." if concise_bias >= 0.62 else "Balance concise and explanatory wording."
-            system_prompt = f"""You are an expert prompt engineer. Transform the user's rough message into a clear, readable prompt for an AI assistant.
+            adaptation_hint = "Balance clarity with enough detail for the task."
 
-If a template scaffold is provided, adapt its structure to the user's situation.
-Adaptive preference hint: {adaptation_hint}
+        system_prompt = f"""You are an expert prompt engineer. Transform the user's rough message into a clear, effective prompt for an AI assistant.
 
-Use this structure when helpful:
+Use past conversations and profile context only when directly relevant to the current draft. Never invent details. Skip unrelated background.
 
-ROLE
+Choose whatever structure and formatting you think works best for this specific task — prose, bullets, numbered steps, or labeled sections are all fine.
 
-[who the AI should act as]
+Output plain text ready to paste into a chat box (no markdown bold or code fences). Output ONLY the final prompt — no preamble, labels like "Here is your prompt", or commentary.
 
-MY REQUEST
+Adaptive preference hint: {adaptation_hint}"""
 
-[specific task]
-
-CONSTRAINTS
-
-• [one per line]
-
-WHAT I NEED FROM YOU
-
-1. [deliverable]
-
-{format_rules}"""
-            user_content = f"User's message:\n{request.message}\n{profile_context}"
+        user_content = f"User's message:\n{request.message}\n{profile_context}"
+        if has_history:
+            user_content += f"\n\nRelevant past conversations:\n{conv_context}"
 
         if template_body:
             user_content += (

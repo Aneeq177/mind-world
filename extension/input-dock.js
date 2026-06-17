@@ -67,19 +67,6 @@
     s = s.replace(/\n*---+\n*/g, '\n\n')
     s = s.replace(/^---+\s*|\s*---+$/g, '')
     s = s.replace(/\*\*([^*]+)\*\*/g, '$1')
-    const headers = [
-      'CONTEXT FROM YOUR HISTORY', 'CONTEXT ABOUT ME', 'WHO YOU ARE',
-      'WHAT YOU HAVE ALREADY EXPLORED', "WHAT I'VE ALREADY TRIED OR EXPLORED",
-      'WHAT HAS BEEN DECIDED OR RULED OUT', 'WHAT HAS BEEN DECIDED',
-      'CONSTRAINTS OR DECISIONS', 'MY REQUEST', 'YOUR QUESTION', 'YOUR TASK',
-      'WHAT I NEED FROM YOU', 'ROLE', 'CONSTRAINTS', 'OUTPUT FORMAT'
-    ]
-    headers.forEach(h => {
-      const re = new RegExp('\\s*(' + h.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[^\\n]*:)', 'gi')
-      s = s.replace(re, '\n\n$1\n')
-    })
-    s = s.replace(/\s+•\s+/g, '\n• ')
-    s = s.replace(/(?<=\S)\s+(\d+\.\s+)/g, '\n\n$1')
     s = s.replace(/[ \t]+/g, ' ')
     s = s.replace(/\n{3,}/g, '\n\n')
     return s.trim()
