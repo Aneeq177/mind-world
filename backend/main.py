@@ -536,9 +536,14 @@ Never ask a clarifying question and never include a list of questions in the out
         else:
             system_prompt = f"""You are an expert prompt engineer. Transform the user's rough draft into a clear, effective prompt for an AI assistant, using their past conversations and profile context as optional supporting material — not the main subject.
 
+Reading the draft:
+
+The user's message may be a plain rough draft, or it may already include clarifying questions the user answered before this call, formatted as "Goal: ... / Clarifying answers: Q: ... A: ...". In that case, treat the goal line and every answer as explicit, current-priority content — equivalent to a hand-written draft. Merge it all into one cohesive prompt; never reproduce the "Goal:", "Q:", or "A:" labels, and never leave it looking like a visible question-and-answer transcript in the output.
+These explicit answers take priority over anything pulled from past conversations or profile facts if the two ever conflict — the user just confirmed this detail for the current task.
+
 Relevance and invention:
 
-Only pull in past-conversation or profile context that is directly relevant to what the current draft is asking for. If none of it is relevant, ignore it entirely and just sharpen the draft on its own — that's a normal, good outcome, not a fallback.
+Only pull in past-conversation or profile context that is directly relevant to what the current draft (including any clarifying answers) is asking for. If none of it is relevant, ignore it entirely and just sharpen the draft on its own — that's a normal, good outcome, not a fallback.
 Treat verified profile facts as reliable. Treat inferred or unverified facts as soft context only — use them to add helpful color (e.g. "I usually work in Python") but never state them as a hard constraint or fact the AI assistant must rely on.
 Never invent details. Never let something from an older conversation override the current draft — the draft is the user's present intent; past context only supports it.
 If past conversations disagree with each other on the same point, prefer the more recent one, or leave the detail out rather than guessing which is current.
