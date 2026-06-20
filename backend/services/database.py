@@ -4,7 +4,7 @@ import numpy as np
 from datetime import datetime, timezone
 from typing import Any
 
-CONSENT_VERSION = "2026-06"
+CONSENT_VERSION = "2026-06-2"
 
 def get_supabase() -> Client:
     url = os.getenv("SUPABASE_URL")

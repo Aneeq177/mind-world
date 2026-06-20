@@ -1,6 +1,5 @@
 const API_BASE = CONFIG.API_BASE
 const UPLOAD_BASE = CONFIG.UPLOAD_BASE
-const CONSENT_VERSION = '2026-06'
 
 document.addEventListener('DOMContentLoaded', async () => {
   const loginView = document.getElementById('login-view')

@@ -3,11 +3,11 @@ import { useStore } from '../store'
 import { processFiles, loadExistingMap, recordConsent } from '../api'
 
 const CHROME_STORE_URL = 'https://chrome.google.com/webstore/detail/mind-world'
-const CONSENT_VERSION = '2026-06'
+const CONSENT_VERSION = '2026-06-2'
 
 const UPLOAD_CONSENT_LABEL = (
   <>
-    I agree to Mind World processing my uploaded AI chat exports as described in the{' '}
+    I agree to Mind World processing my uploaded AI chat exports and account data as described in the{' '}
     <a href="/privacy" target="_blank" rel="noreferrer" style={{ color: '#a78bfa' }}>
       Privacy Policy
     </a>{' '}
@@ -15,9 +15,19 @@ const UPLOAD_CONSENT_LABEL = (
     <a href="/terms" target="_blank" rel="noreferrer" style={{ color: '#a78bfa' }}>
       Terms of Service
     </a>
-    , including: storing conversation text on Mind World servers; creating semantic embeddings
-    for search; optional AI topic labeling via Anthropic; and using this data to power my account,
-    memory map, and Improve features in the extension.
+    , including:
+    <ul style={{ margin: '8px 0 0', paddingLeft: '18px', lineHeight: 1.55 }}>
+      <li>Using my email to identify my account</li>
+      <li>Storing conversation text on Mind World servers</li>
+      <li>Creating semantic embeddings for search and memory</li>
+      <li>Optional AI topic labeling via Anthropic during import</li>
+      <li>
+        Storing Improve feedback metrics in <code style={{ fontSize: '0.85em', color: '#999' }}>prompt_feedback</code>{' '}
+        (edit distance, hashes, and goal text up to 500 characters) when I use the extension
+      </li>
+      <li>Optional personal profile and inference from my conversations when profile is enabled</li>
+      <li>Team workspace sharing only when I explicitly mark conversations as team-visible</li>
+    </ul>
   </>
 )
 

@@ -599,6 +599,21 @@ input:checked + .slider:before {
   text-decoration: none;
 }
 
+.login-consent .consent-list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  list-style: disc;
+}
+
+.login-consent .consent-list li {
+  margin-bottom: 4px;
+}
+
+.login-consent .consent-list code {
+  font-size: 0.68rem;
+  color: #999;
+}
+
 .login-privacy-toggles {
   margin-bottom: 14px;
   padding: 10px 12px;

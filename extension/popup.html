@@ -29,11 +29,19 @@
         <input type="checkbox" id="consent-checkbox" />
         <span>
           I agree to Mind World processing my data as described in the{' '}
-          <a href="https://mind-world.app/privacy" target="_blank">Privacy Policy</a>, including:
-          saving AI chats; creating semantic embeddings for search; sending draft text to our
-          servers and Anthropic for Improve; storing Improve feedback metrics (including goal text
-          up to 500 characters); optional profile inference when enabled; and team sharing only
-          if I explicitly mark conversations as team-visible.
+          <a href="https://mind-world.app/privacy" target="_blank">Privacy Policy</a>
+          {' '}and{' '}
+          <a href="https://mind-world.app/terms" target="_blank">Terms of Service</a>, including:
+          <ul class="consent-list">
+            <li>Using my email to identify my account</li>
+            <li>Saving AI conversations (via upload or auto-save when enabled)</li>
+            <li>Creating semantic embeddings for search and memory</li>
+            <li>Sending chat draft text to our servers and Anthropic for Improve and search (processed per request, not stored per keystroke)</li>
+            <li>Storing Improve feedback metrics in <code>prompt_feedback</code> (edit distance, hashes, and goal text up to 500 characters)</li>
+            <li>Optional personal profile and inference from my conversations when profile is enabled</li>
+            <li>Team workspace sharing only when I explicitly mark conversations as team-visible</li>
+            <li>Optional Anthropic API key stored locally in my browser if I provide one</li>
+          </ul>
         </span>
       </label>
       <div id="login-privacy-toggles" class="login-privacy-toggles">
@@ -325,6 +333,7 @@
     </div>
   </div>
   <script src="config.js"></script>
+  <script src="consent-copy.js"></script>
   <script src="storage-utils.js"></script>
   <script src="popup.js"></script>
 </body>

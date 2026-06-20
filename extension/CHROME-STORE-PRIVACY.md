@@ -41,4 +41,4 @@ https://mind-world.app/privacy
 In-app "Delete all data" + email support@mind-world.app
 
 ## Consent
-Checkbox at extension signup and web upload; consent timestamp stored server-side (`consent_at`, `consent_version`).
+Checkbox at extension signup and web upload with disclosure mirroring the Privacy Policy (embeddings, Improve feedback / `prompt_feedback`, optional profile inference, team sharing). Consent timestamp stored server-side (`consent_at`, `consent_version` — current: `2026-06-2`).
