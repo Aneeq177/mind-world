@@ -22,6 +22,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   const afterSkipHint = document.getElementById('after-skip-hint')
   const profileSection = document.getElementById('profile-section')
   const privacySection = document.getElementById('privacy-section')
+  const privacyDataActions = document.getElementById('privacy-data-actions')
+  const privacyOnboardingNote = document.getElementById('privacy-onboarding-note')
   const consentCheckbox = document.getElementById('consent-checkbox')
   const loginAutosaveOptIn = document.getElementById('login-autosave-opt-in')
   const loginMemoryOptIn = document.getElementById('login-memory-opt-in')
@@ -115,6 +117,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   applyVisibilityState(stored.mw_default_visibility || 'private')
   if (autosaveOptIn) autosaveOptIn.checked = stored.mw_autosave_enabled !== false
   if (memoryOptIn) memoryOptIn.checked = stored.mw_memory_enabled !== false
+  if (loginAutosaveOptIn) loginAutosaveOptIn.checked = stored.mw_autosave_enabled !== false
+  if (loginMemoryOptIn) loginMemoryOptIn.checked = stored.mw_memory_enabled !== false
 
   if (stored.mw_email) {
     showConnectedView(stored.mw_email, stored.mw_api_key)
@@ -317,6 +321,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function setOnboardingMode(isNewUser) {
+    // Privacy controls must stay visible during onboarding — never add onboarding-collapsed here.
+    if (privacySection) {
+      privacySection.classList.remove('onboarding-collapsed')
+      privacySection.classList.toggle('privacy-onboarding-prominent', isNewUser)
+    }
+    if (privacyOnboardingNote) privacyOnboardingNote.style.display = isNewUser ? 'block' : 'none'
+    if (privacyDataActions) privacyDataActions.classList.toggle('onboarding-collapsed', isNewUser)
+    if (connectedView) connectedView.classList.toggle('onboarding-active', isNewUser)
     if (profileSection) profileSection.classList.toggle('onboarding-collapsed', isNewUser)
     if (advancedSection) advancedSection.classList.toggle('onboarding-collapsed', isNewUser)
     if (statsRow) statsRow.classList.toggle('onboarding-collapsed', isNewUser)

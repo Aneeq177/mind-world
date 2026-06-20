@@ -6,6 +6,8 @@
 
 body {
   width: 340px;
+  max-height: 600px;
+  overflow-y: auto;
   background: #0a0a14;
   color: white;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -511,6 +513,23 @@ body {
 
 .onboarding-collapsed {
   display: none !important;
+}
+
+.privacy-onboarding-prominent {
+  border-color: rgba(124, 58, 237, 0.45) !important;
+  background: rgba(124, 58, 237, 0.08) !important;
+  box-shadow: 0 0 0 1px rgba(124, 58, 237, 0.12);
+}
+
+.privacy-onboarding-note {
+  font-size: 0.68rem;
+  color: #a78bfa;
+  line-height: 1.45;
+  margin-bottom: 10px;
+}
+
+#connected-view.onboarding-active #privacy-section {
+  scroll-margin-top: 8px;
 }
 
 #upload-btn:hover {
