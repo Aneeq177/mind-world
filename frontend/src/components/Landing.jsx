@@ -85,13 +85,9 @@ export default function Landing() {
     const params = new URLSearchParams(window.location.search)
     const emailParam = params.get('email')
     const viewParam = params.get('view')
+    const shouldAutoLoad = params.get('autoLoad') === 'true'
     const storedEmail = sessionStorage.getItem('mw_email') || ''
     const storedToken = sessionStorage.getItem('mw_access_token') || ''
-
-    if (storedEmail && storedToken) {
-      setEmail(storedEmail)
-      setSignedIn(true)
-    }
 
     if (emailParam) {
       setEmail(emailParam)
@@ -99,6 +95,40 @@ export default function Landing() {
     if (emailParam || viewParam === 'upload') {
       setView('upload')
     }
+
+    if (!storedEmail || !storedToken) return
+
+    setEmail(storedEmail)
+    setSignedIn(true)
+
+    let cancelled = false
+    ;(async () => {
+      setCheckingEmail(true)
+      try {
+        const data = await loadExistingMap({ email: storedEmail, accessToken: storedToken })
+        if (cancelled) return
+        if (data.has_data && data.total > 0) {
+          setHasExistingData(true)
+          setExistingCount(data.total)
+          if (shouldAutoLoad) {
+            setCredentials(storedEmail, apiKey || '')
+            setConversations(data.conversations, data.sources)
+            setPhase('map')
+            const cleanParams = viewParam === 'upload' ? '?view=upload' : ''
+            window.history.replaceState({}, '', `${window.location.pathname}${cleanParams}`)
+          }
+        } else {
+          setHasExistingData(false)
+          setExistingCount(0)
+        }
+      } catch {
+        if (!cancelled) setHasExistingData(false)
+      } finally {
+        if (!cancelled) setCheckingEmail(false)
+      }
+    })()
+
+    return () => { cancelled = true }
   }, [])
 
   async function persistSession(emailValue, accessToken) {
@@ -176,7 +206,8 @@ export default function Landing() {
   }
 
   async function checkExistingData(emailValue) {
-    if (!emailValue || !emailValue.includes('@') || !signedIn) return
+    if (!emailValue || !emailValue.includes('@')) return
+    if (!signedIn && !sessionStorage.getItem('mw_access_token')) return
     setCheckingEmail(true)
     try {
       const token = await ensureAccessToken(emailValue)
