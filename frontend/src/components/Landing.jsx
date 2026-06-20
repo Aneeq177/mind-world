@@ -5,6 +5,22 @@ import { processFiles, loadExistingMap, recordConsent } from '../api'
 const CHROME_STORE_URL = 'https://chrome.google.com/webstore/detail/mind-world'
 const CONSENT_VERSION = '2026-06'
 
+const UPLOAD_CONSENT_LABEL = (
+  <>
+    I agree to Mind World processing my uploaded AI chat exports as described in the{' '}
+    <a href="/privacy" target="_blank" rel="noreferrer" style={{ color: '#a78bfa' }}>
+      Privacy Policy
+    </a>{' '}
+    and{' '}
+    <a href="/terms" target="_blank" rel="noreferrer" style={{ color: '#a78bfa' }}>
+      Terms of Service
+    </a>
+    , including: storing conversation text on Mind World servers; creating semantic embeddings
+    for search; optional AI topic labeling via Anthropic; and using this data to power my account,
+    memory map, and Improve features in the extension.
+  </>
+)
+
 const FEATURES = [
   {
     icon: '🧠',
@@ -121,6 +137,10 @@ export default function Landing() {
 
   function handleSingleFileUpload(file) {
     if (!file) return
+    if (!uploadConsent) {
+      setError('Please acknowledge the data processing notice before uploading your chats.')
+      return
+    }
     const name = file.name.toLowerCase()
     if (name.endsWith('.json')) {
       setClaudeFile(file)
@@ -347,6 +367,41 @@ export default function Landing() {
             </ol>
           </div>
 
+          {/* Consent — required before upload (informed consent at collection) */}
+          <label style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '10px',
+            marginBottom: '20px',
+            padding: '14px',
+            background: uploadConsent ? 'rgba(124,58,237,0.06)' : 'rgba(255,255,255,0.02)',
+            border: uploadConsent
+              ? '1px solid rgba(124,58,237,0.35)'
+              : '1px solid rgba(255,255,255,0.08)',
+            borderRadius: '10px',
+            cursor: 'pointer',
+            fontSize: '0.82rem',
+            color: '#aaa',
+            lineHeight: '1.55'
+          }}>
+            <input
+              type="checkbox"
+              checked={uploadConsent}
+              onChange={e => {
+                const checked = e.target.checked
+                setUploadConsent(checked)
+                if (checked) {
+                  setError('')
+                } else {
+                  setClaudeFile(null)
+                  setChatgptFile(null)
+                }
+              }}
+              style={{ marginTop: '3px', flexShrink: 0 }}
+            />
+            <span>{UPLOAD_CONSENT_LABEL}</span>
+          </label>
+
           {/* Step 3: Upload */}
           <div style={{ marginBottom: '16px' }}>
             <div style={{ fontSize: '0.75rem', color: '#666', marginBottom: '10px', fontWeight: '600' }}>
@@ -355,7 +410,9 @@ export default function Landing() {
             <label style={{
               display: 'block', padding: '28px 20px', textAlign: 'center',
               border: `2px dashed ${uploadedFile ? '#7c3aed' : 'rgba(255,255,255,0.15)'}`,
-              borderRadius: '14px', cursor: 'pointer',
+              borderRadius: '14px',
+              cursor: uploadConsent ? 'pointer' : 'not-allowed',
+              opacity: uploadConsent ? 1 : 0.55,
               background: uploadedFile ? 'rgba(124,58,237,0.08)' : 'rgba(255,255,255,0.02)',
               transition: 'all 0.2s'
             }}>
@@ -383,6 +440,7 @@ export default function Landing() {
               <input
                 type="file"
                 accept=".json,.zip"
+                disabled={!uploadConsent}
                 style={{ display: 'none' }}
                 onChange={e => {
                   setError('')
@@ -390,6 +448,11 @@ export default function Landing() {
                 }}
               />
             </label>
+            {!uploadConsent && (
+              <div style={{ fontSize: '0.75rem', color: '#666', marginTop: '8px', textAlign: 'center' }}>
+                Acknowledge the data processing notice above to enable upload.
+              </div>
+            )}
           </div>
 
           <input
@@ -451,38 +514,6 @@ export default function Landing() {
             </div>
           )}
 
-          {hasFile && (
-            <label style={{
-              display: 'flex',
-              alignItems: 'flex-start',
-              gap: '10px',
-              marginBottom: '16px',
-              padding: '14px',
-              background: 'rgba(255,255,255,0.02)',
-              border: '1px solid rgba(255,255,255,0.08)',
-              borderRadius: '10px',
-              cursor: 'pointer',
-              fontSize: '0.82rem',
-              color: '#aaa',
-              lineHeight: '1.55'
-            }}>
-              <input
-                type="checkbox"
-                checked={uploadConsent}
-                onChange={e => setUploadConsent(e.target.checked)}
-                style={{ marginTop: '3px', flexShrink: 0 }}
-              />
-              <span>
-                I agree to upload my AI chat exports for processing on Mind World servers, including
-                creation of semantic embeddings for search and optional AI labeling of topics.
-                Data is used only to power my account as described in the{' '}
-                <a href="/privacy" target="_blank" rel="noreferrer" style={{ color: '#a78bfa' }}>
-                  Privacy Policy
-                </a>.
-              </span>
-            </label>
-          )}
-
           <button
             onClick={handleGenerate}
             disabled={!canUpload}
@@ -507,6 +538,8 @@ export default function Landing() {
           }}>
             Your chats stay private. Only you can see them.{' '}
             <a href="/privacy" style={{ color: '#666' }}>Privacy Policy</a>
+            {' · '}
+            <a href="/terms" style={{ color: '#666' }}>Terms of Service</a>
           </p>
         </div>
       </div>
