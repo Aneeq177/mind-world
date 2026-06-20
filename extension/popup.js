@@ -42,10 +42,28 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   let currentEmail = null
 
-  async function clearAllMindWorldStorage() {
-    const all = await chrome.storage.local.get(null)
-    const keys = Object.keys(all).filter((k) => k.startsWith('mw_'))
-    if (keys.length) await chrome.storage.local.remove(keys)
+  function resetFormAfterAccountRemoval() {
+    emailInput.value = ''
+    if (consentCheckbox) consentCheckbox.checked = false
+    if (loginAutosaveOptIn) loginAutosaveOptIn.checked = true
+    if (loginMemoryOptIn) loginMemoryOptIn.checked = true
+    if (autosaveOptIn) autosaveOptIn.checked = true
+    if (memoryOptIn) memoryOptIn.checked = true
+    const profileOptInEl = document.getElementById('profile-opt-in')
+    const profileFieldsEl = document.getElementById('profile-fields')
+    if (profileOptInEl) profileOptInEl.checked = false
+    if (profileFieldsEl) profileFieldsEl.style.display = 'none'
+    Object.values({
+      background: document.getElementById('profile-background'),
+      situation: document.getElementById('profile-situation'),
+      goals: document.getElementById('profile-goals'),
+      constraints: document.getElementById('profile-constraints'),
+      preferences: document.getElementById('profile-preferences')
+    }).forEach((input) => {
+      if (input) input.value = ''
+    })
+    loginError.textContent = ''
+    if (privacyActionStatus) privacyActionStatus.style.display = 'none'
   }
 
   async function recordConsent(email, source = 'extension') {
@@ -753,13 +771,13 @@ document.addEventListener('DOMContentLoaded', async () => {
           const err = await res.json().catch(() => ({}))
           throw new Error(err.detail || 'Delete failed')
         }
+        broadcastLocalStateCleared()
         await clearAllMindWorldStorage()
+        broadcastLocalStateCleared()
         currentEmail = null
         connectedView.style.display = 'none'
         loginView.style.display = 'block'
-        emailInput.value = ''
-        if (consentCheckbox) consentCheckbox.checked = false
-        loginError.textContent = ''
+        resetFormAfterAccountRemoval()
       } catch (err) {
         showPrivacyStatus(String(err.message || 'Delete failed'), true)
         deleteDataBtn.disabled = false

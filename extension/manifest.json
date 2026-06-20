@@ -27,7 +27,7 @@
         "https://gemini.google.com/*",
         "https://perplexity.ai/*"
       ],
-      "js": ["content.js", "input-dock.js"],
+      "js": ["storage-utils.js", "content.js", "input-dock.js"],
       "run_at": "document_idle"
     }
   ],

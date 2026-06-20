@@ -1,4 +1,4 @@
-importScripts('config.js')
+importScripts('config.js', 'storage-utils.js')
 const API_BASE = CONFIG.API_BASE
 
 // Keep service worker alive during operations
@@ -48,6 +48,12 @@ function getPlatform(url) {
 
 // Handle messages from content script
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'LOCAL_STATE_CLEARED') {
+    chrome.storage.local.set({ mw_save_queue: [] }).catch(() => {})
+    sendResponse({ success: true })
+    return true
+  }
+
   if (message.type === 'SEARCH') {
     handleSearch(message.query).then(sendResponse)
     return true // Keep channel open for async

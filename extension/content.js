@@ -34,6 +34,7 @@ let saveDebounceTimer = null
 let autoSaveObserver = null
 
 async function isAutoSaveEnabled() {
+  if (!(await isMindWorldLoggedIn())) return false
   const stored = await chrome.storage.local.get(['mw_autosave_enabled'])
   return stored.mw_autosave_enabled !== false
 }
@@ -53,6 +54,7 @@ async function getAccumulatedMessages(conversationId) {
 
 
 async function addMessageToAccumulator(conversationId, message) {
+  if (!(await isMindWorldLoggedIn())) return []
 
   const key = `mw_msgs_${conversationId}`
 
@@ -1830,7 +1832,7 @@ function extractMessages(hostname) {
 
 
 async function triggerAccumulatedSave(conversationId, messages) {
-
+  if (!(await isMindWorldLoggedIn())) return
   if (!messages || messages.length === 0) return
 
 
@@ -1893,6 +1895,7 @@ async function tryAutoSave() {
 
   try {
 
+    if (!(await isMindWorldLoggedIn())) return
     if (!(await isAutoSaveEnabled())) return
 
     const url = window.location.href
@@ -2107,6 +2110,30 @@ function escapeHtml(text) {
 
 // Prompt Builder UI lives in input-dock.js (template chips + Improve popover)
 
+function getCurrentConversationId() {
+  const hostname = window.location.hostname
+  const path = window.location.pathname
+
+  if (hostname.includes('claude.ai')) {
+    return path.match(/\/chat\/([a-f0-9-]+)/)?.[1] || null
+  }
+  if (hostname.includes('chatgpt.com')) {
+    return path.match(/\/c\/([a-zA-Z0-9-]+)/)?.[1] || null
+  }
+  if (hostname.includes('gemini.google.com')) {
+    return path.match(/\/app\/([a-zA-Z0-9]+)/)?.[1] || null
+  }
+  return null
+}
+
+async function handleLocalStateCleared() {
+  lastSavedMessageCount.clear()
+  lastSavedAt.clear()
+  const conversationId = getCurrentConversationId()
+  if (conversationId) await clearAccumulatedMessages(conversationId)
+}
+
 chrome.runtime.onMessage.addListener((message) => {
   if (message.type === 'SAVE_CONFIRMED') showSaveToast()
+  if (message.type === 'LOCAL_STATE_CLEARED') handleLocalStateCleared()
 })
