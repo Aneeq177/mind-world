@@ -20,7 +20,10 @@ Memory-aware prompt engineering: Improve drafts using the user's own past AI con
 
 ## Permissions justification
 - `storage` — credentials, privacy toggles, message capture queue
+- `tabs` — open Google sign-in tab; notify AI chat tabs after login/logout; keyboard shortcut Improve on active tab
+- `activeTab` — Improve keyboard shortcut on the current AI chat tab without broad tab access
 - Host permissions (claude.ai, chatgpt.com, gemini.google.com, perplexity.ai) — inject Improve UI, auto-save, read chat input only on those sites
+- Host permissions (mind-world.app, DigitalOcean API) — auth callback, API calls, map link
 
 ## User controls
 - Auto-save toggle (extension popup)

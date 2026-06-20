@@ -43,6 +43,12 @@ export default function Privacy() {
             and link your conversations to you.
           </li>
           <li>
+            <strong style={{ color: 'white' }}>Account credentials</strong> — if you sign up with
+            email and password, we store a one-way bcrypt hash only (never plain-text passwords).
+            If you sign in with Google, we receive your email and Google account ID via OAuth to
+            link your account.
+          </li>
+          <li>
             <strong style={{ color: 'white' }}>AI conversation history</strong> — when you upload
             exports (Claude <code>conversations.json</code>, ChatGPT <code>.zip</code>) or when the
             Chrome extension auto-saves new chats from Claude, ChatGPT, Gemini, or Perplexity

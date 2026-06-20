@@ -6,8 +6,7 @@
   "permissions": [
     "storage",
     "activeTab",
-    "tabs",
-    "notifications"
+    "tabs"
   ],
   "host_permissions": [
     "https://claude.ai/*",

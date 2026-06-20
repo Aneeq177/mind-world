@@ -114,9 +114,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     await recordConsent(email, accessToken, 'extension')
 
-    const tabs = await chrome.tabs.query({})
+    const tabs = await chrome.tabs.query({ url: MW_HOST_PATTERNS })
     tabs.forEach(tab => {
-      chrome.tabs.sendMessage(tab.id, { type: 'CREDENTIALS_UPDATED', email }).catch(() => {})
+      if (tab.id) {
+        chrome.tabs.sendMessage(tab.id, { type: 'CREDENTIALS_UPDATED', email }).catch(() => {})
+      }
     })
 
     showConnectedView(email, apiKey)
