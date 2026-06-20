@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useStore } from '../store'
-import { processFiles, loadExistingMap, recordConsent, ensureAccessToken } from '../api'
+import { processFiles, loadExistingMap, recordConsent, ensureAccessToken, login, register, getGoogleSignInUrl } from '../api'
 
 const CHROME_STORE_URL = 'https://chrome.google.com/webstore/detail/mind-world'
 const CONSENT_VERSION = '2026-06-2'
@@ -76,25 +76,95 @@ export default function Landing() {
   const [selectedPlatform, setSelectedPlatform] = useState('chatgpt')
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [uploadConsent, setUploadConsent] = useState(false)
+  const [password, setPassword] = useState('')
+  const [isRegisterMode, setIsRegisterMode] = useState(false)
+  const [signedIn, setSignedIn] = useState(false)
+  const [authLoading, setAuthLoading] = useState(false)
 
-  // If the popup opened this page with ?email=..., pre-fill and jump to upload
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const emailParam = params.get('email')
-    
+    const viewParam = params.get('view')
+    const storedEmail = sessionStorage.getItem('mw_email') || ''
+    const storedToken = sessionStorage.getItem('mw_access_token') || ''
+
+    if (storedEmail && storedToken) {
+      setEmail(storedEmail)
+      setSignedIn(true)
+    }
+
     if (emailParam) {
       setEmail(emailParam)
+    }
+    if (emailParam || viewParam === 'upload') {
       setView('upload')
-      setShowAdvanced(true)
     }
   }, [])
+
+  async function persistSession(emailValue, accessToken) {
+    sessionStorage.setItem('mw_email', emailValue)
+    sessionStorage.setItem('mw_access_token', accessToken)
+    setEmail(emailValue)
+    setSignedIn(true)
+    setCredentials(emailValue, apiKey || '')
+  }
+
+  async function handlePasswordAuth() {
+    setError('')
+    if (!email || !email.includes('@')) {
+      setError('Please enter a valid email.')
+      return
+    }
+    if (!password || password.length < 8) {
+      setError('Password must be at least 8 characters.')
+      return
+    }
+    if (hasFile && !uploadConsent) {
+      setError('Please acknowledge the data processing notice first.')
+      return
+    }
+
+    setAuthLoading(true)
+    try {
+      const data = isRegisterMode
+        ? await register({ email, password })
+        : await login({ email, password })
+      await persistSession(data.email || email, data.access_token)
+      if (hasFile || isRegisterMode) {
+        await recordConsent({
+          email: data.email || email,
+          accessToken: data.access_token,
+          consentVersion: CONSENT_VERSION,
+          source: 'web_app'
+        })
+      }
+      await checkExistingData(data.email || email)
+    } catch (err) {
+      setError(err.message || 'Sign in failed')
+    } finally {
+      setAuthLoading(false)
+    }
+  }
+
+  function handleGoogleAuth() {
+    window.location.href = getGoogleSignInUrl('web')
+  }
+
+  function handleSignOut() {
+    sessionStorage.removeItem('mw_email')
+    sessionStorage.removeItem('mw_access_token')
+    setSignedIn(false)
+    setHasExistingData(false)
+    setExistingCount(0)
+    setPassword('')
+  }
 
   async function autoLoadMap(emailValue) {
     setError('')
     setLoadingMsg('Loading your map...')
     setPhase('processing')
     try {
-      const token = await ensureAccessToken(emailValue, apiKey)
+      const token = await ensureAccessToken(emailValue)
       const data = await loadExistingMap({ email: emailValue, accessToken: token })
       setCredentials(emailValue, apiKey || '')
       setConversations(data.conversations, data.sources)
@@ -106,10 +176,10 @@ export default function Landing() {
   }
 
   async function checkExistingData(emailValue) {
-    if (!emailValue || !emailValue.includes('@') || !apiKey) return
+    if (!emailValue || !emailValue.includes('@') || !signedIn) return
     setCheckingEmail(true)
     try {
-      const token = await ensureAccessToken(emailValue, apiKey)
+      const token = await ensureAccessToken(emailValue)
       const data = await loadExistingMap({ email: emailValue, accessToken: token })
       if (data.has_data && data.total > 0) {
         setHasExistingData(true)
@@ -126,17 +196,15 @@ export default function Landing() {
   }
 
   async function handleLoadExisting() {
-    if (!email) return
-    if (!apiKey) {
-      setError('Enter your Anthropic API key to load your saved map.')
-      setShowAdvanced(true)
+    if (!email || !signedIn) {
+      setError('Sign in to load your saved map.')
       return
     }
     setError('')
     setLoadingMsg('Loading your map...')
     setPhase('processing')
     try {
-      const token = await ensureAccessToken(email, apiKey)
+      const token = await ensureAccessToken(email)
       const data = await loadExistingMap({ email, accessToken: token })
       setCredentials(email, apiKey || '')
       setConversations(data.conversations, data.sources)
@@ -168,7 +236,7 @@ export default function Landing() {
   }
 
   const hasFile = claudeFile || chatgptFile
-  const canGenerate = email && email.includes('@') && apiKey && (hasFile || hasExistingData)
+  const canGenerate = signedIn && email && email.includes('@') && (hasFile || hasExistingData)
   const canUpload = canGenerate && (!hasFile || uploadConsent)
 
   async function handleGenerate() {
@@ -177,9 +245,8 @@ export default function Landing() {
     if (!claudeFile && !chatgptFile && hasExistingData) {
       return handleLoadExisting()
     }
-    if (!apiKey) {
-      setError('Anthropic API key required to verify your account.')
-      setShowAdvanced(true)
+    if (!signedIn) {
+      setError('Sign in to continue.')
       return
     }
     if (!email.includes('@') || !email.includes('.')) {
@@ -202,7 +269,7 @@ export default function Landing() {
     }, 4000)
 
     try {
-      const token = await ensureAccessToken(email, apiKey)
+      const token = await ensureAccessToken(email)
       if (hasFile) {
         await recordConsent({
           email,
@@ -489,18 +556,89 @@ export default function Landing() {
 
           <input
             type="email"
-            placeholder="Your email (same one you used in the extension)"
+            placeholder="Your email"
             value={email}
             onChange={e => setEmail(e.target.value)}
             onBlur={e => checkExistingData(e.target.value)}
+            disabled={signedIn}
             style={{
               width: '100%', padding: '14px 16px',
               background: 'rgba(255,255,255,0.05)',
               border: '1px solid rgba(255,255,255,0.1)',
               borderRadius: '10px', color: 'white',
-              fontSize: '0.9rem', marginBottom: '12px', outline: 'none'
+              fontSize: '0.9rem', marginBottom: '12px', outline: 'none',
+              opacity: signedIn ? 0.7 : 1
             }}
           />
+
+          {!signedIn ? (
+            <>
+              <input
+                type="password"
+                placeholder="Password (8+ characters)"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                style={{
+                  width: '100%', padding: '14px 16px',
+                  background: 'rgba(255,255,255,0.05)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: '10px', color: 'white',
+                  fontSize: '0.9rem', marginBottom: '12px', outline: 'none'
+                }}
+              />
+              <button
+                type="button"
+                onClick={handlePasswordAuth}
+                disabled={authLoading}
+                style={{
+                  width: '100%', padding: '14px',
+                  background: 'linear-gradient(135deg, #7c3aed, #5b21b6)',
+                  border: 'none', borderRadius: '10px',
+                  color: 'white', fontWeight: 600, cursor: 'pointer',
+                  marginBottom: '10px'
+                }}
+              >
+                {authLoading ? 'Please wait…' : (isRegisterMode ? 'Create account' : 'Sign in')}
+              </button>
+              <button
+                type="button"
+                onClick={handleGoogleAuth}
+                style={{
+                  width: '100%', padding: '14px',
+                  background: 'white', border: 'none', borderRadius: '10px',
+                  color: '#333', fontWeight: 600, cursor: 'pointer',
+                  marginBottom: '10px'
+                }}
+              >
+                Continue with Google
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsRegisterMode(v => !v)}
+                style={{
+                  width: '100%', background: 'none', border: 'none',
+                  color: '#888', fontSize: '0.8rem', cursor: 'pointer',
+                  marginBottom: '12px'
+                }}
+              >
+                {isRegisterMode ? 'Already have an account? Sign in' : 'New here? Create an account'}
+              </button>
+            </>
+          ) : (
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              marginBottom: '12px', fontSize: '0.82rem', color: '#8b8'
+            }}>
+              <span>Signed in as {email}</span>
+              <button
+                type="button"
+                onClick={handleSignOut}
+                style={{ background: 'none', border: 'none', color: '#a78bfa', cursor: 'pointer' }}
+              >
+                Sign out
+              </button>
+            </div>
+          )}
 
           {checkingEmail && (
             <div style={{ fontSize: '0.78rem', color: '#555', marginBottom: '12px', textAlign: 'center' }}>
@@ -521,7 +659,7 @@ export default function Landing() {
           {showAdvanced && (
             <input
               type="password"
-              placeholder="Anthropic API key (only if import fails)"
+              placeholder="Anthropic API key (optional — for Improve and import labeling)"
               value={apiKey}
               onChange={e => setApiKey(e.target.value)}
               style={{

@@ -5,6 +5,7 @@ import Landing from './components/Landing'
 import MapView from './components/MapView'
 import Privacy from './components/Privacy'
 import Terms from './components/Terms'
+import AuthCallback from './components/AuthCallback'
 
 function MainApp() {
   const phase = useStore(s => s.phase)
@@ -32,6 +33,7 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<MainApp />} />
+        <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/privacy" element={<Privacy />} />
         <Route path="/terms" element={<Terms />} />
       </Routes>

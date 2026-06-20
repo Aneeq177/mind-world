@@ -9,6 +9,7 @@ hdbscan
 anthropic
 supabase
 python-dotenv
+bcrypt
 
 # ML stack — pinned so sentence-transformers/transformers import cleanly on deploy
 sentence-transformers==3.3.1

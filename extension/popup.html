@@ -13,7 +13,7 @@
         <span>Mind World</span>
       </div>
       <p id="login-subtitle">
-        Enter your email and Anthropic API key to connect. Your key stays in your browser.
+        Sign in with your password or Google account. Your API key stays optional in Advanced Settings.
       </p>
       <div class="input-group">
         <label>Email</label>
@@ -25,14 +25,16 @@
         />
       </div>
       <div class="input-group">
-        <label>Anthropic API Key</label>
+        <label>Password</label>
         <input
           type="password"
-          id="apikey-input-login"
-          placeholder="sk-ant-..."
-          autocomplete="off"
+          id="password-input-login"
+          placeholder="At least 8 characters"
+          autocomplete="current-password"
         />
       </div>
+      <button type="button" id="toggle-auth-mode" class="link-btn">New here? Create an account</button>
+      <button type="button" id="google-signin-btn" class="google-signin-btn">Continue with Google</button>
       <div id="login-error"></div>
       <label id="login-consent" class="login-consent">
         <input type="checkbox" id="consent-checkbox" />
@@ -75,7 +77,7 @@
           </label>
         </div>
       </div>
-      <button id="save-btn">Connect to Mind World</button>
+      <button id="save-btn">Sign in</button>
     </div>
 
     <!-- Connected View -->

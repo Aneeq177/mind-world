@@ -1,5 +1,35 @@
 const BASE_URL = import.meta.env.VITE_API_URL || 'https://mind-world-app-mv4yv.ondigitalocean.app'
 
+export function getGoogleSignInUrl(source = 'web') {
+  return `${BASE_URL}/auth/google/signin?source=${source}`
+}
+
+export async function login({ email, password }) {
+  const response = await fetch(`${BASE_URL}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password })
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(error.detail || 'Sign in failed')
+  }
+  return response.json()
+}
+
+export async function register({ email, password }) {
+  const response = await fetch(`${BASE_URL}/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password })
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(error.detail || 'Registration failed')
+  }
+  return response.json()
+}
+
 export async function establishSession({ email, apiKey, accessToken }) {
   const body = { email }
   if (apiKey) body.api_key = apiKey
@@ -16,12 +46,14 @@ export async function establishSession({ email, apiKey, accessToken }) {
   return response.json()
 }
 
-export async function ensureAccessToken(email, apiKey) {
+export async function ensureAccessToken(email) {
   const stored = sessionStorage.getItem('mw_access_token') || ''
+  if (!stored) {
+    throw new Error('Please sign in first.')
+  }
   const data = await establishSession({
     email,
-    apiKey: apiKey || undefined,
-    accessToken: stored || undefined
+    accessToken: stored
   })
   sessionStorage.setItem('mw_access_token', data.access_token)
   return data.access_token

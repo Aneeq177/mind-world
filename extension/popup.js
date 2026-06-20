@@ -44,9 +44,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   const apikeyStatus = document.getElementById('apikey-status')
 
   let currentEmail = null
+  let isRegisterMode = false
+
+  const passwordInput = document.getElementById('password-input-login')
+  const toggleAuthMode = document.getElementById('toggle-auth-mode')
+  const googleSigninBtn = document.getElementById('google-signin-btn')
 
   function resetFormAfterAccountRemoval() {
     emailInput.value = ''
+    if (passwordInput) passwordInput.value = ''
     if (consentCheckbox) consentCheckbox.checked = false
     if (loginAutosaveOptIn) loginAutosaveOptIn.checked = true
     if (loginMemoryOptIn) loginMemoryOptIn.checked = true
@@ -92,6 +98,33 @@ document.addEventListener('DOMContentLoaded', async () => {
     return data
   }
 
+  async function completeSignIn(email, accessToken, apiKey = null) {
+    const autosaveEnabled = loginAutosaveOptIn ? loginAutosaveOptIn.checked : true
+    const memoryEnabled = loginMemoryOptIn ? loginMemoryOptIn.checked : true
+
+    await chrome.storage.local.set({
+      mw_email: email,
+      mw_access_token: accessToken,
+      mw_autosave_enabled: autosaveEnabled,
+      mw_memory_enabled: memoryEnabled,
+      ...(apiKey ? { mw_api_key: apiKey } : {})
+    })
+    if (autosaveOptIn) autosaveOptIn.checked = autosaveEnabled
+    if (memoryOptIn) memoryOptIn.checked = memoryEnabled
+
+    await recordConsent(email, accessToken, 'extension')
+
+    const tabs = await chrome.tabs.query({})
+    tabs.forEach(tab => {
+      chrome.tabs.sendMessage(tab.id, { type: 'CREDENTIALS_UPDATED', email }).catch(() => {})
+    })
+
+    showConnectedView(email, apiKey)
+    loadStats(email)
+    saveBtn.disabled = false
+    saveBtn.textContent = isRegisterMode ? 'Create account' : 'Sign in'
+  }
+
   async function establishSession(email, apiKey = null) {
     const stored = await chrome.storage.local.get(['mw_access_token'])
     const body = { email }
@@ -125,14 +158,56 @@ document.addEventListener('DOMContentLoaded', async () => {
       try {
         return await establishSession(currentEmail, stored.mw_api_key || null)
       } catch {
-        // fall through to api key retry
+        // expired
       }
     }
     if (stored.mw_api_key) {
-      return establishSession(currentEmail, stored.mw_api_key)
+      try {
+        return await establishSession(currentEmail, stored.mw_api_key)
+      } catch {
+        return null
+      }
     }
     return null
   }
+
+  if (toggleAuthMode) {
+    toggleAuthMode.addEventListener('click', () => {
+      isRegisterMode = !isRegisterMode
+      toggleAuthMode.textContent = isRegisterMode
+        ? 'Already have an account? Sign in'
+        : 'New here? Create an account'
+      saveBtn.textContent = isRegisterMode ? 'Create account' : 'Sign in'
+    })
+  }
+
+  if (googleSigninBtn) {
+    googleSigninBtn.addEventListener('click', () => {
+      if (consentCheckbox && !consentCheckbox.checked) {
+        loginError.textContent = 'Please acknowledge the privacy notice to continue.'
+        return
+      }
+      loginError.textContent = ''
+      chrome.tabs.create({ url: `${API_BASE}/auth/google/signin?source=extension` })
+    })
+  }
+
+  chrome.runtime.onMessage.addListener((message) => {
+    if (message.type !== 'AUTH_COMPLETE') return
+    chrome.storage.local.get(['mw_email', 'mw_api_key', 'mw_access_token'], async (stored) => {
+      if (!stored.mw_email || !stored.mw_access_token) return
+      currentEmail = stored.mw_email
+      try {
+        await recordConsent(stored.mw_email, stored.mw_access_token, 'extension')
+      } catch {
+        // consent may already exist
+      }
+      showConnectedView(stored.mw_email, stored.mw_api_key || null)
+      loadStats(stored.mw_email)
+      loginView.style.display = 'none'
+      connectedView.style.display = 'block'
+    })
+  })
 
   // Load saved credentials and visibility
   const stored = await chrome.storage.local.get([
@@ -582,8 +657,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Save email (login)
   saveBtn.addEventListener('click', async () => {
     const email = emailInput.value.trim()
-    const apiKeyInput = document.getElementById('apikey-input-login')
-    const apiKey = apiKeyInput ? apiKeyInput.value.trim() : ''
+    const password = passwordInput ? passwordInput.value : ''
     loginError.textContent = ''
 
     if (!email || !email.includes('@')) {
@@ -591,8 +665,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       return
     }
 
-    if (!apiKey || !apiKey.startsWith('sk-ant-')) {
-      loginError.textContent = 'Please enter a valid Anthropic API key (starts with sk-ant-).'
+    if (!password || password.length < 8) {
+      loginError.textContent = 'Password must be at least 8 characters.'
       return
     }
 
@@ -602,39 +676,28 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     saveBtn.disabled = true
-    saveBtn.textContent = 'Connecting...'
+    saveBtn.textContent = isRegisterMode ? 'Creating account…' : 'Signing in…'
 
     try {
       const res = await fetch(`${API_BASE}/health`)
       if (!res.ok) throw new Error('Cannot reach Mind World server')
 
-      const autosaveEnabled = loginAutosaveOptIn ? loginAutosaveOptIn.checked : true
-      const memoryEnabled = loginMemoryOptIn ? loginMemoryOptIn.checked : true
-
-      await chrome.storage.local.set({
-        mw_email: email,
-        mw_api_key: apiKey,
-        mw_autosave_enabled: autosaveEnabled,
-        mw_memory_enabled: memoryEnabled
+      const endpoint = isRegisterMode ? '/auth/register' : '/auth/login'
+      const authRes = await fetch(`${API_BASE}${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
       })
-      if (autosaveOptIn) autosaveOptIn.checked = autosaveEnabled
-      if (memoryOptIn) memoryOptIn.checked = memoryEnabled
-
-      const accessToken = await establishSession(email, apiKey)
-      await recordConsent(email, accessToken, 'extension')
-
-      const tabs = await chrome.tabs.query({})
-      tabs.forEach(tab => {
-        chrome.tabs.sendMessage(tab.id, { type: 'CREDENTIALS_UPDATED', email }).catch(() => {})
-      })
-
-      showConnectedView(email, apiKey)
-      loadStats(email)
-
+      if (!authRes.ok) {
+        const err = await authRes.json().catch(() => ({}))
+        throw new Error(err.detail || 'Sign in failed')
+      }
+      const data = await authRes.json()
+      await completeSignIn(data.email || email, data.access_token, null)
     } catch (err) {
-      loginError.textContent = err.message || 'Connection failed. Check your email and API key.'
+      loginError.textContent = err.message || 'Sign in failed. Check your email and password.'
       saveBtn.disabled = false
-      saveBtn.textContent = 'Connect to Mind World'
+      saveBtn.textContent = isRegisterMode ? 'Create account' : 'Sign in'
     }
   })
 

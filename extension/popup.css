@@ -35,6 +35,34 @@ body {
   line-height: 1.5;
 }
 
+.link-btn {
+  width: 100%;
+  background: none;
+  border: none;
+  color: #a78bfa;
+  font-size: 0.78rem;
+  cursor: pointer;
+  margin-bottom: 12px;
+  text-align: center;
+}
+
+.google-signin-btn {
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 12px;
+  background: white;
+  border: none;
+  border-radius: 8px;
+  color: #333;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.google-signin-btn:hover {
+  background: #f3f4f6;
+}
+
 .input-group {
   margin-bottom: 14px;
 }

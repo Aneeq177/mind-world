@@ -75,10 +75,10 @@ export default function MapView() {
 
   async function ensureAccessToken() {
     const stored = sessionStorage.getItem('mw_access_token') || ''
+    if (!stored) throw new Error('Please sign in first.')
     const data = await establishSession({
       email,
-      apiKey: apiKey || undefined,
-      accessToken: stored || undefined,
+      accessToken: stored,
     })
     sessionStorage.setItem('mw_access_token', data.access_token)
     return data.access_token

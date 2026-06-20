@@ -70,6 +70,26 @@ async function getAccessToken() {
   return null
 }
 
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  const url = changeInfo.url || ''
+  if (!url.includes('/auth/callback')) return
+
+  try {
+    const parsed = new URL(url)
+    const error = parsed.searchParams.get('error')
+    const token = parsed.searchParams.get('access_token')
+    const email = parsed.searchParams.get('email')
+    if (error || !token || !email) return
+
+    chrome.storage.local.set({ mw_email: email, mw_access_token: token }, () => {
+      chrome.tabs.remove(tabId).catch(() => {})
+      chrome.runtime.sendMessage({ type: 'AUTH_COMPLETE' }).catch(() => {})
+    })
+  } catch {
+    // ignore malformed callback URLs
+  }
+})
+
 async function getAuthContext() {
   const creds = await getCredentials()
   if (!creds.email) return { error: 'not_logged_in' }

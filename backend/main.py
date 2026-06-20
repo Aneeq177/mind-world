@@ -989,6 +989,103 @@ class RevokeTeamSharingRequest(BaseModel):
     email: str
     access_token: str
 
+
+class RegisterRequest(BaseModel):
+    email: str
+    password: str
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class GoogleTokenRequest(BaseModel):
+    id_token: str
+
+
+@app.post("/auth/register")
+async def auth_register(request: RegisterRequest):
+    try:
+        from services.auth import register_with_password
+
+        return register_with_password(request.email, request.password)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/auth/login")
+async def auth_login(request: LoginRequest):
+    try:
+        from services.auth import login_with_password
+
+        return login_with_password(request.email, request.password)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/auth/google/token")
+async def auth_google_token(request: GoogleTokenRequest):
+    try:
+        from services.auth import login_with_google_id_token
+
+        return login_with_google_id_token(request.id_token)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/auth/google/signin")
+async def auth_google_signin(source: str = "web"):
+    from fastapi.responses import RedirectResponse
+    from services.auth import google_signin_redirect_url
+
+    return RedirectResponse(url=google_signin_redirect_url(source))
+
+
+@app.get("/auth/google/signin/callback")
+async def auth_google_signin_callback(code: str = "", state: str = "", error: str = ""):
+    from fastapi.responses import RedirectResponse
+    from services.auth import exchange_google_auth_code, link_or_create_google_user, issue_session_token
+    import urllib.parse
+
+    frontend_url = os.getenv("FRONTEND_URL", "https://mind-world.app").rstrip("/")
+    if error:
+        return RedirectResponse(url=f"{frontend_url}/auth/callback?error={urllib.parse.quote(error)}")
+
+    if not code:
+        return RedirectResponse(url=f"{frontend_url}/auth/callback?error=missing_code")
+
+    source = "web"
+    if state and ":" in state:
+        _, source = state.rsplit(":", 1)
+
+    api_base = (os.getenv("API_PUBLIC_URL") or "https://mind-world-app-mv4yv.ondigitalocean.app").rstrip("/")
+    redirect_uri = f"{api_base}/auth/google/signin/callback"
+
+    try:
+        profile = exchange_google_auth_code(code, redirect_uri)
+        user_id = link_or_create_google_user(profile["google_id"], profile["email"])
+        access_token = issue_session_token(user_id)
+        params = urllib.parse.urlencode(
+            {
+                "access_token": access_token,
+                "email": profile["email"],
+                "source": source if source in ("web", "extension") else "web",
+            }
+        )
+        return RedirectResponse(url=f"{frontend_url}/auth/callback?{params}")
+    except HTTPException as exc:
+        return RedirectResponse(url=f"{frontend_url}/auth/callback?error={urllib.parse.quote(str(exc.detail))}")
+    except Exception as exc:
+        return RedirectResponse(url=f"{frontend_url}/auth/callback?error={urllib.parse.quote(str(exc))}")
+
+
 @app.post("/auth/session")
 async def auth_session(request: SessionRequest):
     try:
