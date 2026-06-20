@@ -946,42 +946,54 @@ async def prompt_feedback(request: PromptFeedbackRequest, background_tasks: Back
 class UserStatsRequest(BaseModel):
     email: str
 
+class SessionRequest(BaseModel):
+    email: str
+    access_token: Optional[str] = None
+    api_key: Optional[str] = None
+
 class ExportDataRequest(BaseModel):
     email: str
+    access_token: str
 
 class DeleteAccountRequest(BaseModel):
     email: str
+    access_token: str
     confirm: bool = False
+
+@app.post("/auth/session")
+async def auth_session(request: SessionRequest):
+    try:
+        from services.auth import establish_session
+
+        return establish_session(
+            request.email,
+            access_token=request.access_token,
+            api_key=request.api_key,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/export_data")
 async def export_data(request: ExportDataRequest):
     try:
-        from services.database import export_user_data, get_supabase
+        from services.auth import require_authenticated_user
+        from services.database import export_user_data
 
         email = request.email.lower().strip()
-        supabase = get_supabase()
-        user_result = supabase.table("users")\
-            .select("id")\
-            .eq("email", email)\
-            .execute()
-        if not user_result.data:
-            return {
-                "export_version": "1.0",
-                "email": email,
-                "conversation_count": 0,
-                "conversations": [],
-                "profile": {"is_profile_enabled": False, "profile_data": {}},
-            }
-
-        user_id = user_result.data[0]["id"]
+        user_id = require_authenticated_user(email, request.access_token)
         return export_user_data(user_id, email)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/delete_account")
 async def delete_account(request: DeleteAccountRequest):
     try:
-        from services.database import delete_user_data, get_supabase
+        from services.auth import require_authenticated_user
+        from services.database import delete_user_data
 
         if not request.confirm:
             raise HTTPException(
@@ -990,15 +1002,7 @@ async def delete_account(request: DeleteAccountRequest):
             )
 
         email = request.email.lower().strip()
-        supabase = get_supabase()
-        user_result = supabase.table("users")\
-            .select("id")\
-            .eq("email", email)\
-            .execute()
-        if not user_result.data:
-            raise HTTPException(status_code=404, detail="Account not found.")
-
-        user_id = user_result.data[0]["id"]
+        user_id = require_authenticated_user(email, request.access_token)
         result = delete_user_data(user_id)
         return {"success": True, **result}
     except HTTPException:

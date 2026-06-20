@@ -37,10 +37,44 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   let currentEmail = null
 
+  async function establishSession(email, apiKey = null) {
+    const stored = await chrome.storage.local.get(['mw_access_token'])
+    const body = { email }
+    if (apiKey) body.api_key = apiKey
+    if (stored.mw_access_token) body.access_token = stored.mw_access_token
+
+    const res = await fetch(`${API_BASE}/auth/session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      const detail = err.detail
+      const message = typeof detail === 'string'
+        ? detail
+        : Array.isArray(detail)
+          ? detail.map((d) => d.msg || d).join(', ')
+          : 'Session verification failed'
+      throw new Error(message)
+    }
+    const data = await res.json()
+    await chrome.storage.local.set({ mw_access_token: data.access_token })
+    return data.access_token
+  }
+
+  async function getAccessToken() {
+    const stored = await chrome.storage.local.get(['mw_access_token', 'mw_api_key'])
+    if (stored.mw_access_token) return stored.mw_access_token
+    if (!currentEmail) return null
+    return establishSession(currentEmail, stored.mw_api_key || null)
+  }
+
   // Load saved credentials and visibility
   const stored = await chrome.storage.local.get([
     'mw_email',
     'mw_api_key',
+    'mw_access_token',
     'mw_default_visibility',
     'mw_autosave_enabled',
     'mw_memory_enabled'
@@ -54,6 +88,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (stored.mw_email) {
     showConnectedView(stored.mw_email, stored.mw_api_key)
     loadStats(stored.mw_email)
+    establishSession(stored.mw_email, stored.mw_api_key || null).catch(() => {})
   } else {
     loginView.style.display = 'block'
     connectedView.style.display = 'none'
@@ -426,6 +461,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (autosaveOptIn) autosaveOptIn.checked = true
       if (memoryOptIn) memoryOptIn.checked = true
 
+      establishSession(email).catch(() => {})
+
       const tabs = await chrome.tabs.query({})
       tabs.forEach(tab => {
         chrome.tabs.sendMessage(tab.id, { type: 'CREDENTIALS_UPDATED', email }).catch(() => {})
@@ -577,11 +614,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       exportDataBtn.disabled = true
       exportDataBtn.textContent = 'Exporting...'
       try {
+        const accessToken = await getAccessToken()
+        if (!accessToken) throw new Error('Session expired. Reconnect in the extension.')
         const res = await fetch(`${API_BASE}/export_data`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: currentEmail })
+          body: JSON.stringify({ email: currentEmail, access_token: accessToken })
         })
+        if (res.status === 401) {
+          await chrome.storage.local.remove(['mw_access_token'])
+          throw new Error('Session expired. Add your API key in Advanced Settings and try again.')
+        }
         if (!res.ok) throw new Error('Export failed')
         const data = await res.json()
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
@@ -614,11 +657,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       deleteDataBtn.disabled = true
       deleteDataBtn.textContent = 'Deleting...'
       try {
+        const accessToken = await getAccessToken()
+        if (!accessToken) throw new Error('Session expired. Reconnect in the extension.')
         const res = await fetch(`${API_BASE}/delete_account`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: currentEmail, confirm: true })
+          body: JSON.stringify({ email: currentEmail, access_token: accessToken, confirm: true })
         })
+        if (res.status === 401) {
+          await chrome.storage.local.remove(['mw_access_token'])
+          throw new Error('Session expired. Add your API key in Advanced Settings and try again.')
+        }
         if (!res.ok) {
           const err = await res.json().catch(() => ({}))
           throw new Error(err.detail || 'Delete failed')
@@ -626,6 +675,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         await chrome.storage.local.remove([
           'mw_email',
           'mw_api_key',
+          'mw_access_token',
           'mw_profile_enabled',
           'mw_save_queue'
         ])
@@ -662,11 +712,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     apikeyStatus.textContent = '✓ API key saved'
     apikeyStatus.className = 'apikey-saved'
     apikeyInputConnected.value = ''
+    if (currentEmail) {
+      try {
+        await establishSession(currentEmail, apiKey)
+        apikeyStatus.textContent = '✓ API key saved — session verified'
+      } catch (_) {
+        apikeyStatus.textContent = '✓ API key saved (session pending)'
+      }
+    }
   })
 
   // Logout
   logoutBtn.addEventListener('click', async () => {
-    await chrome.storage.local.remove(['mw_email', 'mw_api_key'])
+    await chrome.storage.local.remove(['mw_email', 'mw_api_key', 'mw_access_token'])
     currentEmail = null
     connectedView.style.display = 'none'
     loginView.style.display = 'block'
