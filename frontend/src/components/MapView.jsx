@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '../store'
-import { searchConversations } from '../api'
+import { searchConversations, deleteConversation, establishSession } from '../api'
 import MapPlot from './MapPlot'
 import BlenderPanel from './BlenderPanel'
 import ConvoList from './ConvoList'
@@ -47,6 +47,7 @@ function fmt(d) {
 export default function MapView() {
   const conversations   = useStore(s => s.conversations)
   const email           = useStore(s => s.email)
+  const apiKey          = useStore(s => s.apiKey)
   const selectedId      = useStore(s => s.selectedId)
   const blendIds        = useStore(s => s.blendIds)
   const filterSource    = useStore(s => s.filterSource)
@@ -57,6 +58,7 @@ export default function MapView() {
   const clearBlend      = useStore(s => s.clearBlend)
   const setFilterSource = useStore(s => s.setFilterSource)
   const setFilterRegion = useStore(s => s.setFilterRegion)
+  const removeConversation = useStore(s => s.removeConversation)
   
   const isMobile = useIsMobile()
 
@@ -68,7 +70,43 @@ export default function MapView() {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchMatchIds, setSearchMatchIds] = useState(new Set())
   const [isSearching, setIsSearching] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
   const searchTimerRef = useRef(null)
+
+  async function ensureAccessToken() {
+    const stored = sessionStorage.getItem('mw_access_token') || ''
+    const data = await establishSession({
+      email,
+      apiKey: apiKey || undefined,
+      accessToken: stored || undefined,
+    })
+    sessionStorage.setItem('mw_access_token', data.access_token)
+    return data.access_token
+  }
+
+  async function handleDeleteSelected() {
+    const convo = conversations.find(c => c.id === selectedId)
+    if (!convo || isDeleting) return
+    const confirmed = window.confirm(
+      `Permanently delete "${convo.title || 'this conversation'}"?\n\nThis cannot be undone.`
+    )
+    if (!confirmed) return
+
+    setIsDeleting(true)
+    try {
+      const accessToken = await ensureAccessToken()
+      await deleteConversation({
+        email,
+        accessToken,
+        conversationId: convo.id,
+      })
+      removeConversation(convo.id)
+    } catch (err) {
+      window.alert(err.message || 'Delete failed. Add your API key when importing, or use the extension.')
+    } finally {
+      setIsDeleting(false)
+    }
+  }
 
   useEffect(() => {
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
@@ -356,6 +394,8 @@ export default function MapView() {
               isBlended={blendIds.includes(selectedConvo.id)}
               onClose={() => setSelected(null)}
               onToggleBlend={() => toggleBlend(selectedConvo.id)}
+              onDelete={handleDeleteSelected}
+              isDeleting={isDeleting}
             />
           </div>
         )}

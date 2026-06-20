@@ -966,6 +966,10 @@ class ClearInferredProfileRequest(BaseModel):
     email: str
     access_token: str
 
+class RevokeTeamSharingRequest(BaseModel):
+    email: str
+    access_token: str
+
 @app.post("/auth/session")
 async def auth_session(request: SessionRequest):
     try:
@@ -1044,6 +1048,21 @@ async def clear_inferred_profile_endpoint(request: ClearInferredProfileRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/revoke_team_sharing")
+async def revoke_team_sharing_endpoint(request: RevokeTeamSharingRequest):
+    try:
+        from services.auth import require_authenticated_user
+        from services.database import revoke_team_sharing
+
+        email = request.email.lower().strip()
+        user_id = require_authenticated_user(email, request.access_token)
+        result = revoke_team_sharing(user_id)
+        return {"success": True, **result}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/delete_account")
 async def delete_account(request: DeleteAccountRequest):
     try:
@@ -1087,9 +1106,28 @@ async def user_stats(request: UserStatsRequest):
         # Fetch company info
         company_info = None
         user_result = supabase.table("users")\
-            .select("company_id")\
+            .select("company_id, consent_at, consent_version, consent_source")\
             .eq("id", user_id)\
             .execute()
+        consent_info = {
+            "consent_at": None,
+            "consent_version": None,
+            "consent_source": None,
+            "consent_event_count": 0,
+        }
+        if user_result.data:
+            row = user_result.data[0]
+            consent_info = {
+                "consent_at": row.get("consent_at"),
+                "consent_version": row.get("consent_version"),
+                "consent_source": row.get("consent_source"),
+                "consent_event_count": 0,
+            }
+            try:
+                from services.database import get_user_consent_info
+                consent_info = get_user_consent_info(user_id)
+            except Exception:
+                pass
         if user_result.data and user_result.data[0].get("company_id"):
             company_id = user_result.data[0]["company_id"]
             company_result = supabase.table("companies")\
@@ -1110,7 +1148,8 @@ async def user_stats(request: UserStatsRequest):
             "platform_count": len(sources),
             "sources": list(sources),
             "user_id": user_id,
-            "company": company_info
+            "company": company_info,
+            **consent_info,
         }
     except Exception as e:
         return {

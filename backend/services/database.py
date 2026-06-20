@@ -429,7 +429,60 @@ def record_user_consent(user_id: str, consent_version: str, source: str = "exten
         "consent_version": consent_version,
         "consent_source": source,
     }).eq("id", user_id).execute()
+    try:
+        supabase.table("consent_events").insert({
+            "user_id": user_id,
+            "consent_version": consent_version,
+            "source": source,
+            "created_at": now,
+        }).execute()
+    except Exception as exc:
+        print(f"consent_events insert warning: {exc}")
     return {"consent_at": now, "consent_version": consent_version, "consent_source": source}
+
+
+def get_user_consent_info(user_id: str) -> dict:
+    """Latest consent on users row plus append-only event count."""
+    supabase = get_supabase()
+    user = supabase.table("users")\
+        .select("consent_at, consent_version, consent_source")\
+        .eq("id", user_id)\
+        .execute()
+    row = user.data[0] if user.data else {}
+    try:
+        events = supabase.table("consent_events")\
+            .select("id", count="exact")\
+            .eq("user_id", user_id)\
+            .execute()
+        event_count = events.count or 0
+    except Exception:
+        event_count = 1 if row.get("consent_at") else 0
+    return {
+        "consent_at": row.get("consent_at"),
+        "consent_version": row.get("consent_version"),
+        "consent_source": row.get("consent_source"),
+        "consent_event_count": event_count,
+    }
+
+
+def revoke_team_sharing(user_id: str) -> dict:
+    """Set all team-visible conversations back to private for this user."""
+    supabase = get_supabase()
+    team = supabase.table("knowledge_nodes")\
+        .select("id")\
+        .eq("user_id", user_id)\
+        .eq("visibility", "team")\
+        .execute()
+    ids = [row["id"] for row in (team.data or [])]
+    if not ids:
+        return {"revoked": 0}
+
+    supabase.table("knowledge_nodes")\
+        .update({"visibility": "private"})\
+        .eq("user_id", user_id)\
+        .eq("visibility", "team")\
+        .execute()
+    return {"revoked": len(ids)}
 
 
 def delete_conversation(user_id: str, conversation_id: str) -> dict:
@@ -484,6 +537,7 @@ def export_user_data(user_id: str, email: str) -> dict:
     """Return a portable JSON export of stored user data (no embeddings)."""
     conversations = get_user_conversations(user_id)
     profile = get_personal_profile(user_id)
+    consent = get_user_consent_info(user_id)
 
     conv_export = []
     for conv in conversations:
@@ -501,28 +555,47 @@ def export_user_data(user_id: str, email: str) -> dict:
         })
 
     profile_data = profile.get("profile_data") or {}
+    manual_keys = ("background", "situation", "goals", "constraints", "preferences")
+    manual_profile = {
+        k: profile_data[k]
+        for k in manual_keys
+        if isinstance(profile_data.get(k), str) and profile_data[k].strip()
+    }
+    inferred_fields = {
+        "domains": profile_data.get("domains") or {},
+        "active_projects": profile_data.get("active_projects") or [],
+        "confirmed_anchors": profile_data.get("confirmed_anchors") or {},
+        "adaptive_weights": profile_data.get("adaptive_weights") or {},
+        "quality_metrics": profile_data.get("quality_metrics") or {},
+        "inferred_preferences": profile_data.get("preferences") or {},
+    }
     return {
-        "export_version": "1.1",
+        "export_version": "1.2",
         "email": email,
         "exported_at": datetime.now(timezone.utc).isoformat(),
         "conversation_count": len(conv_export),
         "conversations": conv_export,
+        "consent": consent,
         "profile": {
             "is_profile_enabled": bool(profile.get("is_profile_enabled", False)),
             "profile_data": profile_data,
+            "manual_profile": manual_profile,
+            "inferred_fields": inferred_fields,
             "last_inferred_at": profile.get("last_inferred_at"),
-            "inferred_fields": {
-                "domains": profile_data.get("domains") or {},
-                "active_projects": profile_data.get("active_projects") or [],
-                "confirmed_anchors": profile_data.get("confirmed_anchors") or {},
-            },
+            "last_signal_at": profile.get("last_signal_at"),
         },
         "excluded_from_export": [
-            "semantic_embeddings",
-            "session_tokens",
-            "api_key_hashes",
-            "prompt_feedback_metrics",
+            "semantic_embedding_vectors",
+            "session_tokens_and_api_key_hashes",
+            "prompt_feedback_metric_rows",
+            "internal_cluster_coordinates_metadata",
         ],
+        "export_notes": (
+            "Includes full conversation text, manually entered profile fields, and inferred "
+            "profile (domains with expertise/confidence, active projects, confirmed anchors, "
+            "adaptive weights, quality metrics). Does not include 384-dim embedding vectors, "
+            "auth tokens, or raw prompt_feedback database rows."
+        ),
     }
 
 

@@ -30,6 +30,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   const memoryOptIn = document.getElementById('memory-opt-in')
   const exportDataBtn = document.getElementById('export-data-btn')
   const deleteDataBtn = document.getElementById('delete-data-btn')
+  const clearInferredPrivacyBtn = document.getElementById('clear-inferred-privacy-btn')
+  const revokeTeamBtn = document.getElementById('revoke-team-btn')
+  const manageConversationsLink = document.getElementById('manage-conversations-link')
+  const consentStatusEl = document.getElementById('consent-status')
   const privacyActionStatus = document.getElementById('privacy-action-status')
   const advancedSection = document.getElementById('advanced-section')
   const statsRow = document.getElementById('stats-row')
@@ -356,6 +360,68 @@ document.addEventListener('DOMContentLoaded', async () => {
     privacyActionStatus.style.display = 'block'
     privacyActionStatus.textContent = message
     privacyActionStatus.style.color = isError ? '#f87171' : '#6ee7b7'
+  }
+
+  function formatConsentDate(iso) {
+    if (!iso) return null
+    try {
+      return new Date(iso).toLocaleDateString(undefined, {
+        year: 'numeric', month: 'short', day: 'numeric'
+      })
+    } catch {
+      return iso.slice(0, 10)
+    }
+  }
+
+  function updateConsentStatus(consent) {
+    if (!consentStatusEl) return
+    const at = consent?.consent_at
+    const version = consent?.consent_version
+    if (!at && !version) {
+      consentStatusEl.style.display = 'none'
+      consentStatusEl.textContent = ''
+      return
+    }
+    const dateLabel = formatConsentDate(at) || 'unknown date'
+    const source = consent?.consent_source ? ` via ${consent.consent_source}` : ''
+    const events = consent?.consent_event_count
+    const auditNote = events && events > 1 ? ` · ${events} consent events on file` : ''
+    consentStatusEl.style.display = 'block'
+    consentStatusEl.textContent =
+      `Consent recorded ${dateLabel}${source} · version ${version || '—'}${auditNote}`
+  }
+
+  async function runClearInferredProfile(buttonEl) {
+    if (!currentEmail || !buttonEl) return
+    const confirmed = confirm(
+      'Clear inferred profile data (domains, projects, communication style)?\n\n' +
+      'Your manually entered profile text will be kept.'
+    )
+    if (!confirmed) return
+
+    const defaultLabel = buttonEl.textContent
+    buttonEl.disabled = true
+    buttonEl.textContent = 'Clearing...'
+    try {
+      const accessToken = await getAccessToken()
+      if (!accessToken) throw new Error('Session expired. Reconnect in the extension.')
+      const res = await fetch(`${API_BASE}/clear_inferred_profile`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: currentEmail, access_token: accessToken })
+      })
+      if (res.status === 401) {
+        await chrome.storage.local.remove(['mw_access_token'])
+        throw new Error('Session expired. Add your API key in Advanced Settings and try again.')
+      }
+      if (!res.ok) throw new Error('Clear failed')
+      showPrivacyStatus('Inferred profile cleared', false)
+    } catch (err) {
+      showPrivacyStatus(String(err.message || 'Clear failed'), true)
+    } finally {
+      buttonEl.disabled = false
+      buttonEl.textContent = defaultLabel
+    }
   }
 
   // Platform picker for export instructions
@@ -709,20 +775,28 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   if (clearInferredBtn) {
-    clearInferredBtn.addEventListener('click', async () => {
+    clearInferredBtn.addEventListener('click', () => runClearInferredProfile(clearInferredBtn))
+  }
+
+  if (clearInferredPrivacyBtn) {
+    clearInferredPrivacyBtn.addEventListener('click', () => runClearInferredProfile(clearInferredPrivacyBtn))
+  }
+
+  if (revokeTeamBtn) {
+    revokeTeamBtn.addEventListener('click', async () => {
       if (!currentEmail) return
       const confirmed = confirm(
-        'Clear inferred profile data (domains, projects, communication style)?\n\n' +
-        'Your manually entered profile text will be kept.'
+        'Make all team-shared conversations private?\n\n' +
+        'Teammates will no longer be able to search them.'
       )
       if (!confirmed) return
 
-      clearInferredBtn.disabled = true
-      clearInferredBtn.textContent = 'Clearing...'
+      revokeTeamBtn.disabled = true
+      revokeTeamBtn.textContent = 'Revoking...'
       try {
         const accessToken = await getAccessToken()
         if (!accessToken) throw new Error('Session expired. Reconnect in the extension.')
-        const res = await fetch(`${API_BASE}/clear_inferred_profile`, {
+        const res = await fetch(`${API_BASE}/revoke_team_sharing`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email: currentEmail, access_token: accessToken })
@@ -731,13 +805,21 @@ document.addEventListener('DOMContentLoaded', async () => {
           await chrome.storage.local.remove(['mw_access_token'])
           throw new Error('Session expired. Add your API key in Advanced Settings and try again.')
         }
-        if (!res.ok) throw new Error('Clear failed')
-        showPrivacyStatus('Inferred profile cleared', false)
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}))
+          throw new Error(err.detail || 'Revoke failed')
+        }
+        const data = await res.json()
+        const n = data.revoked || 0
+        showPrivacyStatus(
+          n ? `Revoked team sharing on ${n} conversation${n === 1 ? '' : 's'}` : 'No team-shared conversations found',
+          false
+        )
       } catch (err) {
-        showPrivacyStatus(String(err.message || 'Clear failed'), true)
+        showPrivacyStatus(String(err.message || 'Revoke failed'), true)
       } finally {
-        clearInferredBtn.disabled = false
-        clearInferredBtn.textContent = 'Clear inferred profile'
+        revokeTeamBtn.disabled = false
+        revokeTeamBtn.textContent = 'Revoke team sharing'
       }
     })
   }
@@ -842,6 +924,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const uploadUrl = `${UPLOAD_BASE}?email=${encodeURIComponent(email)}`
     if (openMap) openMap.href = uploadUrl
+    if (manageConversationsLink) manageConversationsLink.href = uploadUrl
   }
 
   async function loadStats(email) {
@@ -856,6 +939,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const count = data.conversation_count || 0
         convCount.textContent = count
         platformsCount.textContent = data.platform_count || '0'
+        updateConsentStatus(data)
 
         const onboarding = document.getElementById('onboarding')
         const instructions = document.getElementById('instructions')

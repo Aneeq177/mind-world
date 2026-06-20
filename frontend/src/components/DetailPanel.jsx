@@ -1,8 +1,9 @@
-export default function DetailPanel({ conversation: c, isBlended, onClose, onToggleBlend }) {
+export default function DetailPanel({ conversation: c, isBlended, onClose, onToggleBlend, onDelete, isDeleting }) {
   if (!c) return null
 
-  const isClaude = c.source === 'claude'
+  const isClaude = c.source === 'claude' || c.source_app === 'claude'
   const isDocument = c.type === 'document'
+  const isTeamVisible = c.visibility === 'team'
 
   const badgeStyle = {
     fontSize: '0.68rem',
@@ -96,6 +97,39 @@ export default function DetailPanel({ conversation: c, isBlended, onClose, onTog
           >
             🟣 Open in Claude ↗
           </a>
+        )}
+
+        {isTeamVisible && (
+          <div style={{
+            fontSize: '0.68rem',
+            color: '#a78bfa',
+            padding: '6px 8px',
+            background: 'rgba(124,58,237,0.1)',
+            border: '1px solid rgba(124,58,237,0.25)',
+            borderRadius: '6px',
+          }}>
+            Team-visible — teammates can search this conversation
+          </div>
+        )}
+
+        {onDelete && (
+          <button
+            onClick={onDelete}
+            disabled={isDeleting}
+            style={{
+              padding: '9px',
+              background: 'rgba(248,113,113,0.08)',
+              border: '1px solid rgba(248,113,113,0.35)',
+              borderRadius: '7px',
+              color: '#f87171',
+              fontSize: '0.78rem',
+              fontWeight: '600',
+              cursor: isDeleting ? 'not-allowed' : 'pointer',
+              opacity: isDeleting ? 0.6 : 1,
+            }}
+          >
+            {isDeleting ? 'Deleting…' : 'Delete this conversation'}
+          </button>
         )}
 
         <button

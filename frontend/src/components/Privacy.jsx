@@ -183,7 +183,10 @@ export default function Privacy() {
           <li><strong style={{ color: 'white' }}>Auto-save</strong> — toggle in the extension popup (on by default).</li>
           <li><strong style={{ color: 'white' }}>Use chat history</strong> — toggle to stop retrieving past conversations, inferred profile, and personalization when using Improve.</li>
           <li><strong style={{ color: 'white' }}>Personal profile</strong> — opt-in toggle; gates profile injection and passive inference.</li>
-          <li><strong style={{ color: 'white' }}>Export data</strong> — download a JSON export of your conversations and profile from the extension.</li>
+          <li><strong style={{ color: 'white' }}>Export data</strong> — download JSON from the extension (conversations, manual profile, inferred domains/projects/anchors, consent record). Embedding vectors and auth tokens are excluded.</li>
+          <li><strong style={{ color: 'white' }}>Delete one conversation</strong> — open your map at mind-world.app, select a conversation, and use Delete.</li>
+          <li><strong style={{ color: 'white' }}>Clear inferred profile</strong> — extension Data &amp; Privacy (keeps manually entered profile text).</li>
+          <li><strong style={{ color: 'white' }}>Revoke team sharing</strong> — extension Data &amp; Privacy; sets all team-visible conversations back to private.</li>
           <li><strong style={{ color: 'white' }}>Delete account</strong> — permanently remove all stored data from the extension or by emailing support.</li>
         </ul>
 
@@ -241,12 +244,14 @@ export default function Privacy() {
         <p style={S.p}>
           You can <strong style={{ color: 'white' }}>export</strong> your data anytime from the
           extension&apos;s Data &amp; Privacy settings (JSON download). Exports include conversations,
-          manually entered profile fields, and inferred profile fields (domains, active projects).
-          Exports do <em>not</em> include semantic embedding vectors, session tokens, or internal
-          feedback metric hashes. You can delete individual conversations or clear inferred profile
-          data via API (contact support for details), or{' '}
-          <strong style={{ color: 'white' }}>delete all data</strong> with one click in the extension.
-          You can also email{' '}
+          manually entered profile fields, inferred profile fields (domains with expertise/confidence,
+          active projects, confirmed anchors, adaptive weights, quality metrics), and your consent
+          record (timestamp and version). Exports do <em>not</em> include 384-dimensional semantic
+          embedding vectors, session tokens, API key hashes, or raw <code>prompt_feedback</code> rows.
+          You can <strong style={{ color: 'white' }}>delete individual conversations</strong> from
+          your map at mind-world.app, <strong style={{ color: 'white' }}>clear inferred profile</strong>{' '}
+          or <strong style={{ color: 'white' }}>revoke team sharing</strong> in the extension, or{' '}
+          <strong style={{ color: 'white' }}>delete all data</strong> with one click. You can also email{' '}
           <a href="mailto:support@mind-world.app" style={S.a}>support@mind-world.app</a>{' '}
           to request deletion. Uninstalling the extension removes locally stored credentials from
           your browser but does not delete server-side data.

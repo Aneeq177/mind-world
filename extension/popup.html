@@ -113,10 +113,21 @@
           </label>
         </div>
 
-        <div id="privacy-data-actions" style="display:flex; gap:6px; margin-top:10px;">
+        <div id="privacy-data-actions" style="display:flex; flex-wrap:wrap; gap:6px; margin-top:10px;">
           <button type="button" id="export-data-btn" class="privacy-action-btn">Export my data</button>
+          <button type="button" id="clear-inferred-privacy-btn" class="privacy-action-btn">Clear inferred profile</button>
+          <button type="button" id="revoke-team-btn" class="privacy-action-btn">Revoke team sharing</button>
           <button type="button" id="delete-data-btn" class="privacy-action-btn danger">Delete all data</button>
         </div>
+        <a
+          id="manage-conversations-link"
+          href="https://mind-world.app"
+          target="_blank"
+          class="privacy-manage-link"
+        >
+          Delete individual conversations on your map →
+        </a>
+        <div id="consent-status" class="consent-status" style="display:none;"></div>
         <div id="privacy-action-status" style="display:none; font-size:0.72rem; margin-top:8px;"></div>
 
         <a href="https://mind-world.app/privacy" target="_blank" class="privacy-policy-link">Privacy Policy</a>

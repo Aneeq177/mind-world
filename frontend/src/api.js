@@ -1,5 +1,51 @@
 const BASE_URL = import.meta.env.VITE_API_URL || 'https://mind-world-app-mv4yv.ondigitalocean.app'
 
+export async function establishSession({ email, apiKey, accessToken }) {
+  const body = { email }
+  if (apiKey) body.api_key = apiKey
+  if (accessToken) body.access_token = accessToken
+  const response = await fetch(`${BASE_URL}/auth/session`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(error.detail || 'Session verification failed')
+  }
+  return response.json()
+}
+
+export async function deleteConversation({ email, accessToken, conversationId }) {
+  const response = await fetch(`${BASE_URL}/delete_conversation`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email,
+      access_token: accessToken,
+      conversation_id: conversationId
+    })
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(error.detail || 'Delete failed')
+  }
+  return response.json()
+}
+
+export async function revokeTeamSharing({ email, accessToken }) {
+  const response = await fetch(`${BASE_URL}/revoke_team_sharing`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, access_token: accessToken })
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(error.detail || 'Revoke failed')
+  }
+  return response.json()
+}
+
 export async function recordConsent({ email, consentVersion, source = 'web_app' }) {
   const response = await fetch(`${BASE_URL}/record_consent`, {
     method: 'POST',

@@ -59,4 +59,18 @@ export const useStore = create((set) => ({
   clearBlend: () => set({ blendIds: [] }),
   setFilterSource: (filterSource) => set({ filterSource }),
   setFilterRegion: (filterRegion) => set({ filterRegion }),
+  removeConversation: (id) => set((state) => {
+    const filterOut = (list) => (list || []).filter(c => c.id !== id)
+    const conversations = filterOut(state.conversations)
+    const myConversations = filterOut(state.myConversations)
+    const teamConversations = filterOut(state.teamConversations)
+    return {
+      conversations,
+      myConversations,
+      teamConversations,
+      totalConversations: conversations.length,
+      selectedId: state.selectedId === id ? null : state.selectedId,
+      blendIds: state.blendIds.filter(b => b !== id),
+    }
+  }),
 }))

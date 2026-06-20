@@ -675,3 +675,22 @@ input:checked + .slider:before {
 .privacy-policy-link:hover {
   color: #a78bfa;
 }
+
+.privacy-manage-link {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 0.72rem;
+  color: #666;
+  text-decoration: none;
+}
+
+.privacy-manage-link:hover {
+  color: #a78bfa;
+}
+
+.consent-status {
+  margin-top: 10px;
+  font-size: 0.68rem;
+  color: #555;
+  line-height: 1.45;
+}
