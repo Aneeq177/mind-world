@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useStore } from '../store'
-import { processFiles, loadExistingMap } from '../api'
+import { processFiles, loadExistingMap, recordConsent } from '../api'
 
 const CHROME_STORE_URL = 'https://chrome.google.com/webstore/detail/mind-world'
+const CONSENT_VERSION = '2026-06'
 
 const FEATURES = [
   {
@@ -48,6 +49,7 @@ export default function Landing() {
   const [checkingEmail, setCheckingEmail] = useState(false)
   const [selectedPlatform, setSelectedPlatform] = useState('chatgpt')
   const [showAdvanced, setShowAdvanced] = useState(false)
+  const [uploadConsent, setUploadConsent] = useState(false)
 
   // If the popup opened this page with ?email=..., pre-fill, jump to upload, and check for data
   useEffect(() => {
@@ -135,6 +137,7 @@ export default function Landing() {
 
   const hasFile = claudeFile || chatgptFile
   const canGenerate = email && email.includes('@') && (hasFile || hasExistingData)
+  const canUpload = canGenerate && (!hasFile || uploadConsent)
 
   async function handleGenerate() {
     if (!canGenerate) return
@@ -144,6 +147,10 @@ export default function Landing() {
     }
     if (!email.includes('@') || !email.includes('.')) {
       setError('Please enter a valid email address.')
+      return
+    }
+    if (hasFile && !uploadConsent) {
+      setError('Please acknowledge the data processing notice to import your chats.')
       return
     }
 
@@ -158,6 +165,9 @@ export default function Landing() {
     }, 4000)
 
     try {
+      if (hasFile) {
+        await recordConsent({ email, consentVersion: CONSENT_VERSION, source: 'web_app' })
+      }
       const data = await processFiles({ claudeFile, chatgptFile, apiKey, email })
       clearInterval(msgInterval)
       setCredentials(email, apiKey)
@@ -441,18 +451,50 @@ export default function Landing() {
             </div>
           )}
 
+          {hasFile && (
+            <label style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '10px',
+              marginBottom: '16px',
+              padding: '14px',
+              background: 'rgba(255,255,255,0.02)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              borderRadius: '10px',
+              cursor: 'pointer',
+              fontSize: '0.82rem',
+              color: '#aaa',
+              lineHeight: '1.55'
+            }}>
+              <input
+                type="checkbox"
+                checked={uploadConsent}
+                onChange={e => setUploadConsent(e.target.checked)}
+                style={{ marginTop: '3px', flexShrink: 0 }}
+              />
+              <span>
+                I agree to upload my AI chat exports for processing on Mind World servers, including
+                creation of semantic embeddings for search and optional AI labeling of topics.
+                Data is used only to power my account as described in the{' '}
+                <a href="/privacy" target="_blank" rel="noreferrer" style={{ color: '#a78bfa' }}>
+                  Privacy Policy
+                </a>.
+              </span>
+            </label>
+          )}
+
           <button
             onClick={handleGenerate}
-            disabled={!canGenerate}
+            disabled={!canUpload}
             style={{
               width: '100%', padding: '16px',
-              background: canGenerate
+              background: canUpload
                 ? 'linear-gradient(135deg, #7c3aed, #5b21b6)'
                 : 'rgba(255,255,255,0.05)',
               border: 'none', borderRadius: '12px',
-              color: canGenerate ? 'white' : '#555',
+              color: canUpload ? 'white' : '#555',
               fontSize: '1rem', fontWeight: '600',
-              cursor: canGenerate ? 'pointer' : 'not-allowed',
+              cursor: canUpload ? 'pointer' : 'not-allowed',
               transition: 'all 0.2s'
             }}
           >
@@ -463,7 +505,8 @@ export default function Landing() {
             textAlign: 'center', color: '#444',
             fontSize: '0.75rem', marginTop: '16px', lineHeight: '1.5'
           }}>
-            Your chats stay private. Only you can see them.
+            Your chats stay private. Only you can see them.{' '}
+            <a href="/privacy" style={{ color: '#666' }}>Privacy Policy</a>
           </p>
         </div>
       </div>

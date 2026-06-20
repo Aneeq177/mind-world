@@ -28,11 +28,36 @@
       <label id="login-consent" class="login-consent">
         <input type="checkbox" id="consent-checkbox" />
         <span>
-          I understand Mind World may save my AI chats and send draft text to our servers
-          and Anthropic to improve prompts.
-          <a href="https://mind-world.app/privacy" target="_blank">Privacy Policy</a>
+          I agree to Mind World processing my data as described in the{' '}
+          <a href="https://mind-world.app/privacy" target="_blank">Privacy Policy</a>, including:
+          saving AI chats; creating semantic embeddings for search; sending draft text to our
+          servers and Anthropic for Improve; storing Improve feedback metrics (including goal text
+          up to 500 characters); optional profile inference when enabled; and team sharing only
+          if I explicitly mark conversations as team-visible.
         </span>
       </label>
+      <div id="login-privacy-toggles" class="login-privacy-toggles">
+        <div class="privacy-toggle-row">
+          <div>
+            <div class="privacy-toggle-label">Auto-save chats</div>
+            <div class="privacy-toggle-hint">Save new conversations to your memory</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="login-autosave-opt-in" checked>
+            <span class="slider round"></span>
+          </label>
+        </div>
+        <div class="privacy-toggle-row">
+          <div>
+            <div class="privacy-toggle-label">Use chat history</div>
+            <div class="privacy-toggle-hint">Past chats and profile in Improve</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="login-memory-opt-in" checked>
+            <span class="slider round"></span>
+          </label>
+        </div>
+      </div>
       <button id="save-btn">Connect to Mind World</button>
     </div>
 
@@ -118,6 +143,7 @@
             <input type="text" id="profile-preferences" placeholder="e.g. Concise answers, step-by-step explanations" />
           </div>
           <button id="save-profile-btn" style="padding:8px; border-radius:6px; border:none; background:#7c3aed; color:white; font-size:0.82rem; cursor:pointer; font-weight:600;">Save Profile</button>
+          <button type="button" id="clear-inferred-btn" class="privacy-action-btn" style="margin-top:4px;">Clear inferred profile</button>
         </div>
         <div id="profile-status" style="font-size:0.72rem; color:#00FF88; margin-top:6px; display:none;"></div>
       </div>

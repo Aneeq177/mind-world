@@ -362,15 +362,10 @@ async def engineer_prompt(request: EngineerPromptRequest):
         if skip_memory:
             selected = []
         elif request.conversation_ids:
-            print(f"[engineer_prompt] Looking for conversation IDs: {request.conversation_ids}")
             all_convos = get_user_conversations(user_id)
             selected = [c for c in all_convos if c["id"] in request.conversation_ids]
-            print(f"[engineer_prompt] Found {len(selected)} conversations with user_id filter")
-            for c in selected:
-                print(f"  - {c.get('id')} | title: {c.get('title')} | text_length: {len(c.get('full_text') or '')}")
 
             if not selected:
-                print("[engineer_prompt] Retrying without user_id filter")
                 from services.database import get_supabase
                 supabase = get_supabase()
                 result = supabase.table("knowledge_nodes")\
@@ -378,9 +373,6 @@ async def engineer_prompt(request: EngineerPromptRequest):
                     .in_("id", request.conversation_ids)\
                     .execute()
                 selected = result.data or []
-                print(f"[engineer_prompt] Found {len(selected)} conversations without user_id filter")
-                for c in selected:
-                    print(f"  - {c.get('id')} | title: {c.get('title')} | text_length: {len(c.get('full_text') or '')}")
         else:
             model = SentenceTransformer("all-MiniLM-L6-v2")
             embedding = model.encode([request.message])[0]
@@ -960,6 +952,20 @@ class DeleteAccountRequest(BaseModel):
     access_token: str
     confirm: bool = False
 
+class RecordConsentRequest(BaseModel):
+    email: str
+    consent_version: str
+    source: str = "extension"
+
+class DeleteConversationRequest(BaseModel):
+    email: str
+    access_token: str
+    conversation_id: str
+
+class ClearInferredProfileRequest(BaseModel):
+    email: str
+    access_token: str
+
 @app.post("/auth/session")
 async def auth_session(request: SessionRequest):
     try:
@@ -975,6 +981,23 @@ async def auth_session(request: SessionRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/record_consent")
+async def record_consent(request: RecordConsentRequest):
+    try:
+        from services.database import get_or_create_user, record_user_consent, CONSENT_VERSION
+
+        email = request.email.lower().strip()
+        if not request.consent_version:
+            raise HTTPException(status_code=400, detail="consent_version is required")
+
+        user_id = get_or_create_user(email)
+        result = record_user_consent(user_id, request.consent_version, request.source or "extension")
+        return {"success": True, "current_consent_version": CONSENT_VERSION, **result}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/export_data")
 async def export_data(request: ExportDataRequest):
     try:
@@ -984,6 +1007,38 @@ async def export_data(request: ExportDataRequest):
         email = request.email.lower().strip()
         user_id = require_authenticated_user(email, request.access_token)
         return export_user_data(user_id, email)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/delete_conversation")
+async def delete_conversation_endpoint(request: DeleteConversationRequest):
+    try:
+        from services.auth import require_authenticated_user
+        from services.database import delete_conversation
+
+        email = request.email.lower().strip()
+        user_id = require_authenticated_user(email, request.access_token)
+        result = delete_conversation(user_id, request.conversation_id)
+        if not result.get("deleted"):
+            raise HTTPException(status_code=404, detail=result.get("reason", "not_found"))
+        return {"success": True, **result}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/clear_inferred_profile")
+async def clear_inferred_profile_endpoint(request: ClearInferredProfileRequest):
+    try:
+        from services.auth import require_authenticated_user
+        from services.database import clear_inferred_profile
+
+        email = request.email.lower().strip()
+        user_id = require_authenticated_user(email, request.access_token)
+        result = clear_inferred_profile(user_id)
+        return {"success": True, **result}
     except HTTPException:
         raise
     except Exception as e:

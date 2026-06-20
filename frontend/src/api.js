@@ -1,5 +1,22 @@
 const BASE_URL = import.meta.env.VITE_API_URL || 'https://mind-world-app-mv4yv.ondigitalocean.app'
 
+export async function recordConsent({ email, consentVersion, source = 'web_app' }) {
+  const response = await fetch(`${BASE_URL}/record_consent`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email,
+      consent_version: consentVersion,
+      source
+    })
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(error.detail || 'Failed to record consent')
+  }
+  return response.json()
+}
+
 export async function processFiles({ claudeFile, chatgptFile, apiKey, email }) {
   const formData = new FormData()
 

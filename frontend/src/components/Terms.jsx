@@ -28,13 +28,14 @@ export default function Terms() {
         <a href="/" style={S.back}>← Back to Mind World</a>
 
         <h1 style={S.h1}>Terms of Service</h1>
-        <p style={S.updated}>Last updated: May 2026</p>
+        <p style={S.updated}>Last updated: June 2026</p>
 
         <h2 style={S.h2}>Acceptance of terms</h2>
         <p style={S.p}>
           By using Mind World — including the website, Chrome extension, or any associated
-          services — you agree to these Terms of Service. If you do not agree, please do
-          not use the service.
+          services — you agree to these Terms of Service and our{' '}
+          <a href="/privacy" style={S.a}>Privacy Policy</a>, which is incorporated into these terms
+          by reference. If you do not agree, please do not use the service.
         </p>
 
         <h2 style={S.h2}>What Mind World does</h2>
@@ -63,9 +64,9 @@ export default function Terms() {
 
         <h2 style={S.h2}>Changes to these terms</h2>
         <p style={S.p}>
-          We may update these terms from time to time. Continued use of the service after
-          changes are posted constitutes acceptance of the revised terms. We will update
-          the "Last updated" date at the top of this page when changes are made.
+          We may update these terms or the Privacy Policy from time to time. Continued use of the
+          service after changes are posted constitutes acceptance of the revised terms. We will update
+          the &quot;Last updated&quot; date at the top of this page and the Privacy Policy when changes are made.
         </p>
 
         <h2 style={S.h2}>Contact</h2>

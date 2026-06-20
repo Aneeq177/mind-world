@@ -1,7 +1,10 @@
 from supabase import create_client, Client
 import os
 import numpy as np
+from datetime import datetime, timezone
 from typing import Any
+
+CONSENT_VERSION = "2026-06"
 
 def get_supabase() -> Client:
     url = os.getenv("SUPABASE_URL")
@@ -417,10 +420,68 @@ def increment_personalization_counter(user_id: str, key: str, amount: int = 1) -
     }, on_conflict="user_id,metric_day,key").execute()
 
 
+def record_user_consent(user_id: str, consent_version: str, source: str = "extension") -> dict:
+    """Persist consent timestamp and version for audit."""
+    supabase = get_supabase()
+    now = datetime.now(timezone.utc).isoformat()
+    supabase.table("users").update({
+        "consent_at": now,
+        "consent_version": consent_version,
+        "consent_source": source,
+    }).eq("id", user_id).execute()
+    return {"consent_at": now, "consent_version": consent_version, "consent_source": source}
+
+
+def delete_conversation(user_id: str, conversation_id: str) -> dict:
+    """Delete a single conversation and its embedding for this user."""
+    supabase = get_supabase()
+    conv = supabase.table("knowledge_nodes")\
+        .select("id")\
+        .eq("id", conversation_id)\
+        .eq("user_id", user_id)\
+        .execute()
+    if not conv.data:
+        return {"deleted": False, "reason": "not_found"}
+
+    supabase.table("embeddings")\
+        .delete()\
+        .eq("conversation_id", conversation_id)\
+        .eq("user_id", user_id)\
+        .execute()
+    supabase.table("knowledge_nodes")\
+        .delete()\
+        .eq("id", conversation_id)\
+        .eq("user_id", user_id)\
+        .execute()
+    return {"deleted": True, "id": conversation_id}
+
+
+def clear_inferred_profile(user_id: str) -> dict:
+    """Remove inferred profile fields; keep user-entered popup profile text."""
+    profile = get_personal_profile(user_id)
+    data = profile.get("profile_data") or {}
+    kept = {
+        k: data[k]
+        for k in ("background", "situation", "goals", "constraints")
+        if isinstance(data.get(k), str) and data[k].strip()
+    }
+    prefs = data.get("preferences")
+    if isinstance(prefs, str) and prefs.strip():
+        kept["preferences"] = prefs
+
+    supabase = get_supabase()
+    supabase.table("personal_profiles").upsert({
+        "user_id": user_id,
+        "profile_data": kept,
+        "is_profile_enabled": bool(profile.get("is_profile_enabled", False)),
+        "last_inferred_at": None,
+        "last_signal_at": None,
+    }, on_conflict="user_id").execute()
+    return {"cleared": True, "profile_data": kept}
+
+
 def export_user_data(user_id: str, email: str) -> dict:
     """Return a portable JSON export of stored user data (no embeddings)."""
-    from datetime import datetime, timezone
-
     conversations = get_user_conversations(user_id)
     profile = get_personal_profile(user_id)
 
@@ -439,16 +500,29 @@ def export_user_data(user_id: str, email: str) -> dict:
             "visibility": conv.get("visibility", "private"),
         })
 
+    profile_data = profile.get("profile_data") or {}
     return {
-        "export_version": "1.0",
+        "export_version": "1.1",
         "email": email,
         "exported_at": datetime.now(timezone.utc).isoformat(),
         "conversation_count": len(conv_export),
         "conversations": conv_export,
         "profile": {
             "is_profile_enabled": bool(profile.get("is_profile_enabled", False)),
-            "profile_data": profile.get("profile_data") or {},
+            "profile_data": profile_data,
+            "last_inferred_at": profile.get("last_inferred_at"),
+            "inferred_fields": {
+                "domains": profile_data.get("domains") or {},
+                "active_projects": profile_data.get("active_projects") or [],
+                "confirmed_anchors": profile_data.get("confirmed_anchors") or {},
+            },
         },
+        "excluded_from_export": [
+            "semantic_embeddings",
+            "session_tokens",
+            "api_key_hashes",
+            "prompt_feedback_metrics",
+        ],
     }
 
 

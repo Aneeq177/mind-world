@@ -105,8 +105,77 @@ export default function Privacy() {
           When you use Improve or bulk import summarization, your draft text
           and relevant conversation excerpts are sent to <strong style={{ color: 'white' }}>Anthropic</strong>{' '}
           (Claude Haiku) to generate a structured prompt. If you provide your own API key, requests
-          go to Anthropic under your account. Otherwise our server key is used. Anthropic processes
-          requests according to their own privacy policy; we do not use your data to train models.
+          go to Anthropic under your account and are subject to{' '}
+          <a href="https://www.anthropic.com/privacy" style={S.a} target="_blank" rel="noreferrer">
+            Anthropic&apos;s Privacy Policy
+          </a>{' '}
+          and{' '}
+          <a href="https://www.anthropic.com/legal/commercial-terms" style={S.a} target="_blank" rel="noreferrer">
+            Commercial Terms
+          </a>.
+          Anthropic does not use API inputs to train models by default under commercial terms.
+          Otherwise our server key is used for the request only; we do not retain draft text in
+          server logs after the request completes.
+        </p>
+
+        <h2 style={S.h2}>Legal basis (GDPR)</h2>
+        <p style={S.p}>
+          Where GDPR applies, we process personal data on these bases:
+        </p>
+        <ul style={S.ul}>
+          <li><strong style={{ color: 'white' }}>Consent</strong> — uploading chats, enabling auto-save, profile inference, and team sharing.</li>
+          <li><strong style={{ color: 'white' }}>Contract</strong> — providing Improve, search, and map features you signed up for.</li>
+          <li><strong style={{ color: 'white' }}>Legitimate interests</strong> — securing the service, preventing abuse, and improving reliability (balanced against your rights).</li>
+        </ul>
+
+        <h2 style={S.h2}>Your rights</h2>
+        <p style={S.p}>
+          Depending on your location, you may have the right to access, correct, delete, restrict,
+          or port your data, and to withdraw consent. Use in-app export and delete controls, or email{' '}
+          <a href="mailto:support@mind-world.app" style={S.a}>support@mind-world.app</a>.
+          You may lodge a complaint with your local data protection authority.
+        </p>
+
+        <h2 style={S.h2}>International transfers</h2>
+        <p style={S.p}>
+          Our infrastructure is primarily in the United States (DigitalOcean, Supabase, Vercel).
+          Anthropic may process data in the US. Where required, we rely on appropriate safeguards
+          such as Standard Contractual Clauses offered by our subprocessors.
+        </p>
+
+        <h2 style={S.h2}>California privacy (CCPA/CPRA)</h2>
+        <p style={S.p}>
+          California residents may request access to or deletion of personal information we collect.
+          We do not sell personal information. We do not share data for cross-context behavioral
+          advertising. Submit requests via the extension controls or{' '}
+          <a href="mailto:support@mind-world.app" style={S.a}>support@mind-world.app</a>.
+        </p>
+
+        <h2 style={S.h2}>Children</h2>
+        <p style={S.p}>
+          Mind World is not directed at children under 16. We do not knowingly collect data from
+          minors. Contact us to request deletion if you believe a child has provided data.
+        </p>
+
+        <h2 style={S.h2}>Security</h2>
+        <p style={S.p}>
+          We use HTTPS for all transfers, hashed session tokens, and access controls on database
+          rows per user. No system is perfectly secure; report concerns to{' '}
+          <a href="mailto:support@mind-world.app" style={S.a}>support@mind-world.app</a>.
+        </p>
+
+        <h2 style={S.h2}>Breach notification</h2>
+        <p style={S.p}>
+          If a breach likely affects your rights, we will notify affected users and regulators
+          as required by applicable law, typically within 72 hours of becoming aware where GDPR applies.
+        </p>
+
+        <h2 style={S.h2}>Teams and subprocessors</h2>
+        <p style={S.p}>
+          Team workspaces (when enabled) may require a Data Processing Agreement for organizational
+          customers — contact{' '}
+          <a href="mailto:support@mind-world.app" style={S.a}>support@mind-world.app</a>.
+          Subprocessors: Supabase (database), Anthropic (LLM), DigitalOcean (API hosting), Vercel (website).
         </p>
 
         <h2 style={S.h2}>Your controls</h2>
@@ -171,8 +240,12 @@ export default function Privacy() {
         <h2 style={S.h2}>Data deletion and export</h2>
         <p style={S.p}>
           You can <strong style={{ color: 'white' }}>export</strong> your data anytime from the
-          extension&apos;s Data &amp; Privacy settings (JSON download), or{' '}
-          <strong style={{ color: 'white' }}>delete all data</strong> with one click there.
+          extension&apos;s Data &amp; Privacy settings (JSON download). Exports include conversations,
+          manually entered profile fields, and inferred profile fields (domains, active projects).
+          Exports do <em>not</em> include semantic embedding vectors, session tokens, or internal
+          feedback metric hashes. You can delete individual conversations or clear inferred profile
+          data via API (contact support for details), or{' '}
+          <strong style={{ color: 'white' }}>delete all data</strong> with one click in the extension.
           You can also email{' '}
           <a href="mailto:support@mind-world.app" style={S.a}>support@mind-world.app</a>{' '}
           to request deletion. Uninstalling the extension removes locally stored credentials from

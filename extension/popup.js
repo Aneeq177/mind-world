@@ -1,5 +1,6 @@
 const API_BASE = CONFIG.API_BASE
 const UPLOAD_BASE = CONFIG.UPLOAD_BASE
+const CONSENT_VERSION = '2026-06'
 
 document.addEventListener('DOMContentLoaded', async () => {
   const loginView = document.getElementById('login-view')
@@ -22,6 +23,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   const profileSection = document.getElementById('profile-section')
   const privacySection = document.getElementById('privacy-section')
   const consentCheckbox = document.getElementById('consent-checkbox')
+  const loginAutosaveOptIn = document.getElementById('login-autosave-opt-in')
+  const loginMemoryOptIn = document.getElementById('login-memory-opt-in')
   const autosaveOptIn = document.getElementById('autosave-opt-in')
   const memoryOptIn = document.getElementById('memory-opt-in')
   const exportDataBtn = document.getElementById('export-data-btn')
@@ -36,6 +39,34 @@ document.addEventListener('DOMContentLoaded', async () => {
   const apikeyStatus = document.getElementById('apikey-status')
 
   let currentEmail = null
+
+  async function clearAllMindWorldStorage() {
+    const all = await chrome.storage.local.get(null)
+    const keys = Object.keys(all).filter((k) => k.startsWith('mw_'))
+    if (keys.length) await chrome.storage.local.remove(keys)
+  }
+
+  async function recordConsent(email, source = 'extension') {
+    const res = await fetch(`${API_BASE}/record_consent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email,
+        consent_version: CONSENT_VERSION,
+        source
+      })
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.detail || 'Failed to record consent')
+    }
+    const data = await res.json()
+    await chrome.storage.local.set({
+      mw_consent_at: data.consent_at,
+      mw_consent_version: data.consent_version
+    })
+    return data
+  }
 
   async function establishSession(email, apiKey = null) {
     const stored = await chrome.storage.local.get(['mw_access_token'])
@@ -287,7 +318,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function setOnboardingMode(isNewUser) {
     if (profileSection) profileSection.classList.toggle('onboarding-collapsed', isNewUser)
-    if (privacySection) privacySection.classList.toggle('onboarding-collapsed', isNewUser)
     if (advancedSection) advancedSection.classList.toggle('onboarding-collapsed', isNewUser)
     if (statsRow) statsRow.classList.toggle('onboarding-collapsed', isNewUser)
   }
@@ -453,14 +483,18 @@ document.addEventListener('DOMContentLoaded', async () => {
       const res = await fetch(`${API_BASE}/health`)
       if (!res.ok) throw new Error('Cannot reach Mind World server')
 
+      const autosaveEnabled = loginAutosaveOptIn ? loginAutosaveOptIn.checked : true
+      const memoryEnabled = loginMemoryOptIn ? loginMemoryOptIn.checked : true
+
       await chrome.storage.local.set({
         mw_email: email,
-        mw_autosave_enabled: true,
-        mw_memory_enabled: true
+        mw_autosave_enabled: autosaveEnabled,
+        mw_memory_enabled: memoryEnabled
       })
-      if (autosaveOptIn) autosaveOptIn.checked = true
-      if (memoryOptIn) memoryOptIn.checked = true
+      if (autosaveOptIn) autosaveOptIn.checked = autosaveEnabled
+      if (memoryOptIn) memoryOptIn.checked = memoryEnabled
 
+      await recordConsent(email, 'extension')
       establishSession(email).catch(() => {})
 
       const tabs = await chrome.tabs.query({})
@@ -483,6 +517,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const profileStatus = document.getElementById('profile-status')
   const profileFields = document.getElementById('profile-fields')
   const saveProfileBtn = document.getElementById('save-profile-btn')
+  const clearInferredBtn = document.getElementById('clear-inferred-btn')
   const profileInputs = {
     background: document.getElementById('profile-background'),
     situation: document.getElementById('profile-situation'),
@@ -644,6 +679,40 @@ document.addEventListener('DOMContentLoaded', async () => {
     })
   }
 
+  if (clearInferredBtn) {
+    clearInferredBtn.addEventListener('click', async () => {
+      if (!currentEmail) return
+      const confirmed = confirm(
+        'Clear inferred profile data (domains, projects, communication style)?\n\n' +
+        'Your manually entered profile text will be kept.'
+      )
+      if (!confirmed) return
+
+      clearInferredBtn.disabled = true
+      clearInferredBtn.textContent = 'Clearing...'
+      try {
+        const accessToken = await getAccessToken()
+        if (!accessToken) throw new Error('Session expired. Reconnect in the extension.')
+        const res = await fetch(`${API_BASE}/clear_inferred_profile`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: currentEmail, access_token: accessToken })
+        })
+        if (res.status === 401) {
+          await chrome.storage.local.remove(['mw_access_token'])
+          throw new Error('Session expired. Add your API key in Advanced Settings and try again.')
+        }
+        if (!res.ok) throw new Error('Clear failed')
+        showPrivacyStatus('Inferred profile cleared', false)
+      } catch (err) {
+        showPrivacyStatus(String(err.message || 'Clear failed'), true)
+      } finally {
+        clearInferredBtn.disabled = false
+        clearInferredBtn.textContent = 'Clear inferred profile'
+      }
+    })
+  }
+
   if (deleteDataBtn) {
     deleteDataBtn.addEventListener('click', async () => {
       if (!currentEmail) return
@@ -672,13 +741,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           const err = await res.json().catch(() => ({}))
           throw new Error(err.detail || 'Delete failed')
         }
-        await chrome.storage.local.remove([
-          'mw_email',
-          'mw_api_key',
-          'mw_access_token',
-          'mw_profile_enabled',
-          'mw_save_queue'
-        ])
+        await clearAllMindWorldStorage()
         currentEmail = null
         connectedView.style.display = 'none'
         loginView.style.display = 'block'
