@@ -25,6 +25,14 @@
         />
       </div>
       <div id="login-error"></div>
+      <label id="login-consent" class="login-consent">
+        <input type="checkbox" id="consent-checkbox" />
+        <span>
+          I understand Mind World may save my AI chats and send draft text to our servers
+          and Anthropic to improve prompts.
+          <a href="https://mind-world.app/privacy" target="_blank">Privacy Policy</a>
+        </span>
+      </label>
       <button id="save-btn">Connect to Mind World</button>
     </div>
 
@@ -112,6 +120,41 @@
           <button id="save-profile-btn" style="padding:8px; border-radius:6px; border:none; background:#7c3aed; color:white; font-size:0.82rem; cursor:pointer; font-weight:600;">Save Profile</button>
         </div>
         <div id="profile-status" style="font-size:0.72rem; color:#00FF88; margin-top:6px; display:none;"></div>
+      </div>
+
+      <!-- Data & Privacy -->
+      <div id="privacy-section" style="margin-top:12px; padding:12px; background:rgba(255,255,255,0.03); border-radius:8px; border:1px solid rgba(255,255,255,0.06);">
+        <div style="font-size:0.8rem; color:white; font-weight:600; margin-bottom:10px;">Data &amp; Privacy</div>
+
+        <div class="privacy-toggle-row">
+          <div>
+            <div class="privacy-toggle-label">Auto-save chats</div>
+            <div class="privacy-toggle-hint">Save new conversations to your memory</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="autosave-opt-in" checked>
+            <span class="slider round"></span>
+          </label>
+        </div>
+
+        <div class="privacy-toggle-row">
+          <div>
+            <div class="privacy-toggle-label">Use chat history</div>
+            <div class="privacy-toggle-hint">Past chats, profile context, and personalization in Improve</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="memory-opt-in" checked>
+            <span class="slider round"></span>
+          </label>
+        </div>
+
+        <div style="display:flex; gap:6px; margin-top:10px;">
+          <button type="button" id="export-data-btn" class="privacy-action-btn">Export my data</button>
+          <button type="button" id="delete-data-btn" class="privacy-action-btn danger">Delete all data</button>
+        </div>
+        <div id="privacy-action-status" style="display:none; font-size:0.72rem; margin-top:8px;"></div>
+
+        <a href="https://mind-world.app/privacy" target="_blank" class="privacy-policy-link">Privacy Policy</a>
       </div>
 
       <!-- Workspace section (hidden — deprioritized) -->

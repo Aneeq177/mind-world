@@ -558,3 +558,78 @@ input:checked + .slider:before {
 .slider.round:before {
   border-radius: 50%;
 }
+
+.login-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 0.72rem;
+  color: #888;
+  line-height: 1.45;
+  margin-bottom: 12px;
+  cursor: pointer;
+}
+
+.login-consent input {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.login-consent a {
+  color: #a78bfa;
+  text-decoration: none;
+}
+
+.privacy-toggle-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.privacy-toggle-label {
+  font-size: 0.78rem;
+  color: white;
+  font-weight: 500;
+}
+
+.privacy-toggle-hint {
+  font-size: 0.68rem;
+  color: #666;
+  margin-top: 2px;
+}
+
+.privacy-action-btn {
+  flex: 1;
+  padding: 8px 6px;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.04);
+  color: #ccc;
+  font-size: 0.74rem;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.privacy-action-btn:hover {
+  background: rgba(255,255,255,0.08);
+}
+
+.privacy-action-btn.danger {
+  border-color: rgba(248,113,113,0.35);
+  color: #f87171;
+  background: rgba(248,113,113,0.08);
+}
+
+.privacy-policy-link {
+  display: inline-block;
+  margin-top: 10px;
+  font-size: 0.72rem;
+  color: #666;
+  text-decoration: none;
+}
+
+.privacy-policy-link:hover {
+  color: #a78bfa;
+}

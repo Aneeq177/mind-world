@@ -19,6 +19,11 @@ function stopKeepAlive() {
 
 startKeepAlive()
 
+async function isMemoryEnabled() {
+  const prefs = await chrome.storage.local.get(['mw_memory_enabled'])
+  return prefs.mw_memory_enabled !== false
+}
+
 // Get credentials from Chrome storage
 async function getCredentials() {
   const stored = await chrome.storage.local.get([
@@ -63,11 +68,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       message.conversationIds,
       !!message.skipMemory
     ).then(sendResponse)
-    return true
-  }
-
-  if (message.type === 'GENERATE_QUESTIONS') {
-    handleGenerateQuestions(message.goal, message.template).then(sendResponse)
     return true
   }
 
@@ -158,6 +158,9 @@ async function handleSearch(query) {
     const { email } = await getCredentials()
     if (!email) {
       return { results: [], error: 'not_logged_in' }
+    }
+    if (!(await isMemoryEnabled())) {
+      return { results: [] }
     }
 
     // Expand short queries for better semantic search
@@ -267,12 +270,14 @@ async function handleEngineerPrompt(userMessage, templateStr, conversationIds, s
     const { email, apiKey } = await getCredentials()
     if (!email) return { error: 'not_logged_in' }
 
+    const memoryEnabled = await isMemoryEnabled()
+
     const body = {
       email,
       message: userMessage,
       template: templateStr || 'none',
       api_key: apiKey || null,
-      skip_memory: !!skipMemory
+      skip_memory: !!skipMemory || !memoryEnabled
     }
     if (conversationIds && conversationIds.length > 0) {
       body.conversation_ids = conversationIds
@@ -301,40 +306,21 @@ async function handleEngineerPrompt(userMessage, templateStr, conversationIds, s
   }
 }
 
-async function handleGenerateQuestions(goal, templateStr) {
-  try {
-    const { email, apiKey } = await getCredentials()
-
-    const response = await fetch(`${API_BASE}/generate_clarifying_questions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        goal: goal,
-        email: email || null,
-        template: templateStr || 'none',
-        api_key: apiKey || null
-      })
-    })
-
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}))
-      return { error: err.detail || 'Failed to generate questions' }
-    }
-
-    const data = await response.json()
-    return {
-      questions: data.questions || [],
-      inferenceUsed: !!data.inference_used
-    }
-  } catch (error) {
-    return { error: error.message }
-  }
-}
-
 async function handlePersonalizationSummary() {
   try {
     const { email } = await getCredentials()
     if (!email) return { error: 'not_logged_in' }
+    if (!(await isMemoryEnabled())) {
+      return {
+        hasEnoughHistory: false,
+        shouldShowConfirmation: false,
+        inferredSummary: '',
+        summaryConfidence: 0,
+        conversationCount: 0,
+        quickCorrections: [],
+        confirmedSummary: ''
+      }
+    }
 
     const response = await fetch(`${API_BASE}/personalization_summary`, {
       method: 'POST',
@@ -507,6 +493,9 @@ async function handleContextPreview(draft, limit) {
   try {
     const { email } = await getCredentials()
     if (!email) return { sources: [], totalConversations: 0, error: 'not_logged_in' }
+    if (!(await isMemoryEnabled())) {
+      return { sources: [], totalConversations: 0 }
+    }
 
     const response = await fetch(`${API_BASE}/context_preview`, {
       method: 'POST',

@@ -24,6 +24,12 @@
     return `<div class="mw-loading"><span class="mw-spinner" aria-hidden="true"></span><p class="note">${escapeHtml(message)}</p></div>`
   }
 
+  async function getImproveLoadingMessage() {
+    const stored = await chrome.storage.local.get(['mw_memory_enabled'])
+    const memoryOn = stored.mw_memory_enabled !== false
+    return memoryOn ? 'Searching your memory and improving prompt…' : 'Improving your prompt…'
+  }
+
   function setImproveButtonBusy(busy) {
     if (!improveBtnEl) return
     improveBtnEl.disabled = !!busy
@@ -213,8 +219,6 @@
         border: 1px solid rgba(255,255,255,0.12);
         border-radius: 6px; padding: 8px; color: #fff; font-size: 12px;
       }
-      .mw-pop .q-block { margin-bottom: 8px; }
-      .mw-pop .q-chip-row { display:flex; gap:6px; margin-top:6px; }
       .mw-pop .q-chip {
         padding: 4px 10px; border-radius: 999px; font-size: 11px; cursor: pointer;
         border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.04); color: #ddd;
@@ -222,23 +226,6 @@
       }
       .mw-pop .q-chip.active {
         border-color: rgba(124,58,237,0.6); background: rgba(124,58,237,0.25); color: #f3e8ff;
-      }
-      .mw-pop .q-freeform {
-        margin-top: 6px;
-        display: none;
-      }
-      .mw-pop .q-freeform.visible {
-        display: block;
-      }
-      .mw-pop .q-other-toggle {
-        margin-top: 6px;
-        background: none;
-        border: none;
-        color: #a78bfa;
-        font-size: 11px;
-        cursor: pointer;
-        padding: 0;
-        text-decoration: underline;
       }
       .mw-pop .mw-confirm-summary {
         font-size: 13px;
@@ -458,7 +445,7 @@
     if (!pop || !body || !actions) return
 
     if (mode === 'loading') title.textContent = 'Improving...'
-    else if (mode === 'clarify') title.textContent = 'Quick questions'
+    else if (mode === 'confirm') title.textContent = 'Quick check'
     else if (mode === 'import') title.textContent = 'Import your chats'
     else title.textContent = 'Review improved prompt'
 
@@ -474,13 +461,13 @@
     const requestStartedAt = Date.now()
     improveInFlight = true
     setImproveButtonBusy(true)
-    openPopover('loading', loadingBodyHtml('Searching your memory and improving prompt…'), '')
+    const loadingMsg = await getImproveLoadingMessage()
+    openPopover('loading', loadingBodyHtml(loadingMsg), '')
     try {
       const res = await chrome.runtime.sendMessage({
         type: 'ENGINEER_PROMPT',
         message,
-        template: templateName || 'none',
-        clarification_count: metadata.clarificationCount || 0
+        template: templateName || 'none'
       })
       if (requestId !== engineerRequestId) return
       if (res.error) {
@@ -528,7 +515,7 @@
       `)
       popoverShadow.getElementById('mw-pop-close').onclick = closePopover
     } finally {
-      if (requestId === engineerRequestId && popoverState.mode !== 'preview' && popoverState.mode !== 'clarify') {
+      if (requestId === engineerRequestId && popoverState.mode !== 'preview' && popoverState.mode !== 'confirm') {
         improveInFlight = false
         setImproveButtonBusy(false)
       }
@@ -624,7 +611,6 @@
       <textarea id="mw-pop-preview-text" spellcheck="false"></textarea>
     `, `
       <button class="btn-primary" id="mw-pop-replace">Replace in chat</button>
-      <button class="btn-ghost" id="mw-pop-refine">Refine with questions</button>
       <button class="btn-ghost" id="mw-pop-close">Cancel</button>
     `)
     const ta = popoverShadow.getElementById('mw-pop-preview-text')
@@ -692,121 +678,12 @@
       emitPromptEditFeedback(payload)
       closePopover()
     }
-    const refineBtn = popoverShadow.getElementById('mw-pop-refine')
-    if (refineBtn) {
-      refineBtn.onclick = async () => {
-        const originalDraft = (lastImproveTelemetry && lastImproveTelemetry.originalDraft) || goal
-        setImproveButtonBusy(true)
-        await showClarifyingQuestions(originalDraft, templateName)
-      }
-    }
     popoverShadow.getElementById('mw-pop-close').onclick = closePopover
     popoverState.goal = goal
     popoverState.template = templateName
     improveInFlight = false
     setImproveButtonBusy(false)
     positionPopover()
-  }
-
-  async function showClarifyingQuestions(draft, templateName) {
-    openPopover('loading', loadingBodyHtml('Preparing smart questions…'), '')
-    try {
-      const res = await chrome.runtime.sendMessage({
-        type: 'GENERATE_QUESTIONS',
-        goal: draft,
-        template: templateName
-      })
-      const questions = (res.questions || []).slice(0, 2)
-      if (res.error || !questions.length) {
-        await runEngineer(draft, templateName)
-        return
-      }
-
-      let qHtml = '<p class="note">Tap to answer — no typing required:</p>'
-      questions.forEach((q, i) => {
-        const prompt = typeof q === 'string' ? q : (q.prompt || '')
-        const options = (typeof q === 'object' && q.options) ? q.options : [
-          { id: 'yes', label: 'Yes' },
-          { id: 'no', label: 'No' },
-          { id: 'unsure', label: 'Not sure' }
-        ]
-        const allowOther = typeof q === 'object' ? q.allow_other !== false : true
-        qHtml += `
-          <div class="q-block" data-q-index="${i}">
-            <label>${i + 1}. ${escapeHtml(prompt)}</label>
-            <div class="q-chip-row">
-              ${options.map(opt => `
-                <button type="button" class="q-chip" data-choice="${escapeHtml(opt.id)}" data-label="${escapeHtml(opt.label)}" data-q="${i}">${escapeHtml(opt.label)}</button>
-              `).join('')}
-            </div>
-            ${allowOther ? `<button type="button" class="q-other-toggle" data-q="${i}">Other (optional)</button>` : ''}
-            <input class="q-freeform" type="text" id="mw-clarify-${i}" placeholder="Optional detail..." />
-          </div>`
-      })
-
-      openPopover('clarify', qHtml, `
-        <button class="btn-primary" id="mw-pop-engineer">Generate prompt</button>
-        <button class="btn-ghost" id="mw-pop-skip">Skip</button>
-      `)
-      setImproveButtonBusy(false)
-
-      const choiceState = {}
-      popoverShadow.querySelectorAll('.q-chip').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          e.preventDefault()
-          e.stopPropagation()
-          const q = btn.dataset.q
-          choiceState[q] = { id: btn.dataset.choice, label: btn.dataset.label }
-          popoverShadow.querySelectorAll(`.q-chip[data-q="${q}"]`).forEach(el => el.classList.remove('active'))
-          btn.classList.add('active')
-          const freeform = popoverShadow.getElementById('mw-clarify-' + q)
-          if (freeform) freeform.classList.remove('visible')
-        })
-      })
-      popoverShadow.querySelectorAll('.q-other-toggle').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          e.preventDefault()
-          e.stopPropagation()
-          const q = btn.dataset.q
-          const freeform = popoverShadow.getElementById('mw-clarify-' + q)
-          if (freeform) {
-            freeform.classList.toggle('visible')
-            if (freeform.classList.contains('visible')) freeform.focus()
-          }
-        })
-      })
-
-      popoverShadow.getElementById('mw-pop-skip').onclick = () => runEngineer(draft, templateName, {
-        clarificationCount: 0,
-        originalDraft: draft
-      })
-      popoverShadow.getElementById('mw-pop-engineer').onclick = async () => {
-        const answers = questions.map((q, i) => {
-          const prompt = typeof q === 'string' ? q : (q.prompt || '')
-          const inp = popoverShadow.getElementById('mw-clarify-' + i)
-          const text = inp ? inp.value.trim() : ''
-          const choice = choiceState[String(i)] || null
-          if (!choice && !text) return ''
-          const label = choice ? choice.label : ''
-          return `Q: ${prompt}\nA: ${label || 'n/a'}${text ? ` (${text})` : ''}`
-        }).filter(Boolean).join('\n\n')
-        const combined = answers
-          ? ('Goal: ' + draft + '\n\nClarifying answers:\n' + answers)
-          : draft
-        const usedFreeText = questions.some((_, i) => {
-          const inp = popoverShadow.getElementById('mw-clarify-' + i)
-          return inp && inp.value.trim().length > 0
-        })
-        await runEngineer(combined, templateName, {
-          clarificationCount: Object.keys(choiceState).length,
-          originalDraft: draft,
-          usedFreeText
-        })
-      }
-      positionPopover()
-    } catch (e) {
-      await runEngineer(draft, templateName)
-    }
   }
 
   async function showPersonalizationConfirm(draft, templateName, summaryData) {
@@ -816,7 +693,7 @@
 
     function renderConfirm() {
       chrome.runtime.sendMessage({ type: 'CONFIRM_PERSONALIZATION_SUMMARY', action: 'shown' }).catch(() => {})
-      openPopover('clarify', `
+      openPopover('confirm', `
         <p class="mw-confirm-summary">Looks like you're using Mind World for <strong>${escapeHtml(summary)}</strong> — sound right?</p>
         <p class="note" style="text-align:left;margin:0;">One tap helps Improve stay personalized without extra typing.</p>
       `, `
@@ -828,7 +705,8 @@
       popoverShadow.getElementById('mw-pop-confirm-yes').onclick = async () => {
         await chrome.runtime.sendMessage({ type: 'CONFIRM_PERSONALIZATION_SUMMARY', action: 'confirm' })
         setImproveButtonBusy(true)
-        openPopover('loading', loadingBodyHtml('Searching your memory and improving prompt…'), '')
+        const loadingMsg = await getImproveLoadingMessage()
+        openPopover('loading', loadingBodyHtml(loadingMsg), '')
         await continueImproveFlow(draft, templateName)
       }
       popoverShadow.getElementById('mw-pop-confirm-adjust').onclick = () => {
@@ -838,7 +716,8 @@
       popoverShadow.getElementById('mw-pop-confirm-skip').onclick = async () => {
         await chrome.runtime.sendMessage({ type: 'CONFIRM_PERSONALIZATION_SUMMARY', action: 'skip' })
         setImproveButtonBusy(true)
-        openPopover('loading', loadingBodyHtml('Searching your memory and improving prompt…'), '')
+        const loadingMsg = await getImproveLoadingMessage()
+        openPopover('loading', loadingBodyHtml(loadingMsg), '')
         await continueImproveFlow(draft, templateName)
       }
       positionPopover()
@@ -851,7 +730,7 @@
         { id: 'career', label: 'Mostly job search & career' }
       ]
       const selected = new Set()
-      openPopover('clarify', `
+      openPopover('confirm', `
         <p class="note" style="text-align:left;margin:0;">Tap what fits best (choose one or more):</p>
         <div class="mw-correction-row" id="mw-correction-row">
           ${chips.map(c => `<button type="button" class="q-chip" data-correction="${escapeHtml(c.id)}">${escapeHtml(c.label)}</button>`).join('')}
@@ -889,7 +768,8 @@
           await chrome.runtime.sendMessage({ type: 'CONFIRM_PERSONALIZATION_SUMMARY', action: 'skip' })
         }
         setImproveButtonBusy(true)
-        openPopover('loading', loadingBodyHtml('Searching your memory and improving prompt…'), '')
+        const loadingMsg = await getImproveLoadingMessage()
+        openPopover('loading', loadingBodyHtml(loadingMsg), '')
         await continueImproveFlow(draft, templateName)
       }
       positionPopover()
@@ -916,16 +796,20 @@
       return
     }
 
-    openPopover('loading', loadingBodyHtml('Searching your memory and improving prompt…'), '')
+    const loadingMsg = await getImproveLoadingMessage()
+    openPopover('loading', loadingBodyHtml(loadingMsg), '')
 
     const templateName = suggestTemplateName(draft)
 
     try {
-      const summaryRes = await chrome.runtime.sendMessage({ type: 'GET_PERSONALIZATION_SUMMARY' })
-      if (!summaryRes.error && summaryRes.shouldShowConfirmation) {
-        setImproveButtonBusy(false)
-        await showPersonalizationConfirm(draft, templateName, summaryRes)
-        return
+      const stored = await chrome.storage.local.get(['mw_memory_enabled'])
+      if (stored.mw_memory_enabled !== false) {
+        const summaryRes = await chrome.runtime.sendMessage({ type: 'GET_PERSONALIZATION_SUMMARY' })
+        if (!summaryRes.error && summaryRes.shouldShowConfirmation) {
+          setImproveButtonBusy(false)
+          await showPersonalizationConfirm(draft, templateName, summaryRes)
+          return
+        }
       }
     } catch (e) { /* continue to engineer */ }
 
@@ -1554,7 +1438,7 @@
   document.addEventListener('mousedown', (e) => {
     const host = document.getElementById(POPOVER_ID)
     if (!host || popoverState.mode === 'closed') return
-    if (popoverState.mode === 'preview' || popoverState.mode === 'clarify') return
+    if (popoverState.mode === 'preview' || popoverState.mode === 'confirm') return
     const path = e.composedPath && e.composedPath()
     if (path && path.includes(host)) return
     if (dockHost && dockHost.contains(e.target)) return

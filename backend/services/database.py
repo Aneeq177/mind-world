@@ -415,3 +415,61 @@ def increment_personalization_counter(user_id: str, key: str, amount: int = 1) -
         "key": key,
         "value": int(amount),
     }, on_conflict="user_id,metric_day,key").execute()
+
+
+def export_user_data(user_id: str, email: str) -> dict:
+    """Return a portable JSON export of stored user data (no embeddings)."""
+    from datetime import datetime, timezone
+
+    conversations = get_user_conversations(user_id)
+    profile = get_personal_profile(user_id)
+
+    conv_export = []
+    for conv in conversations:
+        conv_export.append({
+            "id": conv.get("id"),
+            "title": conv.get("title"),
+            "source_app": conv.get("source_app"),
+            "created_at": conv.get("created_at"),
+            "updated_at": conv.get("updated_at"),
+            "num_messages": conv.get("num_messages"),
+            "char_count": conv.get("char_count"),
+            "preview": conv.get("preview"),
+            "full_text": conv.get("full_text"),
+            "visibility": conv.get("visibility", "private"),
+        })
+
+    return {
+        "export_version": "1.0",
+        "email": email,
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "conversation_count": len(conv_export),
+        "conversations": conv_export,
+        "profile": {
+            "is_profile_enabled": bool(profile.get("is_profile_enabled", False)),
+            "profile_data": profile.get("profile_data") or {},
+        },
+    }
+
+
+def delete_user_data(user_id: str) -> dict:
+    """Delete all stored data for a user account."""
+    supabase = get_supabase()
+
+    conv_result = supabase.table("knowledge_nodes")\
+        .select("id")\
+        .eq("user_id", user_id)\
+        .execute()
+    conversation_count = len(conv_result.data or [])
+
+    supabase.table("embeddings").delete().eq("user_id", user_id).execute()
+    supabase.table("knowledge_nodes").delete().eq("user_id", user_id).execute()
+    supabase.table("prompt_feedback").delete().eq("user_id", user_id).execute()
+    supabase.table("personalization_metric_counters").delete().eq("user_id", user_id).execute()
+    supabase.table("personal_profiles").delete().eq("user_id", user_id).execute()
+    supabase.table("user_integrations").delete().eq("user_id", user_id).execute()
+
+    supabase.table("users").update({"company_id": None}).eq("id", user_id).execute()
+    supabase.table("users").delete().eq("id", user_id).execute()
+
+    return {"deleted": True, "conversation_count": conversation_count}

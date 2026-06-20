@@ -45,7 +45,8 @@ export default function Privacy() {
           <li>
             <strong style={{ color: 'white' }}>AI conversation history</strong> — when you upload
             exports (Claude <code>conversations.json</code>, ChatGPT <code>.zip</code>) or when the
-            Chrome extension auto-saves new chats from Claude, ChatGPT, Gemini, or Perplexity.
+            Chrome extension auto-saves new chats from Claude, ChatGPT, Gemini, or Perplexity
+            (if auto-save is enabled in extension settings).
             We store titles, message text, dates, platform, and previews.
           </li>
           <li>
@@ -62,7 +63,16 @@ export default function Privacy() {
           <li>
             <strong style={{ color: 'white' }}>Optional personal profile</strong> — if you turn
             this on in the extension, you may save background, goals, constraints, and preferences.
-            This is only used to enrich prompts when enabled.
+            When enabled, we may also infer expertise, communication style, and active projects from
+            your saved conversations to personalize Improve. Inference does not run when the profile
+            toggle is off.
+          </li>
+          <li>
+            <strong style={{ color: 'white' }}>Improve feedback signals</strong> — when you accept
+            or edit an engineered prompt, we store anonymized metrics (edit distance, length, hashes)
+            to improve future suggestions. When personal profile is enabled, short prompt previews
+            may be sent to Anthropic for adaptation. We do not store full engineered prompts in our
+            feedback database.
           </li>
           <li>
             <strong style={{ color: 'white' }}>Optional Anthropic API key</strong> — stored in
@@ -81,7 +91,7 @@ export default function Privacy() {
         <ul style={S.ul}>
           <li>Search your past conversations by meaning (semantic search).</li>
           <li>Surface relevant history while you type or use Improve in the extension.</li>
-          <li>Generate improved prompts using Claude (Anthropic) with your past context.</li>
+          <li>Generate improved prompts using Claude (Anthropic) with your draft and, when enabled, relevant past context.</li>
           <li>Display your conversation map, filters, and timeline in the web app.</li>
           <li>Let workspace members search conversations you have marked as team-visible.</li>
         </ul>
@@ -89,6 +99,24 @@ export default function Privacy() {
           We <strong style={{ color: 'white' }}>never sell your data</strong>.
           We <strong style={{ color: 'white' }}>never use your conversations to train AI models</strong>.
         </p>
+
+        <h2 style={S.h2}>LLM processing (Anthropic)</h2>
+        <p style={S.p}>
+          When you use Improve or bulk import summarization, your draft text
+          and relevant conversation excerpts are sent to <strong style={{ color: 'white' }}>Anthropic</strong>{' '}
+          (Claude Haiku) to generate a structured prompt. If you provide your own API key, requests
+          go to Anthropic under your account. Otherwise our server key is used. Anthropic processes
+          requests according to their own privacy policy; we do not use your data to train models.
+        </p>
+
+        <h2 style={S.h2}>Your controls</h2>
+        <ul style={S.ul}>
+          <li><strong style={{ color: 'white' }}>Auto-save</strong> — toggle in the extension popup (on by default).</li>
+          <li><strong style={{ color: 'white' }}>Use chat history</strong> — toggle to stop retrieving past conversations, inferred profile, and personalization when using Improve.</li>
+          <li><strong style={{ color: 'white' }}>Personal profile</strong> — opt-in toggle; gates profile injection and passive inference.</li>
+          <li><strong style={{ color: 'white' }}>Export data</strong> — download a JSON export of your conversations and profile from the extension.</li>
+          <li><strong style={{ color: 'white' }}>Delete account</strong> — permanently remove all stored data from the extension or by emailing support.</li>
+        </ul>
 
         <h2 style={S.h2}>Who can see your data</h2>
         <ul style={S.ul}>
@@ -129,23 +157,33 @@ export default function Privacy() {
         <p style={S.p}>
           The extension runs only on AI chat sites you visit (Claude, ChatGPT, Gemini, Perplexity).
           It reads your chat input to power search and Improve, and may capture conversation
-          messages from the page to save them to your account. It does not read passwords,
-          browsing history on other sites, or data from unrelated tabs.
+          messages from the page to save them to your account when auto-save is on. It does not read
+          passwords, browsing history on other sites, or data from unrelated tabs.
         </p>
 
-        <h2 style={S.h2}>Data deletion</h2>
+        <h2 style={S.h2}>Data retention</h2>
         <p style={S.p}>
-          You can request deletion of all your data at any time by emailing{' '}
-          <a href="mailto:support@mind-world.app" style={S.a}>support@mind-world.app</a>.
-          We will delete your account, conversations, embeddings, and profile within 30 days.
-          Uninstalling the extension removes locally stored credentials from your browser.
+          We retain your data for as long as your account is active. When you delete your account,
+          we remove your conversations, embeddings, profile, and feedback records promptly (typically
+          within 24 hours). Backup copies may persist for up to 30 days before being purged.
+        </p>
+
+        <h2 style={S.h2}>Data deletion and export</h2>
+        <p style={S.p}>
+          You can <strong style={{ color: 'white' }}>export</strong> your data anytime from the
+          extension&apos;s Data &amp; Privacy settings (JSON download), or{' '}
+          <strong style={{ color: 'white' }}>delete all data</strong> with one click there.
+          You can also email{' '}
+          <a href="mailto:support@mind-world.app" style={S.a}>support@mind-world.app</a>{' '}
+          to request deletion. Uninstalling the extension removes locally stored credentials from
+          your browser but does not delete server-side data.
         </p>
 
         <h2 style={S.h2}>Cookies and local storage</h2>
         <p style={S.p}>
           Mind World does not use advertising or tracking cookies. The Chrome extension uses
-          browser local storage to save your email, optional API key, and extension preferences
-          on your device only.
+          browser local storage to save your email, optional API key, privacy preferences
+          (auto-save, memory, profile toggles), and extension settings on your device only.
         </p>
 
         <h2 style={S.h2}>Contact</h2>

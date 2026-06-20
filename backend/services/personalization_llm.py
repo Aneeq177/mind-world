@@ -12,7 +12,6 @@ from services.personalization import (
     _utcnow_iso,
     infer_profile_delta as infer_profile_delta_heuristic,
     normalize_profile_data,
-    normalize_structured_questions,
 )
 
 HAIKU = "claude-haiku-4-5-20251001"
@@ -399,44 +398,6 @@ def get_quick_corrections(profile_data: dict[str, Any] | None) -> list[dict[str,
             out.append({"id": "other", "label": "Something else"})
             return out[:6]
     return QUICK_CORRECTION_OPTIONS
-
-
-def generate_clarifying_questions_llm(
-    goal: str,
-    profile_data: dict[str, Any] | None,
-    memory_previews: list[dict[str, Any]],
-    api_key: str | None = None,
-) -> list[dict[str, Any]]:
-    key = _resolve_api_key(api_key)
-    if not key:
-        return []
-
-    profile = normalize_profile_data(profile_data)
-    confirmed_domains = (profile.get("confirmed_anchors") or {}).get("domains") or []
-
-    system = """You help refine a user's draft before prompt engineering.
-Ask at most 2 questions ONLY if answers cannot be inferred from profile or memory.
-Each question must be tap-friendly with 3-5 options.
-
-Return ONLY JSON:
-{"questions": [{"id": "...", "prompt": "...", "options": [{"id":"...", "label":"..."}], "allow_other": false}]}
-If nothing important is missing, return {"questions": []}."""
-
-    user = (
-        f"GOAL:\n{goal[:1500]}\n\n"
-        f"PROFILE:\n{json.dumps(profile, ensure_ascii=False)[:3000]}\n\n"
-        f"CONFIRMED DOMAINS (do not re-ask): {confirmed_domains}\n\n"
-        f"RELEVANT MEMORY:\n{json.dumps(memory_previews[:5], ensure_ascii=False)}"
-    )
-
-    try:
-        raw = _haiku(key, system, user, max_tokens=550)
-        payload = _parse_json_text(raw)
-        if isinstance(payload, dict):
-            return normalize_structured_questions(payload.get("questions") or [])
-    except Exception as exc:
-        print(f"[personalization_llm] generate_clarifying_questions_llm failed: {exc}")
-    return []
 
 
 def apply_edit_feedback_llm(

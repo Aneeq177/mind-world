@@ -33,6 +33,11 @@ let saveDebounceTimer = null
 
 let autoSaveObserver = null
 
+async function isAutoSaveEnabled() {
+  const stored = await chrome.storage.local.get(['mw_autosave_enabled'])
+  return stored.mw_autosave_enabled !== false
+}
+
 
 
 async function getAccumulatedMessages(conversationId) {
@@ -1467,17 +1472,19 @@ function injectIntoChat(text, isLegacy) {
 
 function startAutoSave() {
 
-  // Disconnect previous observer if navigating to a new conversation
+  void (async () => {
+    if (!(await isAutoSaveEnabled())) {
+      if (autoSaveObserver) {
+        autoSaveObserver.disconnect()
+        autoSaveObserver = null
+      }
+      return
+    }
 
-  if (autoSaveObserver) {
-
-    autoSaveObserver.disconnect()
-
-    autoSaveObserver = null
-
-  }
-
-
+    if (autoSaveObserver) {
+      autoSaveObserver.disconnect()
+      autoSaveObserver = null
+    }
 
   const hostname = window.location.hostname
 
@@ -1557,6 +1564,7 @@ function startAutoSave() {
 
   })
 
+  })()
 }
 
 
@@ -1884,6 +1892,8 @@ async function triggerAccumulatedSave(conversationId, messages) {
 async function tryAutoSave() {
 
   try {
+
+    if (!(await isAutoSaveEnabled())) return
 
     const url = window.location.href
 

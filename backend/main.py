@@ -234,13 +234,6 @@ class PromptFeedbackRequest(BaseModel):
     edited: Optional[bool] = False
     latency_ms: Optional[int] = None
 
-class ClarifyingQuestionsRequest(BaseModel):
-    goal: str
-    email: Optional[str] = None
-    template: Optional[str] = None
-    api_key: Optional[str] = None
-
-
 class PersonalizationSummaryRequest(BaseModel):
     email: str
 
@@ -759,65 +752,6 @@ async def confirm_personalization_summary(request: ConfirmPersonalizationSummary
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/generate_clarifying_questions")
-async def generate_clarifying_questions(request: ClarifyingQuestionsRequest):
-    try:
-        from sentence_transformers import SentenceTransformer
-        from services.database import (
-            get_or_create_user,
-            get_personal_profile,
-            increment_personalization_counter,
-            search_conversations_candidates,
-        )
-        from services.personalization_llm import generate_clarifying_questions_llm
-
-        api_key = request.api_key or os.getenv("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise HTTPException(status_code=400, detail="API key required")
-
-        profile_data: dict = {}
-        memory_previews: list[dict] = []
-        inference_used = False
-        user_id = None
-        if request.email:
-            email = request.email.lower().strip()
-            user_id = get_or_create_user(email)
-            profile = get_personal_profile(user_id)
-            profile_data = profile.get("profile_data") or {}
-            inference_used = bool(profile_data)
-
-            model = SentenceTransformer("all-MiniLM-L6-v2")
-            embedding = model.encode([request.goal])[0]
-            candidates = search_conversations_candidates(user_id, embedding, limit=8)
-            memory_previews = [
-                {
-                    "title": c.get("title", ""),
-                    "preview": (c.get("preview") or "")[:180],
-                    "similarity": c.get("similarity"),
-                }
-                for c in (candidates or [])[:5]
-            ]
-
-        questions = generate_clarifying_questions_llm(
-            request.goal,
-            profile_data,
-            memory_previews,
-            api_key,
-        )
-
-        if user_id:
-            increment_personalization_counter(user_id, "clarifying_questions_generated_total", 1)
-
-        return {
-            "questions": questions[:3],
-            "inference_used": inference_used,
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
 @app.get("/templates")
 async def get_templates():
     try:
@@ -1011,6 +945,66 @@ async def prompt_feedback(request: PromptFeedbackRequest, background_tasks: Back
 
 class UserStatsRequest(BaseModel):
     email: str
+
+class ExportDataRequest(BaseModel):
+    email: str
+
+class DeleteAccountRequest(BaseModel):
+    email: str
+    confirm: bool = False
+
+@app.post("/export_data")
+async def export_data(request: ExportDataRequest):
+    try:
+        from services.database import export_user_data, get_supabase
+
+        email = request.email.lower().strip()
+        supabase = get_supabase()
+        user_result = supabase.table("users")\
+            .select("id")\
+            .eq("email", email)\
+            .execute()
+        if not user_result.data:
+            return {
+                "export_version": "1.0",
+                "email": email,
+                "conversation_count": 0,
+                "conversations": [],
+                "profile": {"is_profile_enabled": False, "profile_data": {}},
+            }
+
+        user_id = user_result.data[0]["id"]
+        return export_user_data(user_id, email)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/delete_account")
+async def delete_account(request: DeleteAccountRequest):
+    try:
+        from services.database import delete_user_data, get_supabase
+
+        if not request.confirm:
+            raise HTTPException(
+                status_code=400,
+                detail="Set confirm=true to permanently delete your account and all data.",
+            )
+
+        email = request.email.lower().strip()
+        supabase = get_supabase()
+        user_result = supabase.table("users")\
+            .select("id")\
+            .eq("email", email)\
+            .execute()
+        if not user_result.data:
+            raise HTTPException(status_code=404, detail="Account not found.")
+
+        user_id = user_result.data[0]["id"]
+        result = delete_user_data(user_id)
+        return {"success": True, **result}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/user_stats")
 async def user_stats(request: UserStatsRequest):
@@ -1222,7 +1216,11 @@ async def save_conversation(request: SaveConversationRequest, background_tasks: 
         }, on_conflict="conversation_id,user_id").execute()
 
         background_tasks.add_task(run_recluster, email)
-        background_tasks.add_task(run_profile_inference_from_delta, user_id, full_text[:2500])
+
+        from services.database import get_personal_profile
+        profile = get_personal_profile(user_id)
+        if profile.get("is_profile_enabled"):
+            background_tasks.add_task(run_profile_inference_from_delta, user_id, full_text[:2500])
 
         return {"success": True, "id": conv_id}
 

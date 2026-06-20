@@ -20,6 +20,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   const skipImportBtn = document.getElementById('skip-import-btn')
   const afterSkipHint = document.getElementById('after-skip-hint')
   const profileSection = document.getElementById('profile-section')
+  const privacySection = document.getElementById('privacy-section')
+  const consentCheckbox = document.getElementById('consent-checkbox')
+  const autosaveOptIn = document.getElementById('autosave-opt-in')
+  const memoryOptIn = document.getElementById('memory-opt-in')
+  const exportDataBtn = document.getElementById('export-data-btn')
+  const deleteDataBtn = document.getElementById('delete-data-btn')
+  const privacyActionStatus = document.getElementById('privacy-action-status')
   const advancedSection = document.getElementById('advanced-section')
   const statsRow = document.getElementById('stats-row')
   const advancedToggle = document.getElementById('advanced-toggle')
@@ -31,10 +38,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   let currentEmail = null
 
   // Load saved credentials and visibility
-  const stored = await chrome.storage.local.get(['mw_email', 'mw_api_key', 'mw_default_visibility'])
+  const stored = await chrome.storage.local.get([
+    'mw_email',
+    'mw_api_key',
+    'mw_default_visibility',
+    'mw_autosave_enabled',
+    'mw_memory_enabled'
+  ])
 
   // Apply saved visibility state on open
   applyVisibilityState(stored.mw_default_visibility || 'private')
+  if (autosaveOptIn) autosaveOptIn.checked = stored.mw_autosave_enabled !== false
+  if (memoryOptIn) memoryOptIn.checked = stored.mw_memory_enabled !== false
 
   if (stored.mw_email) {
     showConnectedView(stored.mw_email, stored.mw_api_key)
@@ -237,8 +252,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function setOnboardingMode(isNewUser) {
     if (profileSection) profileSection.classList.toggle('onboarding-collapsed', isNewUser)
+    if (privacySection) privacySection.classList.toggle('onboarding-collapsed', isNewUser)
     if (advancedSection) advancedSection.classList.toggle('onboarding-collapsed', isNewUser)
     if (statsRow) statsRow.classList.toggle('onboarding-collapsed', isNewUser)
+  }
+
+  function showPrivacyStatus(message, isError) {
+    if (!privacyActionStatus) return
+    privacyActionStatus.style.display = 'block'
+    privacyActionStatus.textContent = message
+    privacyActionStatus.style.color = isError ? '#f87171' : '#6ee7b7'
   }
 
   // Platform picker for export instructions
@@ -383,6 +406,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       return
     }
 
+    if (consentCheckbox && !consentCheckbox.checked) {
+      loginError.textContent = 'Please acknowledge the privacy notice to continue.'
+      return
+    }
+
     saveBtn.disabled = true
     saveBtn.textContent = 'Connecting...'
 
@@ -390,7 +418,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       const res = await fetch(`${API_BASE}/health`)
       if (!res.ok) throw new Error('Cannot reach Mind World server')
 
-      await chrome.storage.local.set({ mw_email: email })
+      await chrome.storage.local.set({
+        mw_email: email,
+        mw_autosave_enabled: true,
+        mw_memory_enabled: true
+      })
+      if (autosaveOptIn) autosaveOptIn.checked = true
+      if (memoryOptIn) memoryOptIn.checked = true
 
       const tabs = await chrome.tabs.query({})
       tabs.forEach(tab => {
@@ -519,6 +553,96 @@ document.addEventListener('DOMContentLoaded', async () => {
     })
   }
 
+  if (autosaveOptIn) {
+    autosaveOptIn.addEventListener('change', async (e) => {
+      const enabled = e.target.checked
+      await chrome.storage.local.set({ mw_autosave_enabled: enabled })
+      showPrivacyStatus(enabled ? 'Auto-save enabled' : 'Auto-save paused — new chats won\'t be saved', false)
+      setTimeout(() => { if (privacyActionStatus) privacyActionStatus.style.display = 'none' }, 3000)
+    })
+  }
+
+  if (memoryOptIn) {
+    memoryOptIn.addEventListener('change', async (e) => {
+      const enabled = e.target.checked
+      await chrome.storage.local.set({ mw_memory_enabled: enabled })
+      showPrivacyStatus(enabled ? 'Chat history enabled for Improve' : 'Improve will use only your draft — no past chats or profile', false)
+      setTimeout(() => { if (privacyActionStatus) privacyActionStatus.style.display = 'none' }, 3000)
+    })
+  }
+
+  if (exportDataBtn) {
+    exportDataBtn.addEventListener('click', async () => {
+      if (!currentEmail) return
+      exportDataBtn.disabled = true
+      exportDataBtn.textContent = 'Exporting...'
+      try {
+        const res = await fetch(`${API_BASE}/export_data`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: currentEmail })
+        })
+        if (!res.ok) throw new Error('Export failed')
+        const data = await res.json()
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `mind-world-export-${Date.now()}.json`
+        a.click()
+        URL.revokeObjectURL(url)
+        showPrivacyStatus(`Exported ${data.conversation_count || 0} conversations`, false)
+      } catch (err) {
+        showPrivacyStatus('Export failed. Try again.', true)
+      } finally {
+        exportDataBtn.disabled = false
+        exportDataBtn.textContent = 'Export my data'
+      }
+    })
+  }
+
+  if (deleteDataBtn) {
+    deleteDataBtn.addEventListener('click', async () => {
+      if (!currentEmail) return
+      const confirmed = confirm(
+        'Permanently delete ALL your Mind World data?\n\n' +
+        'This removes your conversations, embeddings, profile, and account. ' +
+        'This cannot be undone.'
+      )
+      if (!confirmed) return
+
+      deleteDataBtn.disabled = true
+      deleteDataBtn.textContent = 'Deleting...'
+      try {
+        const res = await fetch(`${API_BASE}/delete_account`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: currentEmail, confirm: true })
+        })
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}))
+          throw new Error(err.detail || 'Delete failed')
+        }
+        await chrome.storage.local.remove([
+          'mw_email',
+          'mw_api_key',
+          'mw_profile_enabled',
+          'mw_save_queue'
+        ])
+        currentEmail = null
+        connectedView.style.display = 'none'
+        loginView.style.display = 'block'
+        emailInput.value = ''
+        if (consentCheckbox) consentCheckbox.checked = false
+        loginError.textContent = ''
+      } catch (err) {
+        showPrivacyStatus(String(err.message || 'Delete failed'), true)
+        deleteDataBtn.disabled = false
+        deleteDataBtn.textContent = 'Delete all data'
+      }
+    })
+  }
+
   // Advanced section toggle
   advancedToggle.addEventListener('click', () => {
     const isOpen = advancedContent.style.display !== 'none'
@@ -555,6 +679,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     connectedView.style.display = 'block'
     userEmail.textContent = email
     loadProfileSettings(email)
+
+    chrome.storage.local.get(['mw_autosave_enabled', 'mw_memory_enabled'], (prefs) => {
+      if (autosaveOptIn) autosaveOptIn.checked = prefs.mw_autosave_enabled !== false
+      if (memoryOptIn) memoryOptIn.checked = prefs.mw_memory_enabled !== false
+    })
 
     if (existingApiKey && apikeyStatus) {
       apikeyStatus.textContent = 'API key configured'
