@@ -26,6 +26,7 @@ class BlendRequest(BaseModel):
     conversation_ids: list[str]
     question: str
     email: str
+    access_token: Optional[str] = None
     api_key: Optional[str] = None
 
 class BlendResponse(BaseModel):

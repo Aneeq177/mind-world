@@ -118,7 +118,8 @@ export default function MapView() {
     searchTimerRef.current = setTimeout(async () => {
       try {
         setIsSearching(true)
-        const data = await searchConversations({ email, query: q })
+        const accessToken = await ensureAccessToken()
+        const data = await searchConversations({ email, accessToken, query: q })
         setSearchMatchIds(new Set((data.results || []).map(r => r.id)))
       } catch {
         setSearchMatchIds(new Set())
@@ -127,7 +128,7 @@ export default function MapView() {
       }
     }, 600)
     return () => clearTimeout(searchTimerRef.current)
-  }, [searchQuery, email])
+  }, [searchQuery, email, apiKey])
 
   // MW-003: close other panel when opening one on mobile
   function handleToggleLeft() {

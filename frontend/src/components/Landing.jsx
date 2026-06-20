@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useStore } from '../store'
-import { processFiles, loadExistingMap, recordConsent } from '../api'
+import { processFiles, loadExistingMap, recordConsent, ensureAccessToken } from '../api'
 
 const CHROME_STORE_URL = 'https://chrome.google.com/webstore/detail/mind-world'
 const CONSENT_VERSION = '2026-06-2'
@@ -77,21 +77,15 @@ export default function Landing() {
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [uploadConsent, setUploadConsent] = useState(false)
 
-  // If the popup opened this page with ?email=..., pre-fill, jump to upload, and check for data
+  // If the popup opened this page with ?email=..., pre-fill and jump to upload
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const emailParam = params.get('email')
-    const autoLoad = params.get('autoLoad')
     
     if (emailParam) {
       setEmail(emailParam)
       setView('upload')
-      
-      if (autoLoad === 'true') {
-        autoLoadMap(emailParam)
-      } else {
-        checkExistingData(emailParam)
-      }
+      setShowAdvanced(true)
     }
   }, [])
 
@@ -100,7 +94,8 @@ export default function Landing() {
     setLoadingMsg('Loading your map...')
     setPhase('processing')
     try {
-      const data = await loadExistingMap(emailValue)
+      const token = await ensureAccessToken(emailValue, apiKey)
+      const data = await loadExistingMap({ email: emailValue, accessToken: token })
       setCredentials(emailValue, apiKey || '')
       setConversations(data.conversations, data.sources)
       setPhase('map')
@@ -111,10 +106,11 @@ export default function Landing() {
   }
 
   async function checkExistingData(emailValue) {
-    if (!emailValue || !emailValue.includes('@')) return
+    if (!emailValue || !emailValue.includes('@') || !apiKey) return
     setCheckingEmail(true)
     try {
-      const data = await loadExistingMap(emailValue)
+      const token = await ensureAccessToken(emailValue, apiKey)
+      const data = await loadExistingMap({ email: emailValue, accessToken: token })
       if (data.has_data && data.total > 0) {
         setHasExistingData(true)
         setExistingCount(data.total)
@@ -131,11 +127,17 @@ export default function Landing() {
 
   async function handleLoadExisting() {
     if (!email) return
+    if (!apiKey) {
+      setError('Enter your Anthropic API key to load your saved map.')
+      setShowAdvanced(true)
+      return
+    }
     setError('')
     setLoadingMsg('Loading your map...')
     setPhase('processing')
     try {
-      const data = await loadExistingMap(email)
+      const token = await ensureAccessToken(email, apiKey)
+      const data = await loadExistingMap({ email, accessToken: token })
       setCredentials(email, apiKey || '')
       setConversations(data.conversations, data.sources)
       setPhase('map')
@@ -166,7 +168,7 @@ export default function Landing() {
   }
 
   const hasFile = claudeFile || chatgptFile
-  const canGenerate = email && email.includes('@') && (hasFile || hasExistingData)
+  const canGenerate = email && email.includes('@') && apiKey && (hasFile || hasExistingData)
   const canUpload = canGenerate && (!hasFile || uploadConsent)
 
   async function handleGenerate() {
@@ -174,6 +176,11 @@ export default function Landing() {
     // If no new files but existing data, just load from DB
     if (!claudeFile && !chatgptFile && hasExistingData) {
       return handleLoadExisting()
+    }
+    if (!apiKey) {
+      setError('Anthropic API key required to verify your account.')
+      setShowAdvanced(true)
+      return
     }
     if (!email.includes('@') || !email.includes('.')) {
       setError('Please enter a valid email address.')
@@ -195,10 +202,25 @@ export default function Landing() {
     }, 4000)
 
     try {
+      const token = await ensureAccessToken(email, apiKey)
       if (hasFile) {
-        await recordConsent({ email, consentVersion: CONSENT_VERSION, source: 'web_app' })
+        await recordConsent({
+          email,
+          accessToken: token,
+          consentVersion: CONSENT_VERSION,
+          source: 'web_app'
+        })
       }
-      const data = await processFiles({ claudeFile, chatgptFile, apiKey, email })
+      const data = await processFiles({
+        claudeFile,
+        chatgptFile,
+        apiKey,
+        email,
+        accessToken: token
+      })
+      if (data.access_token) {
+        sessionStorage.setItem('mw_access_token', data.access_token)
+      }
       clearInterval(msgInterval)
       setCredentials(email, apiKey)
       setConversations(data.conversations, data.sources)

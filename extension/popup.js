@@ -69,12 +69,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (privacyActionStatus) privacyActionStatus.style.display = 'none'
   }
 
-  async function recordConsent(email, source = 'extension') {
+  async function recordConsent(email, accessToken, source = 'extension') {
     const res = await fetch(`${API_BASE}/record_consent`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         email,
+        access_token: accessToken,
         consent_version: CONSENT_VERSION,
         source
       })
@@ -119,9 +120,18 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   async function getAccessToken() {
     const stored = await chrome.storage.local.get(['mw_access_token', 'mw_api_key'])
-    if (stored.mw_access_token) return stored.mw_access_token
     if (!currentEmail) return null
-    return establishSession(currentEmail, stored.mw_api_key || null)
+    if (stored.mw_access_token) {
+      try {
+        return await establishSession(currentEmail, stored.mw_api_key || null)
+      } catch {
+        // fall through to api key retry
+      }
+    }
+    if (stored.mw_api_key) {
+      return establishSession(currentEmail, stored.mw_api_key)
+    }
+    return null
   }
 
   // Load saved credentials and visibility
@@ -229,10 +239,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     btn.textContent = 'Creating...'
 
     try {
+      const accessToken = await getAccessToken()
+      if (!accessToken) throw new Error('Session expired')
       const res = await fetch(`${API_BASE}/create_workspace`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: currentEmail, workspace_name: name })
+        body: JSON.stringify({ email: currentEmail, access_token: accessToken, workspace_name: name })
       })
       const data = await res.json()
       if (data.success) {
@@ -264,10 +276,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     btn.textContent = 'Joining...'
 
     try {
+      const accessToken = await getAccessToken()
+      if (!accessToken) throw new Error('Session expired')
       const res = await fetch(`${API_BASE}/join_workspace`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: currentEmail, invite_code: code })
+        body: JSON.stringify({ email: currentEmail, access_token: accessToken, invite_code: code })
       })
       const data = await res.json()
       if (data.success) {
@@ -301,10 +315,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!confirm(`Leave workspace "${name}"? You will lose access to team conversations.`)) return
 
     try {
+      const accessToken = await getAccessToken()
+      if (!accessToken) return
       await fetch(`${API_BASE}/leave_workspace`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: currentEmail })
+        body: JSON.stringify({ email: currentEmail, access_token: accessToken })
       })
     } catch (e) {}
 
@@ -320,10 +336,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!confirmed) return
 
     try {
+      const accessToken = await getAccessToken()
+      if (!accessToken) return
       const response = await fetch(`${API_BASE}/share_conversations`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: currentEmail, visibility: 'team' })
+        body: JSON.stringify({ email: currentEmail, access_token: accessToken, visibility: 'team' })
       })
       const data = await response.json()
       const status = document.getElementById('share-status')
@@ -489,9 +507,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     showImportStatus('Uploading your chats... this may take a minute.', false)
 
     try {
+      const accessToken = await getAccessToken()
       const form = new FormData()
       form.append('email', currentEmail)
       form.append('api_key', apiKey)
+      if (accessToken) form.append('access_token', accessToken)
       if (isClaude) form.append('claude_file', file, file.name)
       else form.append('chatgpt_file', file, file.name)
 
@@ -504,6 +524,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
 
       const data = await res.json()
+      if (data.access_token) {
+        await chrome.storage.local.set({ mw_access_token: data.access_token })
+      }
       const total = data.total || 0
       showImportStatus(`Done! ${total} conversations imported. Mind World will remember them for you.`, false)
       loadStats(currentEmail)
@@ -559,10 +582,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Save email (login)
   saveBtn.addEventListener('click', async () => {
     const email = emailInput.value.trim()
+    const apiKeyInput = document.getElementById('apikey-input-login')
+    const apiKey = apiKeyInput ? apiKeyInput.value.trim() : ''
     loginError.textContent = ''
 
     if (!email || !email.includes('@')) {
       loginError.textContent = 'Please enter a valid email.'
+      return
+    }
+
+    if (!apiKey || !apiKey.startsWith('sk-ant-')) {
+      loginError.textContent = 'Please enter a valid Anthropic API key (starts with sk-ant-).'
       return
     }
 
@@ -583,25 +613,26 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       await chrome.storage.local.set({
         mw_email: email,
+        mw_api_key: apiKey,
         mw_autosave_enabled: autosaveEnabled,
         mw_memory_enabled: memoryEnabled
       })
       if (autosaveOptIn) autosaveOptIn.checked = autosaveEnabled
       if (memoryOptIn) memoryOptIn.checked = memoryEnabled
 
-      await recordConsent(email, 'extension')
-      establishSession(email).catch(() => {})
+      const accessToken = await establishSession(email, apiKey)
+      await recordConsent(email, accessToken, 'extension')
 
       const tabs = await chrome.tabs.query({})
       tabs.forEach(tab => {
         chrome.tabs.sendMessage(tab.id, { type: 'CREDENTIALS_UPDATED', email }).catch(() => {})
       })
 
-      showConnectedView(email, null)
+      showConnectedView(email, apiKey)
       loadStats(email)
 
     } catch (err) {
-      loginError.textContent = 'Connection failed. Check your internet.'
+      loginError.textContent = err.message || 'Connection failed. Check your email and API key.'
       saveBtn.disabled = false
       saveBtn.textContent = 'Connect to Mind World'
     }
@@ -645,10 +676,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   async function loadProfileSettings(email) {
     if (!email) return
     try {
+      const accessToken = await getAccessToken()
+      if (!accessToken) return
       const res = await fetch(`${API_BASE}/get_profile_settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email })
+        body: JSON.stringify({ email, access_token: accessToken })
       })
       if (!res.ok) return
       const data = await res.json()
@@ -668,11 +701,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   async function saveProfileSettings(isEnabled, profileData) {
     if (!currentEmail) return false
     try {
+      const accessToken = await getAccessToken()
+      if (!accessToken) return false
       await fetch(`${API_BASE}/update_profile_settings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: currentEmail,
+          access_token: accessToken,
           is_profile_enabled: isEnabled,
           profile_data: profileData
         })
@@ -929,10 +965,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   async function loadStats(email) {
     try {
+      const accessToken = await getAccessToken()
+      if (!accessToken) {
+        convCount.textContent = '—'
+        platformsCount.textContent = '—'
+        return
+      }
       const res = await fetch(`${API_BASE}/user_stats`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email })
+        body: JSON.stringify({ email, access_token: accessToken })
       })
       if (res.ok) {
         const data = await res.json()

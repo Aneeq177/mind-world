@@ -13,7 +13,7 @@
         <span>Mind World</span>
       </div>
       <p id="login-subtitle">
-        Enter your email to get started. Takes 30 seconds.
+        Enter your email and Anthropic API key to connect. Your key stays in your browser.
       </p>
       <div class="input-group">
         <label>Email</label>
@@ -22,6 +22,15 @@
           id="email-input"
           placeholder="you@example.com"
           autocomplete="email"
+        />
+      </div>
+      <div class="input-group">
+        <label>Anthropic API Key</label>
+        <input
+          type="password"
+          id="apikey-input-login"
+          placeholder="sk-ant-..."
+          autocomplete="off"
         />
       </div>
       <div id="login-error"></div>

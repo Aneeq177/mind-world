@@ -29,13 +29,53 @@ async function getCredentials() {
   const stored = await chrome.storage.local.get([
     'mw_email',
     'mw_api_key',
+    'mw_access_token',
     'mw_default_visibility'
   ])
   return {
     email: stored.mw_email || null,
     apiKey: stored.mw_api_key || null,
+    accessToken: stored.mw_access_token || null,
     defaultVisibility: stored.mw_default_visibility || 'private'
   }
+}
+
+async function establishSession(email, apiKey = null) {
+  const stored = await chrome.storage.local.get(['mw_access_token'])
+  const body = { email }
+  if (apiKey) body.api_key = apiKey
+  if (stored.mw_access_token) body.access_token = stored.mw_access_token
+
+  const res = await fetch(`${API_BASE}/auth/session`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  })
+  if (!res.ok) return null
+  const data = await res.json()
+  await chrome.storage.local.set({ mw_access_token: data.access_token })
+  return data.access_token
+}
+
+async function getAccessToken() {
+  const { email, apiKey, accessToken } = await getCredentials()
+  if (!email) return null
+  if (accessToken) {
+    const refreshed = await establishSession(email, apiKey || null)
+    if (refreshed) return refreshed
+  }
+  if (apiKey) {
+    return establishSession(email, apiKey)
+  }
+  return null
+}
+
+async function getAuthContext() {
+  const creds = await getCredentials()
+  if (!creds.email) return { error: 'not_logged_in' }
+  const accessToken = await getAccessToken()
+  if (!accessToken) return { error: 'auth_required' }
+  return { email: creds.email, accessToken, apiKey: creds.apiKey }
 }
 
 function getPlatform(url) {
@@ -161,9 +201,9 @@ async function handleSearch(query) {
       return { results: [] }
     }
 
-    const { email } = await getCredentials()
-    if (!email) {
-      return { results: [], error: 'not_logged_in' }
+    const auth = await getAuthContext()
+    if (auth.error) {
+      return { results: [], error: auth.error }
     }
     if (!(await isMemoryEnabled())) {
       return { results: [] }
@@ -180,7 +220,8 @@ async function handleSearch(query) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         query: searchQuery,
-        email: email,
+        email: auth.email,
+        access_token: auth.accessToken,
         limit: 5
       })
     })
@@ -227,12 +268,17 @@ function expandQuery(query) {
 async function handleCompanySearch(query, limit = 5) {
   try {
     if (!query || query.trim().length < 2) return { results: [] }
-    const { email } = await getCredentials()
-    if (!email) return { results: [], error: 'not_logged_in' }
+    const auth = await getAuthContext()
+    if (auth.error) return { results: [], error: auth.error }
     const response = await fetch(`${API_BASE}/company_search`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, query: query.trim(), limit })
+      body: JSON.stringify({
+        email: auth.email,
+        access_token: auth.accessToken,
+        query: query.trim(),
+        limit
+      })
     })
     if (!response.ok) return { results: [] }
     const data = await response.json()
@@ -244,8 +290,8 @@ async function handleCompanySearch(query, limit = 5) {
 
 async function handleSummarize(conversationIds, currentQuery) {
   try {
-    const { email, apiKey } = await getCredentials()
-    if (!email) return { error: 'not_logged_in' }
+    const auth = await getAuthContext()
+    if (auth.error) return { error: auth.error }
 
     const response = await fetch(`${API_BASE}/summarize`, {
       method: 'POST',
@@ -253,7 +299,9 @@ async function handleSummarize(conversationIds, currentQuery) {
       body: JSON.stringify({
         conversation_ids: conversationIds,
         current_query: currentQuery,
-        email: email
+        email: auth.email,
+        access_token: auth.accessToken,
+        api_key: auth.apiKey || null
       })
     })
 
@@ -273,16 +321,17 @@ async function handleSummarize(conversationIds, currentQuery) {
 async function handleEngineerPrompt(userMessage, templateStr, conversationIds, skipMemory) {
   try {
     const startedAt = Date.now()
-    const { email, apiKey } = await getCredentials()
-    if (!email) return { error: 'not_logged_in' }
+    const auth = await getAuthContext()
+    if (auth.error) return { error: auth.error }
 
     const memoryEnabled = await isMemoryEnabled()
 
     const body = {
-      email,
+      email: auth.email,
+      access_token: auth.accessToken,
       message: userMessage,
       template: templateStr || 'none',
-      api_key: apiKey || null,
+      api_key: auth.apiKey || null,
       skip_memory: !!skipMemory || !memoryEnabled
     }
     if (conversationIds && conversationIds.length > 0) {
@@ -314,8 +363,8 @@ async function handleEngineerPrompt(userMessage, templateStr, conversationIds, s
 
 async function handlePersonalizationSummary() {
   try {
-    const { email } = await getCredentials()
-    if (!email) return { error: 'not_logged_in' }
+    const auth = await getAuthContext()
+    if (auth.error) return { error: auth.error }
     if (!(await isMemoryEnabled())) {
       return {
         hasEnoughHistory: false,
@@ -331,7 +380,7 @@ async function handlePersonalizationSummary() {
     const response = await fetch(`${API_BASE}/personalization_summary`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email })
+      body: JSON.stringify({ email: auth.email, access_token: auth.accessToken })
     })
     if (!response.ok) {
       const err = await response.json().catch(() => ({}))
@@ -354,14 +403,15 @@ async function handlePersonalizationSummary() {
 
 async function handleConfirmPersonalizationSummary(action, correctionIds) {
   try {
-    const { email } = await getCredentials()
-    if (!email) return { error: 'not_logged_in' }
+    const auth = await getAuthContext()
+    if (auth.error) return { error: auth.error }
 
     const response = await fetch(`${API_BASE}/confirm_personalization_summary`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        email,
+        email: auth.email,
+        access_token: auth.accessToken,
         action: action || 'skip',
         correction_ids: correctionIds || []
       })
@@ -497,8 +547,8 @@ async function handleTrackTemplateUse(name) {
 
 async function handleContextPreview(draft, limit) {
   try {
-    const { email } = await getCredentials()
-    if (!email) return { sources: [], totalConversations: 0, error: 'not_logged_in' }
+    const auth = await getAuthContext()
+    if (auth.error) return { sources: [], totalConversations: 0, error: auth.error }
     if (!(await isMemoryEnabled())) {
       return { sources: [], totalConversations: 0 }
     }
@@ -506,7 +556,12 @@ async function handleContextPreview(draft, limit) {
     const response = await fetch(`${API_BASE}/context_preview`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, draft: draft || '', limit: limit || 5 })
+      body: JSON.stringify({
+        email: auth.email,
+        access_token: auth.accessToken,
+        draft: draft || '',
+        limit: limit || 5
+      })
     })
     if (!response.ok) {
       return { sources: [], totalConversations: 0, error: 'preview_failed' }
@@ -523,13 +578,13 @@ async function handleContextPreview(draft, limit) {
 
 async function handleMemoryStats() {
   try {
-    const { email } = await getCredentials()
-    if (!email) return { conversationCount: 0, platformCount: 0, error: 'not_logged_in' }
+    const auth = await getAuthContext()
+    if (auth.error) return { conversationCount: 0, platformCount: 0, error: auth.error }
 
     const response = await fetch(`${API_BASE}/user_stats`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email })
+      body: JSON.stringify({ email: auth.email, access_token: auth.accessToken })
     })
     if (!response.ok) return { conversationCount: 0, platformCount: 0 }
     const data = await response.json()
@@ -544,14 +599,15 @@ async function handleMemoryStats() {
 
 async function handlePromptFeedback(message) {
   try {
-    const { email } = await getCredentials()
-    if (!email) return { error: 'not_logged_in' }
+    const auth = await getAuthContext()
+    if (auth.error) return { error: auth.error }
 
     const response = await fetch(`${API_BASE}/prompt_feedback`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        email,
+        email: auth.email,
+        access_token: auth.accessToken,
         rating: (typeof message.rating === 'number') ? message.rating : 1,
         event_type: message.eventType || 'rating',
         goal: message.goal || '',
@@ -598,8 +654,9 @@ async function processSaveQueue() {
     await chrome.storage.local.set({ mw_save_queue: [] })
 
     const { email, defaultVisibility } = await getCredentials()
+    const accessToken = await getAccessToken()
 
-    if (!email) return
+    if (!email || !accessToken) return
 
     let anySuccess = false
     for (const conversation of queue) {
@@ -607,7 +664,12 @@ async function processSaveQueue() {
         const res = await fetch(`${API_BASE}/save_conversation`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, conversation, visibility: defaultVisibility || 'private' })
+          body: JSON.stringify({
+            email,
+            access_token: accessToken,
+            conversation,
+            visibility: defaultVisibility || 'private'
+          })
         })
         if (res.ok) anySuccess = true
       } catch (err) {

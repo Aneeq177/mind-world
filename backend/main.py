@@ -30,6 +30,10 @@ from services.personalization import (
 
 load_dotenv() # Load environment variables from .env file
 
+def _user_id(email: str, access_token: Optional[str] = None, api_key: Optional[str] = None) -> str:
+    from services.auth import authenticate_user
+    return authenticate_user(email, access_token, api_key)
+
 app = FastAPI(title="Mind World API", version="1.0.0") # Create FastAPI app
 
 app.add_middleware(
@@ -50,7 +54,8 @@ async def process_files(
     claude_file: UploadFile | None = File(None), 
     chatgpt_file: UploadFile | None = File(None), 
     api_key: str = Form(""), # API key for the user (user is asked to enter their key)
-    email: str = Form(...)
+    email: str = Form(...),
+    access_token: str = Form(""),
 ):
     effective_api_key = api_key or os.getenv("ANTHROPIC_API_KEY") # effective_api_key is the name of the key that we will actually use
     if not effective_api_key: # If the user does not have an API key, it will then use our key from .env and show no error. However if our key is not available then it will raise an error.
@@ -58,6 +63,9 @@ async def process_files(
             status_code=400, 
             detail="Anthropic API key required for import (add in extension settings or server config)" # This is the error message that is sent if the user does not have api key
         )
+
+    email = email.lower().strip()
+    user_id = _user_id(email, access_token or None, api_key or None)
 
     if not claude_file and not chatgpt_file: # This code basically checks if you have uploaded atleast one of the claude or chatgpt files,, if not then it raises an error
         raise HTTPException( #specifically raises a Bad Request error (400)
@@ -107,8 +115,6 @@ async def process_files(
         chats = label_clusters(chats, effective_api_key) # This groups the chats by cluster_id, sends sample titles from each cluster to claude, claude returns a short label (e.g. "Job Search", "Python Help"), each chat then gets a 'region' (topic name) and a 'color' (hex code). Uses the same api key as the user's api key.
 
         try:
-            email = email.lower().strip() # Normalizes email so You@Mail.com = you@mail.com
-            user_id = get_or_create_user(email) # Tries to find the user using the email and if not founds, it creates a new user with the email.
             store_conversations(user_id, chats, embeddings) # Stores the conversations in the database using the user_id and the conversations and embeddings.
         except Exception as db_error:
             print(f"DB storage error: {db_error}") # This prints the error if the conversations are not stored in the database
@@ -128,11 +134,15 @@ async def process_files(
             # We end up using the full text in the database for semantic search and context blending, but not on the map.
             # So removing the full text here helps reduce the size of the data that is sent to the frontend, making the process faster to load the map.
 
+        from services.auth import issue_session_token
+        session_token = issue_session_token(user_id)
+
         return { # This JSON response is sent to the frontend to display the conversations, total number of conversations, sources and user_id
             "conversations": chats, # list of chats ready to draw as orbs on the map
             "total": len(chats), # total number of conversations
             "sources": sources, # number of claude and chatgpt conversations
-            "user_id": user_id # user_id of the user who uploaded the files
+            "user_id": user_id, # user_id of the user who uploaded the files
+            "access_token": session_token,
         }
 
     except HTTPException: # If there is an error, it raises an error with a status code of 500 (Internal Server Error)
@@ -145,6 +155,7 @@ async def process_files(
 class SearchRequest(BaseModel):
     query: str
     email: str
+    access_token: str
     limit: int = 5
 
 @app.post("/search")
@@ -158,9 +169,7 @@ async def search(request: SearchRequest):
         from sentence_transformers import SentenceTransformer
 
         email = request.email.lower().strip()
-        user_id = get_or_create_user(email)
-
-        model = SentenceTransformer('all-MiniLM-L6-v2')
+        user_id = _user_id(email, request.access_token)
         query_embedding = model.encode([request.query])[0]
 
         profile = get_personal_profile(user_id)
@@ -191,11 +200,13 @@ class SummarizeRequest(BaseModel):
     conversation_ids: list[str]
     current_query: str
     email: str
+    access_token: str
     api_key: Optional[str] = None
 
 class EngineerPromptRequest(BaseModel):
     email: str
     message: str
+    access_token: str
     conversation_ids: Optional[list[str]] = None
     api_key: Optional[str] = None
     template: Optional[str] = None
@@ -204,20 +215,24 @@ class EngineerPromptRequest(BaseModel):
 
 class ContextPreviewRequest(BaseModel):
     email: str
+    access_token: str
     draft: str
     limit: int = 5
 
 
 class UpdateProfileSettingsRequest(BaseModel):
     email: str
+    access_token: str
     is_profile_enabled: bool
     profile_data: Optional[dict] = None
 
 class GetProfileSettingsRequest(BaseModel):
     email: str
+    access_token: str
 
 class PromptFeedbackRequest(BaseModel):
     email: str
+    access_token: str
     rating: int = 1  # 1 or -1
     event_type: Optional[str] = "rating"
     goal: Optional[str] = None
@@ -236,10 +251,12 @@ class PromptFeedbackRequest(BaseModel):
 
 class PersonalizationSummaryRequest(BaseModel):
     email: str
+    access_token: str
 
 
 class ConfirmPersonalizationSummaryRequest(BaseModel):
     email: str
+    access_token: str
     action: str  # confirm | correct | skip
     correction_ids: Optional[list[str]] = None
 
@@ -257,7 +274,7 @@ async def summarize(request: SummarizeRequest):
             )
 
         email = request.email.lower().strip()
-        user_id = get_or_create_user(email)
+        user_id = _user_id(email, request.access_token, request.api_key)
 
         # Get all user conversations from DB
         all_convos = get_user_conversations(user_id)
@@ -356,7 +373,7 @@ async def engineer_prompt(request: EngineerPromptRequest):
             )
 
         email = request.email.lower().strip()
-        user_id = get_or_create_user(email)
+        user_id = _user_id(email, request.access_token, request.api_key)
         skip_memory = bool(request.skip_memory)
 
         if skip_memory:
@@ -586,7 +603,7 @@ async def context_preview(request: ContextPreviewRequest):
         from services.database import search_conversations
 
         email = request.email.lower().strip()
-        user_id = get_or_create_user(email)
+        user_id = _user_id(email, request.access_token)
         draft = (request.draft or "").strip()
         if len(draft) < 3:
             return {"sources": [], "total_conversations": 0}
@@ -648,7 +665,7 @@ async def personalization_summary(request: PersonalizationSummaryRequest):
         from datetime import datetime, timezone
 
         email = request.email.lower().strip()
-        user_id = get_or_create_user(email)
+        user_id = _user_id(email, request.access_token)
         profile = get_personal_profile(user_id)
         profile_data = profile.get("profile_data") or {}
 
@@ -708,7 +725,7 @@ async def confirm_personalization_summary(request: ConfirmPersonalizationSummary
         from datetime import datetime, timezone
 
         email = request.email.lower().strip()
-        user_id = get_or_create_user(email)
+        user_id = _user_id(email, request.access_token)
         profile = get_personal_profile(user_id)
         profile_data = profile.get("profile_data") or {}
         action_l = (request.action or "").strip().lower()
@@ -836,7 +853,7 @@ async def update_profile_settings(request: UpdateProfileSettingsRequest):
         from services.personalization_llm import merge_popup_profile_llm
 
         email = request.email.lower().strip()
-        user_id = get_or_create_user(email)
+        user_id = _user_id(email, request.access_token)
         
         profile_data = request.profile_data
         popup_keys = {"background", "situation", "goals", "constraints", "preferences"}
@@ -865,7 +882,7 @@ async def get_profile_settings(request: GetProfileSettingsRequest):
     try:
         from services.database import get_or_create_user, get_personal_profile
         email = request.email.lower().strip()
-        user_id = get_or_create_user(email)
+        user_id = _user_id(email, request.access_token)
         profile = get_personal_profile(user_id)
         return {
             "is_profile_enabled": profile.get("is_profile_enabled", False),
@@ -887,7 +904,7 @@ async def prompt_feedback(request: PromptFeedbackRequest, background_tasks: Back
         if request.rating not in (-1, 1):
             raise HTTPException(status_code=400, detail="Rating must be 1 or -1")
         email = request.email.lower().strip()
-        user_id = get_or_create_user(email)
+        user_id = _user_id(email, request.access_token)
 
         adaptation_applied = False
         if event_type == "edit_feedback":
@@ -937,6 +954,7 @@ async def prompt_feedback(request: PromptFeedbackRequest, background_tasks: Back
 
 class UserStatsRequest(BaseModel):
     email: str
+    access_token: str
 
 class SessionRequest(BaseModel):
     email: str
@@ -954,6 +972,7 @@ class DeleteAccountRequest(BaseModel):
 
 class RecordConsentRequest(BaseModel):
     email: str
+    access_token: str
     consent_version: str
     source: str = "extension"
 
@@ -994,7 +1013,7 @@ async def record_consent(request: RecordConsentRequest):
         if not request.consent_version:
             raise HTTPException(status_code=400, detail="consent_version is required")
 
-        user_id = get_or_create_user(email)
+        user_id = _user_id(email, request.access_token)
         result = record_user_consent(user_id, request.consent_version, request.source or "extension")
         return {"success": True, "current_consent_version": CONSENT_VERSION, **result}
     except HTTPException:
@@ -1092,7 +1111,7 @@ async def user_stats(request: UserStatsRequest):
 
         supabase = get_supabase()
         email = request.email.lower().strip()
-        user_id = get_or_create_user(email)
+        user_id = _user_id(email, request.access_token)
 
         # Count conversations
         conv_result = supabase.table("knowledge_nodes")\
@@ -1171,7 +1190,7 @@ async def blend(request: BlendRequest):
     from services.database import get_user_conversations, get_or_create_user
     try:
         email = request.email.lower().strip()
-        user_id = get_or_create_user(email)
+        user_id = _user_id(email, request.access_token, request.api_key)
         all_convos = get_user_conversations(user_id)
         selected = [c for c in all_convos if c['id'] in request.conversation_ids]
         
@@ -1185,6 +1204,7 @@ async def blend(request: BlendRequest):
 
 class SaveConversationRequest(BaseModel):
     email: str
+    access_token: str
     conversation: dict
     visibility: str = 'private'
 
@@ -1247,7 +1267,7 @@ async def save_conversation(request: SaveConversationRequest, background_tasks: 
 
         supabase = get_supabase()
         email = request.email.lower().strip()
-        user_id = get_or_create_user(email)
+        user_id = _user_id(email, request.access_token)
         convo = request.conversation
 
         messages = convo.get('messages', [])
@@ -1327,6 +1347,7 @@ async def save_conversation(request: SaveConversationRequest, background_tasks: 
 
 class LoadMapRequest(BaseModel):
     email: str
+    access_token: str
 
 @app.post("/load_map")
 async def load_map(request: LoadMapRequest):
@@ -1335,7 +1356,7 @@ async def load_map(request: LoadMapRequest):
 
         supabase = get_supabase()
         email = request.email.lower().strip()
-        user_id = get_or_create_user(email)
+        user_id = _user_id(email, request.access_token)
 
         result = supabase.table("knowledge_nodes")\
             .select("*")\
@@ -1397,7 +1418,7 @@ async def load_team_map(request: LoadMapRequest):
 
         supabase = get_supabase()
         email = request.email.lower().strip()
-        user_id = get_or_create_user(email)
+        user_id = _user_id(email, request.access_token)
 
         user_result = supabase.table("users").select("company_id").eq("id", user_id).execute()
         company_id = user_result.data[0].get("company_id") if user_result.data else None
@@ -1468,6 +1489,7 @@ async def load_team_map(request: LoadMapRequest):
 
 class CompanySearchRequest(BaseModel):
     email: str
+    access_token: str
     query: str
     limit: int = 5
 
@@ -1479,7 +1501,7 @@ async def company_search(request: CompanySearchRequest):
 
         supabase = get_supabase()
         email = request.email.lower().strip()
-        user_id = get_or_create_user(email)
+        user_id = _user_id(email, request.access_token)
         print(f"[/company_search] email: {email}, user_id: {user_id}")
 
         # SELF-HEALING: Verify and correct user_id mapping
@@ -1574,20 +1596,21 @@ async def company_search(request: CompanySearchRequest):
 
 class SetVisibilityRequest(BaseModel):
     email: str
+    access_token: str
     conversation_id: str
     visibility: str
 
 @app.post("/set_visibility")
 async def set_visibility(request: SetVisibilityRequest):
     try:
-        from services.database import get_or_create_user, get_supabase
+        from services.database import get_supabase
 
         if request.visibility not in ['private', 'team']:
             return {"success": False, "reason": "Invalid visibility value"}
 
         supabase = get_supabase()
         email = request.email.lower().strip()
-        user_id = get_or_create_user(email)
+        user_id = _user_id(email, request.access_token)
 
         supabase.table("knowledge_nodes")\
             .update({"visibility": request.visibility})\
@@ -1603,6 +1626,7 @@ async def set_visibility(request: SetVisibilityRequest):
 
 class ReclusterRequest(BaseModel):
     email: str
+    access_token: str
 
 async def run_recluster(email: str):
     from services.database import get_or_create_user
@@ -1696,6 +1720,7 @@ async def run_recluster(email: str):
 @app.post("/recluster")
 async def recluster(request: ReclusterRequest):
     try:
+        _user_id(request.email.lower().strip(), request.access_token)
         return await run_recluster(request.email)
 
     except Exception as e:
@@ -1706,6 +1731,7 @@ async def recluster(request: ReclusterRequest):
 
 class ShareConversationsRequest(BaseModel):
     email: str
+    access_token: str
     visibility: str = 'team'
     conversation_ids: list = []
 
@@ -1716,7 +1742,7 @@ async def share_conversations(request: ShareConversationsRequest):
 
         supabase = get_supabase()
         email = request.email.lower().strip()
-        user_id = get_or_create_user(email)
+        user_id = _user_id(email, request.access_token)
 
         if request.visibility not in ['private', 'team', 'company']:
             return {"success": False, "reason": "Invalid visibility"}
@@ -1747,6 +1773,7 @@ async def share_conversations(request: ShareConversationsRequest):
 
 class CreateWorkspaceRequest(BaseModel):
     email: str
+    access_token: str
     workspace_name: str
 
 @app.post("/create_workspace")
@@ -1759,7 +1786,7 @@ async def create_workspace(request: CreateWorkspaceRequest):
 
         supabase = get_supabase()
         email = request.email.lower().strip()
-        user_id = get_or_create_user(email)
+        user_id = _user_id(email, request.access_token)
 
         user_result = supabase.table("users")\
             .select("company_id")\
@@ -1809,6 +1836,7 @@ async def create_workspace(request: CreateWorkspaceRequest):
 
 class JoinWorkspaceRequest(BaseModel):
     email: str
+    access_token: str
     invite_code: str
 
 @app.post("/join_workspace")
@@ -1818,7 +1846,7 @@ async def join_workspace(request: JoinWorkspaceRequest):
 
         supabase = get_supabase()
         email = request.email.lower().strip()
-        user_id = get_or_create_user(email)
+        user_id = _user_id(email, request.access_token)
 
         user_result = supabase.table("users")\
             .select("company_id")\
@@ -1859,6 +1887,7 @@ async def join_workspace(request: JoinWorkspaceRequest):
 
 class WorkspaceInfoRequest(BaseModel):
     email: str
+    access_token: str
 
 @app.post("/workspace_info")
 async def workspace_info(request: WorkspaceInfoRequest):
@@ -1867,7 +1896,7 @@ async def workspace_info(request: WorkspaceInfoRequest):
 
         supabase = get_supabase()
         email = request.email.lower().strip()
-        user_id = get_or_create_user(email)
+        user_id = _user_id(email, request.access_token)
 
         user_result = supabase.table("users")\
             .select("company_id, role")\
@@ -1914,6 +1943,7 @@ async def workspace_info(request: WorkspaceInfoRequest):
 
 class LeaveWorkspaceRequest(BaseModel):
     email: str
+    access_token: str
 
 @app.post("/leave_workspace")
 async def leave_workspace(request: LeaveWorkspaceRequest):
@@ -1922,7 +1952,7 @@ async def leave_workspace(request: LeaveWorkspaceRequest):
 
         supabase = get_supabase()
         email = request.email.lower().strip()
-        user_id = get_or_create_user(email)
+        user_id = _user_id(email, request.access_token)
 
         supabase.table("users").update({
             "company_id": None,

@@ -16,6 +16,17 @@ export async function establishSession({ email, apiKey, accessToken }) {
   return response.json()
 }
 
+export async function ensureAccessToken(email, apiKey) {
+  const stored = sessionStorage.getItem('mw_access_token') || ''
+  const data = await establishSession({
+    email,
+    apiKey: apiKey || undefined,
+    accessToken: stored || undefined
+  })
+  sessionStorage.setItem('mw_access_token', data.access_token)
+  return data.access_token
+}
+
 export async function deleteConversation({ email, accessToken, conversationId }) {
   const response = await fetch(`${BASE_URL}/delete_conversation`, {
     method: 'POST',
@@ -46,12 +57,13 @@ export async function revokeTeamSharing({ email, accessToken }) {
   return response.json()
 }
 
-export async function recordConsent({ email, consentVersion, source = 'web_app' }) {
+export async function recordConsent({ email, accessToken, consentVersion, source = 'web_app' }) {
   const response = await fetch(`${BASE_URL}/record_consent`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       email,
+      access_token: accessToken,
       consent_version: consentVersion,
       source
     })
@@ -63,13 +75,14 @@ export async function recordConsent({ email, consentVersion, source = 'web_app' 
   return response.json()
 }
 
-export async function processFiles({ claudeFile, chatgptFile, apiKey, email }) {
+export async function processFiles({ claudeFile, chatgptFile, apiKey, email, accessToken }) {
   const formData = new FormData()
 
   if (claudeFile) formData.append('claude_file', claudeFile)
   if (chatgptFile) formData.append('chatgpt_file', chatgptFile)
   formData.append('api_key', apiKey)
   formData.append('email', email)
+  if (accessToken) formData.append('access_token', accessToken)
 
   const response = await fetch(`${BASE_URL}/process`, {
     method: 'POST',
@@ -91,11 +104,11 @@ export async function processFiles({ claudeFile, chatgptFile, apiKey, email }) {
   return response.json()
 }
 
-export async function loadExistingMap(email) {
+export async function loadExistingMap({ email, accessToken }) {
   const response = await fetch(`${BASE_URL}/load_map`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email })
+    body: JSON.stringify({ email, access_token: accessToken })
   })
 
   if (!response.ok) {
@@ -105,11 +118,12 @@ export async function loadExistingMap(email) {
 
   return response.json()
 }
-export async function loadTeamMap(email) {
+
+export async function loadTeamMap({ email, accessToken }) {
   const response = await fetch(`${BASE_URL}/load_team_map`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email })
+    body: JSON.stringify({ email, access_token: accessToken })
   })
 
   if (!response.ok) {
@@ -125,11 +139,11 @@ export async function healthCheck() {
   return response.json()
 }
 
-export async function searchConversations({ email, query }) {
+export async function searchConversations({ email, accessToken, query }) {
   const response = await fetch(`${BASE_URL}/search`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, query })
+    body: JSON.stringify({ email, access_token: accessToken, query })
   })
   if (!response.ok) {
     const error = await response.json().catch(() => ({}))
@@ -138,12 +152,13 @@ export async function searchConversations({ email, query }) {
   return response.json()
 }
 
-export async function engineerPrompt({ email, message, conversationIds }) {
+export async function engineerPrompt({ email, accessToken, message, conversationIds }) {
   const response = await fetch(`${BASE_URL}/engineer_prompt`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       email,
+      access_token: accessToken,
       message,
       conversation_ids: conversationIds && conversationIds.length > 0 ? conversationIds : null
     })

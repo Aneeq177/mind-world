@@ -124,8 +124,7 @@ def establish_session(email: str, access_token: Optional[str] = None, api_key: O
 
     - Valid existing token → rotate and return new token
     - Valid API key matching stored hash (or first enrollment) → issue token
-    - New account with no stored data → issue token without verification
-    - Otherwise → 401
+    - Otherwise → 401 (email alone is never sufficient)
     """
     from services.database import get_or_create_user
 
@@ -147,20 +146,43 @@ def establish_session(email: str, access_token: Optional[str] = None, api_key: O
             detail="Invalid Anthropic API key. Use the key saved in extension Advanced Settings.",
         )
 
-    if not user_has_stored_data(user_id):
-        new_token = issue_session_token(user_id)
-        return {"access_token": new_token, "refreshed": False}
-
     raise HTTPException(
         status_code=401,
         detail=(
-            "Verification required for accounts with saved data. "
-            "Add your Anthropic API key in Advanced Settings and reconnect, "
-            "or open the extension on a device where you are already signed in."
+            "Verification required. Add your Anthropic API key in the extension "
+            "and reconnect, or sign in on a device where you are already connected."
         ),
     )
 
 
+def authenticate_user(
+    email: str,
+    access_token: Optional[str] = None,
+    api_key: Optional[str] = None,
+) -> str:
+    """Return user_id after verifying session token or API key."""
+    email = email.lower().strip()
+    token = (access_token or "").strip()
+    key = (api_key or "").strip()
+
+    if token:
+        return verify_session_token(email, token)
+
+    if key:
+        from services.database import get_or_create_user
+
+        user_id = get_or_create_user(email)
+        user = _get_user_auth_row(email) or {}
+        if verify_api_key_for_user(user_id, key, user.get("api_key_hash")):
+            return user_id
+        raise HTTPException(status_code=401, detail="Invalid Anthropic API key.")
+
+    raise HTTPException(
+        status_code=401,
+        detail="Sign in required. Connect in the Mind World extension with your API key.",
+    )
+
+
 def require_authenticated_user(email: str, access_token: Optional[str]) -> str:
-    """Gate export/delete — must present a valid session token."""
+    """Gate sensitive account operations — must present a valid session token."""
     return verify_session_token(email, access_token or "")
