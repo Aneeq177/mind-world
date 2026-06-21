@@ -6,10 +6,11 @@
   const POPOVER_ID = 'mw-improve-popover-host'
   const MAX_CHIPS = 3
   const FAVORITES_KEY = 'mw_template_favorites'
+  const USAGE_KEY = 'mw_template_usage'
 
   let cachedTemplates = []
   let cachedCategories = []
-  let libraryState = { intent: '', category: '', tier: '', favoritesOnly: false }
+  let libraryState = { intent: '', category: '', tier: '', favoritesOnly: false, sort: 'popular' }
   let chipsDebounce = null
   let chipsRequestId = 0
   let refreshDockChips = null
@@ -274,6 +275,12 @@
       }
       .mw-pop .lib-pill.pro-pill { border-color: rgba(251,191,36,0.4); color: #fcd34d; }
       .mw-pop .lib-pill.pro-pill.active { background: rgba(251,191,36,0.2); }
+      .mw-pop .lib-sort {
+        display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+      }
+      .mw-pop .lib-sort-label {
+        font-size: 10px; color: #666; margin-right: 2px;
+      }
       .mw-pop .lib-list {
         max-height: 280px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;
       }
@@ -433,7 +440,7 @@
     popoverState.mode = 'closed'
     improveInFlight = false
     setImproveButtonBusy(false)
-    libraryState = { q: '', category: '', tier: '', favoritesOnly: false }
+    libraryState = { intent: '', category: '', tier: '', favoritesOnly: false, sort: libraryState.sort || 'popular' }
   }
 
   function openPopover(mode, html, actionsHtml) {
@@ -821,12 +828,39 @@
     return stored[FAVORITES_KEY] || []
   }
 
+  async function getLocalUsage() {
+    const stored = await chrome.storage.local.get(USAGE_KEY)
+    return stored[USAGE_KEY] || {}
+  }
+
+  function templateUsageScore(t, localUsage) {
+    const name = t && t.name
+    return (localUsage[name] || 0) * 10 + (t.use_count || 0)
+  }
+
+  function sortTemplates(list, sort, favs, localUsage) {
+    const out = list.slice()
+    if (sort === 'az') {
+      out.sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+      return out
+    }
+    out.sort((a, b) => {
+      const pinDiff = (favs.includes(b.name) ? 1 : 0) - (favs.includes(a.name) ? 1 : 0)
+      if (pinDiff) return pinDiff
+      const scoreDiff = templateUsageScore(b, localUsage) - templateUsageScore(a, localUsage)
+      if (scoreDiff) return scoreDiff
+      return (a.name || '').localeCompare(b.name || '')
+    })
+    return out
+  }
+
   async function toggleFavorite(name) {
     const favs = await getFavorites()
     const idx = favs.indexOf(name)
     if (idx >= 0) favs.splice(idx, 1)
     else favs.push(name)
     await chrome.storage.local.set({ [FAVORITES_KEY]: favs })
+    if (typeof refreshDockChips === 'function') refreshDockChips()
     return favs
   }
 
@@ -908,7 +942,7 @@
     }
   }
 
-  function filterTemplatesLocal(list, q, category, tier, favoritesOnly, favs) {
+  function filterTemplatesLocal(list, q, category, tier, favoritesOnly, favs, sort, localUsage) {
     let out = list.slice()
     if (category) out = out.filter(t => (t.category || '') === category)
     if (tier) out = out.filter(t => (t.tier || 'standard').toLowerCase() === tier)
@@ -922,8 +956,7 @@
         (t.tags || []).some(tag => (tag || '').toLowerCase().includes(needle))
       )
     }
-    out.sort((a, b) => (b.use_count || 0) - (a.use_count || 0) || (a.name || '').localeCompare(b.name || ''))
-    return out
+    return sortTemplates(out, sort || 'popular', favs, localUsage || {})
   }
 
   async function fetchSuggestedTemplates(draft, limit, category, tier) {
@@ -973,6 +1006,7 @@
 
     async function renderLibrary() {
       const favs = await getFavorites()
+      const localUsage = await getLocalUsage()
       const body = popoverShadow.getElementById('mw-pop-body')
       if (!body) return
 
@@ -980,17 +1014,26 @@
       const draft = getSuggestionDraft()
 
       let pillsHtml = `<button type="button" class="lib-pill${!browsing ? ' active' : ''}" data-for-you="1">For you</button>`
-      pillsHtml += `<button type="button" class="lib-pill${libraryState.favoritesOnly ? ' active' : ''}" data-fav="1">Favorites</button>`
+      pillsHtml += `<button type="button" class="lib-pill${libraryState.favoritesOnly ? ' active' : ''}" data-fav="1">Pinned</button>`
       pillsHtml += `<button type="button" class="lib-pill pro-pill${libraryState.tier === 'pro' ? ' active' : ''}" data-tier="pro">Pro</button>`
       cachedCategories.slice(0, 10).forEach(c => {
         const active = libraryState.category === c.category ? ' active' : ''
         pillsHtml += `<button type="button" class="lib-pill${active}" data-cat="${escapeHtml(c.category)}">${escapeHtml(c.category)} (${c.count})</button>`
       })
 
+      const sortHtml = `
+        <div class="lib-sort" id="mw-lib-sort">
+          <span class="lib-sort-label">Sort:</span>
+          <button type="button" class="lib-pill${libraryState.sort === 'popular' ? ' active' : ''}" data-sort="popular">Most used</button>
+          <button type="button" class="lib-pill${libraryState.sort === 'az' ? ' active' : ''}" data-sort="az">A–Z</button>
+        </div>
+      `
+
       body.innerHTML = `
         <input type="text" class="lib-search" id="mw-lib-intent" placeholder="Describe what you want help with (optional)..." value="${escapeHtml(libraryState.intent)}" />
         <p class="note" style="margin:0;text-align:left;">Mind World picks templates from what you type — no keywords needed.</p>
         <div class="lib-filters" id="mw-lib-filters">${pillsHtml}</div>
+        ${sortHtml}
         <div class="lib-list" id="mw-lib-list"><p class="lib-loading">Loading...</p></div>
         <p class="note" id="mw-lib-count"></p>
       `
@@ -1009,6 +1052,11 @@
 
       popoverShadow.querySelectorAll('.lib-pill').forEach(btn => {
         btn.onclick = async () => {
+          if (btn.dataset.sort) {
+            libraryState.sort = btn.dataset.sort
+            await renderLibrary()
+            return
+          }
           if (btn.dataset.forYou) {
             libraryState.category = ''
             libraryState.tier = ''
@@ -1044,9 +1092,11 @@
             libraryState.category,
             libraryState.tier,
             libraryState.favoritesOnly,
-            favs
+            favs,
+            libraryState.sort,
+            localUsage
           )
-          renderList(filtered, listEl, countEl, favs, filtered)
+          renderList(filtered, listEl, countEl, favs, filtered, localUsage)
           return
         }
 
@@ -1058,28 +1108,35 @@
           libraryState.tier
         )
         if (reqId !== suggestRequestId) return
-        renderList(suggestions, listEl, countEl, favs, suggestions)
+        const sortedSuggestions = sortTemplates(suggestions, libraryState.sort, favs, localUsage)
+        renderList(sortedSuggestions, listEl, countEl, favs, sortedSuggestions, localUsage)
       }
 
-      function renderList(filtered, listEl, countEl, favs, clickList) {
+      function renderList(filtered, listEl, countEl, favs, clickList, localUsage) {
         let listHtml = ''
         if (!filtered.length) {
-          listHtml = '<p class="lib-empty">No templates yet. Start typing in the chat box and we\'ll suggest some.</p>'
+          listHtml = libraryState.favoritesOnly
+            ? '<p class="lib-empty">No pinned templates yet. Click the pin on any template to save it here.</p>'
+            : '<p class="lib-empty">No templates yet. Start typing in the chat box and we\'ll suggest some.</p>'
         } else {
           if (!browsing && draft) {
             listHtml += '<div class="lib-section-label">Picked for you</div>'
+          } else if (libraryState.favoritesOnly) {
+            listHtml += '<div class="lib-section-label">Pinned templates</div>'
           }
           filtered.slice(0, 60).forEach(t => {
             const isPro = (t.tier || '').toLowerCase() === 'pro' || isProTemplate(t)
-            const starred = favs.includes(t.name)
+            const pinned = favs.includes(t.name)
             const reason = t.suggest_reason ? `<div class="lib-item-reason">${escapeHtml(t.suggest_reason)}</div>` : ''
+            const uses = localUsage[t.name] || t.use_count || 0
+            const useLabel = uses ? ` · ${uses} use${uses !== 1 ? 's' : ''}` : ''
             listHtml += `<div class="lib-item${isPro ? ' pro' : ''}" data-name="${escapeHtml(t.name)}">
-              <button type="button" class="lib-star${starred ? ' on' : ''}" data-star="${escapeHtml(t.name)}" title="Favorite">${starred ? '\u2605' : '\u2606'}</button>
+              <button type="button" class="lib-star${pinned ? ' on' : ''}" data-star="${escapeHtml(t.name)}" title="${pinned ? 'Unpin' : 'Pin template'}">${pinned ? '\u2605' : '\u2606'}</button>
               <div class="lib-item-body">
                 <div class="lib-item-name">${escapeHtml(t.name)}</div>
                 <div class="lib-item-desc">${escapeHtml(t.description || '')}</div>
                 ${reason}
-                <div class="lib-item-meta">${escapeHtml(t.category || '')}${t.use_count ? ' \u00b7 ' + t.use_count + ' uses' : ''}</div>
+                <div class="lib-item-meta">${escapeHtml(t.category || '')}${useLabel}</div>
               </div>
             </div>`
           })
@@ -1087,7 +1144,7 @@
         listEl.innerHTML = listHtml
         if (countEl) {
           countEl.textContent = browsing
-            ? `${filtered.length} template${filtered.length !== 1 ? 's' : ''} in browse`
+            ? `${filtered.length} template${filtered.length !== 1 ? 's' : ''}${libraryState.favoritesOnly ? ' pinned' : ''}`
             : `${filtered.length} suggestion${filtered.length !== 1 ? 's' : ''} from your text`
         }
 
@@ -1223,6 +1280,8 @@
 
       const list = cachedTemplates.length ? cachedTemplates : FALLBACK_TEMPLATES
       const draft = getInputText(anchoredInput)
+      const favs = await getFavorites()
+      const localUsage = await getLocalUsage()
       let quick = []
       const reqId = ++chipsRequestId
 
@@ -1253,9 +1312,18 @@
       }
 
       if (!quick.length) {
-        const favs = await getFavorites()
-        const favTemplates = list.filter(t => favs.includes(t.name) && !isProTemplate(t))
-        const standard = list.filter(t => !isProTemplate(t))
+        const favTemplates = sortTemplates(
+          list.filter(t => favs.includes(t.name) && !isProTemplate(t)),
+          'popular',
+          favs,
+          localUsage
+        )
+        const standard = sortTemplates(
+          list.filter(t => !isProTemplate(t)),
+          'popular',
+          favs,
+          localUsage
+        )
         quick = favTemplates.length
           ? favTemplates.slice(0, MAX_CHIPS)
           : standard.slice(0, MAX_CHIPS)
@@ -1266,7 +1334,9 @@
         chip.type = 'button'
         chip.className = 'mw-quick-chip'
         const shortName = t.name.replace(/ \(.*\)$/, '').slice(0, 22)
-        chip.textContent = draft.length >= 3 ? '✦ ' + shortName : shortName
+        const pinned = favs.includes(t.name)
+        const prefix = draft.length >= 3 ? '✦ ' : (pinned ? '📌 ' : '')
+        chip.textContent = prefix + shortName
         const reason = t.suggest_reason ? ' — ' + t.suggest_reason : ''
         chip.title = (t.description || t.name) + reason
         chip.style.cssText = `
@@ -1319,7 +1389,7 @@
       border: 1px solid rgba(124,58,237,0.4); background: rgba(124,58,237,0.12); color: #c4b5fd;
     `
     bindDockControl(libraryBtn, () => {
-      libraryState = { intent: '', category: '', tier: '', favoritesOnly: false }
+      libraryState = { intent: '', category: '', tier: '', favoritesOnly: false, sort: libraryState.sort || 'popular' }
       openLibrary()
     })
 

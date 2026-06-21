@@ -550,9 +550,29 @@ async function handleSuggestTemplates(draft, limit, category, tier) {
   }
 }
 
+const TEMPLATE_USAGE_KEY = 'mw_template_usage'
+
+async function incrementLocalTemplateUsage(name) {
+  if (!name) return
+  const stored = await chrome.storage.local.get(TEMPLATE_USAGE_KEY)
+  const usage = stored[TEMPLATE_USAGE_KEY] || {}
+  usage[name] = (usage[name] || 0) + 1
+  await chrome.storage.local.set({ [TEMPLATE_USAGE_KEY]: usage })
+
+  const cacheKey = 'mw_templates_v3'
+  const cached = await chrome.storage.local.get([cacheKey])
+  if (cached[cacheKey]) {
+    const templates = cached[cacheKey].map(t =>
+      t.name === name ? { ...t, use_count: (t.use_count || 0) + 1 } : t
+    )
+    await chrome.storage.local.set({ [cacheKey]: templates })
+  }
+}
+
 async function handleTrackTemplateUse(name) {
   try {
     if (!name) return { error: 'missing_name' }
+    await incrementLocalTemplateUsage(name)
     const response = await fetch(`${API_BASE}/templates/track_use`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
