@@ -93,7 +93,6 @@ export default function Landing() {
     const params = new URLSearchParams(window.location.search)
     const emailParam = params.get('email')
     const viewParam = params.get('view')
-    const shouldAutoLoad = params.get('autoLoad') === 'true'
     const storedEmail = sessionStorage.getItem('mw_email') || ''
     const storedToken = sessionStorage.getItem('mw_access_token') || ''
 
@@ -103,6 +102,9 @@ export default function Landing() {
     if (emailParam || viewParam === 'upload') {
       setView('upload')
     }
+
+    // Post-sign-in dashboard bootstrap runs in App.jsx
+    if (params.get('postAuth') === 'true') return
 
     if (!storedEmail || !storedToken) return
 
@@ -124,13 +126,6 @@ export default function Landing() {
         if (mapData.has_data && mapData.total > 0) {
           setHasExistingData(true)
           setExistingCount(mapData.total)
-          if (shouldAutoLoad) {
-            setCredentials(storedEmail, apiKey || '')
-            setConversations(mapData.conversations, mapData.sources)
-            setPhase('map')
-            const cleanParams = viewParam === 'upload' ? '?view=upload' : ''
-            window.history.replaceState({}, '', `${window.location.pathname}${cleanParams}`)
-          }
         } else {
           setHasExistingData(false)
           setExistingCount(0)
@@ -144,6 +139,47 @@ export default function Landing() {
 
     return () => { cancelled = true }
   }, [])
+
+  useEffect(() => {
+    if (phase === 'processing' && sessionStorage.getItem('mw_post_auth') === '1') {
+      setLoadingMsg('Loading your dashboard...')
+    }
+  }, [phase])
+
+  useEffect(() => {
+    if (phase !== 'landing') return
+
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('view') === 'upload') {
+      setView('upload')
+    }
+
+    const storedEmail = sessionStorage.getItem('mw_email') || ''
+    const storedToken = sessionStorage.getItem('mw_access_token') || ''
+    if (!storedEmail || !storedToken || signedIn) return
+
+    setEmail(storedEmail)
+    setSignedIn(true)
+
+    let cancelled = false
+    ;(async () => {
+      setCheckingEmail(true)
+      try {
+        const accountData = await fetchAuthAccount({
+          email: storedEmail,
+          accessToken: storedToken
+        }).catch(() => null)
+        if (cancelled) return
+        if (accountData) {
+          setHasPassword(!!accountData.has_password)
+        }
+      } finally {
+        if (!cancelled) setCheckingEmail(false)
+      }
+    })()
+
+    return () => { cancelled = true }
+  }, [phase, signedIn])
 
   async function persistSession(emailValue, accessToken) {
     sessionStorage.setItem('mw_email', emailValue)

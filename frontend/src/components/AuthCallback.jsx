@@ -30,7 +30,7 @@ export default function AuthCallback() {
       return
     }
 
-    navigate('/?view=upload&autoLoad=true', { replace: true })
+    navigate('/?postAuth=true', { replace: true })
   }, [navigate, searchParams])
 
   return (
