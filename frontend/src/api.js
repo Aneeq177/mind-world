@@ -30,6 +30,34 @@ export async function register({ email, password }) {
   return response.json()
 }
 
+export async function fetchAuthAccount({ email, accessToken }) {
+  const response = await fetch(`${BASE_URL}/auth/account`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, access_token: accessToken })
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(error.detail || 'Failed to load account info')
+  }
+  return response.json()
+}
+
+export async function setAccountPassword({ email, accessToken, password, currentPassword }) {
+  const body = { email, access_token: accessToken, password }
+  if (currentPassword) body.current_password = currentPassword
+  const response = await fetch(`${BASE_URL}/auth/set_password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(error.detail || 'Failed to set password')
+  }
+  return response.json()
+}
+
 export async function establishSession({ email, apiKey, accessToken }) {
   const body = { email }
   if (apiKey) body.api_key = apiKey

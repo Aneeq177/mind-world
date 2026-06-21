@@ -95,6 +95,22 @@
         <div id="user-email"></div>
       </div>
 
+      <div id="password-setup-section" style="display:none; margin-top:12px; padding:12px; background:rgba(124,58,237,0.08); border-radius:8px; border:1px solid rgba(124,58,237,0.25);">
+        <div style="font-size:0.82rem; color:#a78bfa; font-weight:600; margin-bottom:4px;">Set a Mind World password</div>
+        <div style="font-size:0.72rem; color:#888; line-height:1.5; margin-bottom:10px;">
+          You signed in with Google. Add a password to sign in on devices without Gmail.
+        </div>
+        <div class="input-group" style="margin-bottom:8px;">
+          <input type="password" id="setup-password-input" placeholder="New password (8+ characters)" autocomplete="new-password" />
+        </div>
+        <div class="input-group" style="margin-bottom:8px;">
+          <input type="password" id="setup-password-confirm" placeholder="Confirm password" autocomplete="new-password" />
+        </div>
+        <button type="button" id="setup-password-btn" style="width:100%; padding:10px; border:none; border-radius:6px; background:#7c3aed; color:white; font-size:0.82rem; font-weight:600; cursor:pointer; margin-bottom:6px;">Save password</button>
+        <button type="button" id="skip-password-setup-btn" style="width:100%; padding:0; border:none; background:none; color:#666; font-size:0.72rem; cursor:pointer;">Skip for now</button>
+        <div id="password-setup-status" style="display:none; font-size:0.72rem; margin-top:8px;"></div>
+      </div>
+
       <!-- Data & Privacy — pinned near top so new users see controls during onboarding -->
       <div id="privacy-section" style="margin-top:12px; padding:12px; background:rgba(255,255,255,0.03); border-radius:8px; border:1px solid rgba(255,255,255,0.06);">
         <div style="font-size:0.8rem; color:white; font-weight:600; margin-bottom:4px;">Data &amp; Privacy</div>

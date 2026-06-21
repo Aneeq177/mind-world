@@ -1004,6 +1004,18 @@ class GoogleTokenRequest(BaseModel):
     id_token: str
 
 
+class AuthAccountRequest(BaseModel):
+    email: str
+    access_token: str
+
+
+class SetPasswordRequest(BaseModel):
+    email: str
+    access_token: str
+    password: str
+    current_password: Optional[str] = None
+
+
 @app.post("/auth/register")
 async def auth_register(request: RegisterRequest):
     try:
@@ -1084,6 +1096,35 @@ async def auth_google_signin_callback(code: str = "", state: str = "", error: st
         return RedirectResponse(url=f"{frontend_url}/auth/callback?error={urllib.parse.quote(str(exc.detail))}")
     except Exception as exc:
         return RedirectResponse(url=f"{frontend_url}/auth/callback?error={urllib.parse.quote(str(exc))}")
+
+
+@app.post("/auth/account")
+async def auth_account(request: AuthAccountRequest):
+    try:
+        from services.auth import get_account_auth_info
+
+        return get_account_auth_info(request.email, request.access_token)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/auth/set_password")
+async def auth_set_password(request: SetPasswordRequest):
+    try:
+        from services.auth import set_account_password
+
+        return set_account_password(
+            request.email,
+            request.access_token,
+            request.password,
+            current_password=request.current_password,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/auth/session")

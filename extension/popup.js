@@ -49,6 +49,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   const passwordInput = document.getElementById('password-input-login')
   const toggleAuthMode = document.getElementById('toggle-auth-mode')
   const googleSigninBtn = document.getElementById('google-signin-btn')
+  const passwordSetupSection = document.getElementById('password-setup-section')
+  const setupPasswordInput = document.getElementById('setup-password-input')
+  const setupPasswordConfirm = document.getElementById('setup-password-confirm')
+  const setupPasswordBtn = document.getElementById('setup-password-btn')
+  const skipPasswordSetupBtn = document.getElementById('skip-password-setup-btn')
+  const passwordSetupStatus = document.getElementById('password-setup-status')
 
   function resetFormAfterAccountRemoval() {
     emailInput.value = ''
@@ -123,6 +129,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     showConnectedView(email, apiKey)
     loadStats(email)
+    loadAuthAccount(email)
     saveBtn.disabled = false
     saveBtn.textContent = isRegisterMode ? 'Create account' : 'Sign in'
   }
@@ -183,6 +190,85 @@ document.addEventListener('DOMContentLoaded', async () => {
     })
   }
 
+  async function loadAuthAccount(email) {
+    if (!email || !passwordSetupSection) return
+    try {
+      const accessToken = await getAccessToken()
+      if (!accessToken) return
+      const res = await fetch(`${API_BASE}/auth/account`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, access_token: accessToken })
+      })
+      if (!res.ok) return
+      const data = await res.json()
+      const dismissed = (await chrome.storage.local.get(['mw_password_setup_dismissed'])).mw_password_setup_dismissed
+      const showSetup = !data.has_password && !dismissed
+      passwordSetupSection.style.display = showSetup ? 'block' : 'none'
+    } catch {
+      passwordSetupSection.style.display = 'none'
+    }
+  }
+
+  function showPasswordSetupStatus(message, isError = false) {
+    if (!passwordSetupStatus) return
+    passwordSetupStatus.textContent = message
+    passwordSetupStatus.style.display = 'block'
+    passwordSetupStatus.style.color = isError ? '#ff6666' : '#34d399'
+  }
+
+  if (setupPasswordBtn) {
+    setupPasswordBtn.addEventListener('click', async () => {
+      if (!currentEmail) return
+      const password = setupPasswordInput ? setupPasswordInput.value : ''
+      const confirm = setupPasswordConfirm ? setupPasswordConfirm.value : ''
+      if (!password || password.length < 8) {
+        showPasswordSetupStatus('Password must be at least 8 characters.', true)
+        return
+      }
+      if (password !== confirm) {
+        showPasswordSetupStatus('Passwords do not match.', true)
+        return
+      }
+      setupPasswordBtn.disabled = true
+      setupPasswordBtn.textContent = 'Saving...'
+      try {
+        const accessToken = await getAccessToken()
+        if (!accessToken) throw new Error('Session expired. Sign in again.')
+        const res = await fetch(`${API_BASE}/auth/set_password`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: currentEmail,
+            access_token: accessToken,
+            password
+          })
+        })
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}))
+          throw new Error(err.detail || 'Failed to set password')
+        }
+        if (setupPasswordInput) setupPasswordInput.value = ''
+        if (setupPasswordConfirm) setupPasswordConfirm.value = ''
+        await chrome.storage.local.remove(['mw_password_setup_dismissed'])
+        passwordSetupSection.style.display = 'none'
+        showPasswordSetupStatus('Password saved. You can sign in with email and password anywhere.')
+      } catch (err) {
+        showPasswordSetupStatus(err.message || 'Failed to set password', true)
+      } finally {
+        setupPasswordBtn.disabled = false
+        setupPasswordBtn.textContent = 'Save password'
+      }
+    })
+  }
+
+  if (skipPasswordSetupBtn) {
+    skipPasswordSetupBtn.addEventListener('click', async () => {
+      await chrome.storage.local.set({ mw_password_setup_dismissed: true })
+      if (passwordSetupSection) passwordSetupSection.style.display = 'none'
+    })
+  }
+
   if (googleSigninBtn) {
     googleSigninBtn.addEventListener('click', () => {
       if (consentCheckbox && !consentCheckbox.checked) {
@@ -206,6 +292,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
       showConnectedView(stored.mw_email, stored.mw_api_key || null)
       loadStats(stored.mw_email)
+      loadAuthAccount(stored.mw_email)
       loginView.style.display = 'none'
       connectedView.style.display = 'block'
     })
@@ -1026,6 +1113,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const uploadUrl = `${UPLOAD_BASE}?email=${encodeURIComponent(email)}`
     if (openMap) openMap.href = uploadUrl
     if (manageConversationsLink) manageConversationsLink.href = uploadUrl
+    loadAuthAccount(email)
   }
 
   async function loadStats(email) {

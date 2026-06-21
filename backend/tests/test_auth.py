@@ -7,11 +7,13 @@ from fastapi import HTTPException
 from services.auth import (
     authenticate_user,
     establish_session,
+    get_account_auth_info,
     hash_password,
     hash_secret,
     login_with_password,
     register_with_password,
     require_authenticated_user,
+    set_account_password,
     verify_password,
     verify_session_token,
 )
@@ -84,3 +86,44 @@ def test_login_with_password_rejects_bad_password(mock_auth_row):
     with pytest.raises(HTTPException) as exc:
         login_with_password("user@example.com", "wrong-password")
     assert exc.value.status_code == 401
+
+
+@patch("services.auth.require_authenticated_user", return_value="user-1")
+@patch("services.auth._get_user_auth_row")
+def test_get_account_auth_info(mock_auth_row, mock_require):
+    mock_auth_row.return_value = {
+        "id": "user-1",
+        "password_hash": None,
+        "google_id": "google-123",
+    }
+    info = get_account_auth_info("user@example.com", "tok")
+    assert info["has_password"] is False
+    assert info["has_google"] is True
+
+
+@patch("services.auth.require_authenticated_user", return_value="user-1")
+@patch("services.auth._get_user_auth_row")
+def test_set_account_password_for_google_user(mock_auth_row, mock_require):
+    mock_auth_row.return_value = {
+        "id": "user-1",
+        "password_hash": None,
+        "google_id": "google-123",
+    }
+    mock_supabase = MagicMock()
+    with patch.dict("sys.modules", {"services.database": MagicMock(get_supabase=lambda: mock_supabase)}):
+        result = set_account_password("user@example.com", "tok", "new-password-1")
+    assert result["success"] is True
+    assert result["has_password"] is True
+    mock_supabase.table.return_value.update.return_value.eq.return_value.execute.assert_called_once()
+
+
+@patch("services.auth.require_authenticated_user", return_value="user-1")
+@patch("services.auth._get_user_auth_row")
+def test_set_account_password_requires_current_password_when_set(mock_auth_row, mock_require):
+    mock_auth_row.return_value = {
+        "id": "user-1",
+        "password_hash": hash_password("existing-password"),
+    }
+    with pytest.raises(HTTPException) as exc:
+        set_account_password("user@example.com", "tok", "new-password-1")
+    assert exc.value.status_code == 400

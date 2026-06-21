@@ -367,3 +367,47 @@ def authenticate_user(
 def require_authenticated_user(email: str, access_token: Optional[str]) -> str:
     """Gate sensitive account operations — must present a valid session token."""
     return verify_session_token(email, access_token or "")
+
+
+def get_account_auth_info(email: str, access_token: str) -> dict:
+    """Return whether the signed-in user has password and/or Google login linked."""
+    require_authenticated_user(email, access_token)
+    user = _get_user_auth_row(email)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+    return {
+        "email": email.lower().strip(),
+        "has_password": bool(user.get("password_hash")),
+        "has_google": bool(user.get("google_id")),
+    }
+
+
+def set_account_password(
+    email: str,
+    access_token: str,
+    password: str,
+    current_password: Optional[str] = None,
+) -> dict:
+    """Set or change the Mind World password for a signed-in user."""
+    require_authenticated_user(email, access_token)
+    user = _get_user_auth_row(email)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    if len(password or "") < MIN_PASSWORD_LENGTH:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Password must be at least {MIN_PASSWORD_LENGTH} characters.",
+        )
+
+    if user.get("password_hash"):
+        if not current_password:
+            raise HTTPException(status_code=400, detail="Current password required to change your password.")
+        if not verify_password(current_password, user["password_hash"]):
+            raise HTTPException(status_code=401, detail="Current password is incorrect.")
+
+    from services.database import get_supabase
+
+    supabase = get_supabase()
+    supabase.table("users").update({"password_hash": hash_password(password)}).eq("id", user["id"]).execute()
+    return {"success": True, "has_password": True}
