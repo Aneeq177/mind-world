@@ -50,10 +50,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   const toggleAuthMode = document.getElementById('toggle-auth-mode')
   const googleSigninBtn = document.getElementById('google-signin-btn')
   const passwordSetupSection = document.getElementById('password-setup-section')
+  const connectedMainContent = document.getElementById('connected-main-content')
   const setupPasswordInput = document.getElementById('setup-password-input')
   const setupPasswordConfirm = document.getElementById('setup-password-confirm')
   const setupPasswordBtn = document.getElementById('setup-password-btn')
-  const skipPasswordSetupBtn = document.getElementById('skip-password-setup-btn')
+  const passwordSetupSignoutBtn = document.getElementById('password-setup-signout-btn')
   const passwordSetupStatus = document.getElementById('password-setup-status')
 
   function resetFormAfterAccountRemoval() {
@@ -190,6 +191,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     })
   }
 
+  function setPasswordSetupRequired(required) {
+    if (passwordSetupSection) passwordSetupSection.style.display = required ? 'block' : 'none'
+    if (connectedMainContent) connectedMainContent.style.display = required ? 'none' : 'block'
+  }
+
   async function loadAuthAccount(email) {
     if (!email || !passwordSetupSection) return
     try {
@@ -202,11 +208,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       })
       if (!res.ok) return
       const data = await res.json()
-      const dismissed = (await chrome.storage.local.get(['mw_password_setup_dismissed'])).mw_password_setup_dismissed
-      const showSetup = !data.has_password && !dismissed
-      passwordSetupSection.style.display = showSetup ? 'block' : 'none'
+      setPasswordSetupRequired(!data.has_password)
     } catch {
-      passwordSetupSection.style.display = 'none'
+      setPasswordSetupRequired(false)
     }
   }
 
@@ -250,22 +254,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         if (setupPasswordInput) setupPasswordInput.value = ''
         if (setupPasswordConfirm) setupPasswordConfirm.value = ''
-        await chrome.storage.local.remove(['mw_password_setup_dismissed'])
-        passwordSetupSection.style.display = 'none'
+        setPasswordSetupRequired(false)
         showPasswordSetupStatus('Password saved. You can sign in with email and password anywhere.')
+        loadStats(currentEmail)
       } catch (err) {
         showPasswordSetupStatus(err.message || 'Failed to set password', true)
       } finally {
         setupPasswordBtn.disabled = false
         setupPasswordBtn.textContent = 'Save password'
       }
-    })
-  }
-
-  if (skipPasswordSetupBtn) {
-    skipPasswordSetupBtn.addEventListener('click', async () => {
-      await chrome.storage.local.set({ mw_password_setup_dismissed: true })
-      if (passwordSetupSection) passwordSetupSection.style.display = 'none'
     })
   }
 
@@ -1084,14 +1081,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   })
 
-  // Logout
-  logoutBtn.addEventListener('click', async () => {
-    await chrome.storage.local.remove(['mw_email', 'mw_api_key', 'mw_access_token'])
+  async function signOut() {
+    await chrome.storage.local.remove(['mw_email', 'mw_api_key', 'mw_access_token', 'mw_password_setup_dismissed'])
     currentEmail = null
     connectedView.style.display = 'none'
     loginView.style.display = 'block'
     emailInput.value = ''
-  })
+    setPasswordSetupRequired(false)
+  }
+
+  // Logout
+  if (logoutBtn) logoutBtn.addEventListener('click', signOut)
+  if (passwordSetupSignoutBtn) passwordSetupSignoutBtn.addEventListener('click', signOut)
 
   function showConnectedView(email, existingApiKey) {
     currentEmail = email

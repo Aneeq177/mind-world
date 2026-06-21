@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 
 export const useStore = create((set) => ({
-  // App phase: 'landing' | 'processing' | 'map'
+  // App phase: 'landing' | 'processing' | 'password-setup' | 'map'
   phase: 'landing',
 
   // Data from /process

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useStore } from '../store'
-import { processFiles, loadExistingMap, recordConsent, ensureAccessToken, login, register, getGoogleSignInUrl, fetchAuthAccount, setAccountPassword } from '../api'
+import { processFiles, loadExistingMap, recordConsent, ensureAccessToken, login, register, getGoogleSignInUrl } from '../api'
 
 const CHROME_STORE_URL = 'https://chrome.google.com/webstore/detail/mind-world'
 const CONSENT_VERSION = '2026-06-2'
@@ -80,14 +80,6 @@ export default function Landing() {
   const [isRegisterMode, setIsRegisterMode] = useState(false)
   const [signedIn, setSignedIn] = useState(false)
   const [authLoading, setAuthLoading] = useState(false)
-  const [hasPassword, setHasPassword] = useState(true)
-  const [passwordSetupDismissed, setPasswordSetupDismissed] = useState(
-    () => sessionStorage.getItem('mw_password_setup_dismissed') === '1'
-  )
-  const [newPassword, setNewPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
-  const [passwordSetupLoading, setPasswordSetupLoading] = useState(false)
-  const [passwordSetupSuccess, setPasswordSetupSuccess] = useState(false)
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -115,14 +107,8 @@ export default function Landing() {
     ;(async () => {
       setCheckingEmail(true)
       try {
-        const [mapData, accountData] = await Promise.all([
-          loadExistingMap({ email: storedEmail, accessToken: storedToken }),
-          fetchAuthAccount({ email: storedEmail, accessToken: storedToken }).catch(() => null)
-        ])
+        const mapData = await loadExistingMap({ email: storedEmail, accessToken: storedToken })
         if (cancelled) return
-        if (accountData) {
-          setHasPassword(!!accountData.has_password)
-        }
         if (mapData.has_data && mapData.total > 0) {
           setHasExistingData(true)
           setExistingCount(mapData.total)
@@ -160,25 +146,6 @@ export default function Landing() {
 
     setEmail(storedEmail)
     setSignedIn(true)
-
-    let cancelled = false
-    ;(async () => {
-      setCheckingEmail(true)
-      try {
-        const accountData = await fetchAuthAccount({
-          email: storedEmail,
-          accessToken: storedToken
-        }).catch(() => null)
-        if (cancelled) return
-        if (accountData) {
-          setHasPassword(!!accountData.has_password)
-        }
-      } finally {
-        if (!cancelled) setCheckingEmail(false)
-      }
-    })()
-
-    return () => { cancelled = true }
   }, [phase, signedIn])
 
   async function persistSession(emailValue, accessToken) {
@@ -210,7 +177,6 @@ export default function Landing() {
         ? await register({ email, password })
         : await login({ email, password })
       await persistSession(data.email || email, data.access_token)
-      setHasPassword(true)
       if (hasFile || isRegisterMode) {
         await recordConsent({
           email: data.email || email,
@@ -234,49 +200,10 @@ export default function Landing() {
   function handleSignOut() {
     sessionStorage.removeItem('mw_email')
     sessionStorage.removeItem('mw_access_token')
-    sessionStorage.removeItem('mw_password_setup_dismissed')
     setSignedIn(false)
     setHasExistingData(false)
     setExistingCount(0)
     setPassword('')
-    setHasPassword(true)
-    setPasswordSetupDismissed(false)
-    setPasswordSetupSuccess(false)
-    setNewPassword('')
-    setConfirmPassword('')
-  }
-
-  async function handleSetPassword() {
-    setError('')
-    if (!newPassword || newPassword.length < 8) {
-      setError('Password must be at least 8 characters.')
-      return
-    }
-    if (newPassword !== confirmPassword) {
-      setError('Passwords do not match.')
-      return
-    }
-
-    setPasswordSetupLoading(true)
-    try {
-      const token = await ensureAccessToken(email)
-      await setAccountPassword({ email, accessToken: token, password: newPassword })
-      setHasPassword(true)
-      setPasswordSetupSuccess(true)
-      setNewPassword('')
-      setConfirmPassword('')
-      sessionStorage.removeItem('mw_password_setup_dismissed')
-      setPasswordSetupDismissed(false)
-    } catch (err) {
-      setError(err.message || 'Failed to set password')
-    } finally {
-      setPasswordSetupLoading(false)
-    }
-  }
-
-  function dismissPasswordSetup() {
-    sessionStorage.setItem('mw_password_setup_dismissed', '1')
-    setPasswordSetupDismissed(true)
   }
 
   async function autoLoadMap(emailValue) {
@@ -746,101 +673,19 @@ export default function Landing() {
               </button>
             </>
           ) : (
-            <>
-              <div style={{
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                marginBottom: '12px', fontSize: '0.82rem', color: '#8b8'
-              }}>
-                <span>Signed in as {email}</span>
-                <button
-                  type="button"
-                  onClick={handleSignOut}
-                  style={{ background: 'none', border: 'none', color: '#a78bfa', cursor: 'pointer' }}
-                >
-                  Sign out
-                </button>
-              </div>
-
-              {passwordSetupSuccess && (
-                <div style={{
-                  padding: '12px',
-                  background: 'rgba(52,211,153,0.1)',
-                  border: '1px solid rgba(52,211,153,0.3)',
-                  borderRadius: '8px', color: '#34d399',
-                  fontSize: '0.85rem', marginBottom: '12px'
-                }}>
-                  Password saved. You can now sign in with email and password on any device.
-                </div>
-              )}
-
-              {!hasPassword && !passwordSetupDismissed && !passwordSetupSuccess && (
-                <div style={{
-                  background: 'rgba(124,58,237,0.08)',
-                  border: '1px solid rgba(124,58,237,0.25)',
-                  borderRadius: '10px',
-                  padding: '14px 16px',
-                  marginBottom: '16px'
-                }}>
-                  <div style={{ color: '#a78bfa', fontWeight: '600', marginBottom: '6px' }}>
-                    Set a Mind World password
-                  </div>
-                  <p style={{ color: '#888', fontSize: '0.82rem', lineHeight: 1.55, margin: '0 0 12px' }}>
-                    You signed in with Google. Add a password so you can access your account on devices
-                    without Gmail.
-                  </p>
-                  <input
-                    type="password"
-                    placeholder="New password (8+ characters)"
-                    value={newPassword}
-                    onChange={e => setNewPassword(e.target.value)}
-                    style={{
-                      width: '100%', padding: '12px 14px', boxSizing: 'border-box',
-                      background: 'rgba(255,255,255,0.05)',
-                      border: '1px solid rgba(255,255,255,0.1)',
-                      borderRadius: '8px', color: 'white',
-                      fontSize: '0.85rem', marginBottom: '8px', outline: 'none'
-                    }}
-                  />
-                  <input
-                    type="password"
-                    placeholder="Confirm password"
-                    value={confirmPassword}
-                    onChange={e => setConfirmPassword(e.target.value)}
-                    style={{
-                      width: '100%', padding: '12px 14px', boxSizing: 'border-box',
-                      background: 'rgba(255,255,255,0.05)',
-                      border: '1px solid rgba(255,255,255,0.1)',
-                      borderRadius: '8px', color: 'white',
-                      fontSize: '0.85rem', marginBottom: '10px', outline: 'none'
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={handleSetPassword}
-                    disabled={passwordSetupLoading}
-                    style={{
-                      width: '100%', padding: '12px',
-                      background: 'linear-gradient(135deg, #7c3aed, #5b21b6)',
-                      border: 'none', borderRadius: '8px',
-                      color: 'white', fontWeight: 600, cursor: 'pointer',
-                      marginBottom: '8px'
-                    }}
-                  >
-                    {passwordSetupLoading ? 'Saving…' : 'Save password'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={dismissPasswordSetup}
-                    style={{
-                      width: '100%', background: 'none', border: 'none',
-                      color: '#666', fontSize: '0.78rem', cursor: 'pointer'
-                    }}
-                  >
-                    Skip for now
-                  </button>
-                </div>
-              )}
-            </>
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              marginBottom: '12px', fontSize: '0.82rem', color: '#8b8'
+            }}>
+              <span>Signed in as {email}</span>
+              <button
+                type="button"
+                onClick={handleSignOut}
+                style={{ background: 'none', border: 'none', color: '#a78bfa', cursor: 'pointer' }}
+              >
+                Sign out
+              </button>
+            </div>
           )}
 
           {checkingEmail && (
