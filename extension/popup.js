@@ -279,7 +279,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   chrome.runtime.onMessage.addListener((message) => {
     if (message.type !== 'AUTH_COMPLETE') return
-    chrome.storage.local.get(['mw_email', 'mw_api_key', 'mw_access_token'], async (stored) => {
+    chrome.storage.local.get(['mw_email', 'mw_api_key', 'mw_access_token', 'mw_needs_password'], async (stored) => {
       if (!stored.mw_email || !stored.mw_access_token) return
       currentEmail = stored.mw_email
       try {
@@ -289,9 +289,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
       showConnectedView(stored.mw_email, stored.mw_api_key || null)
       loadStats(stored.mw_email)
-      loadAuthAccount(stored.mw_email)
       loginView.style.display = 'none'
       connectedView.style.display = 'block'
+
+      // Fast path: backend told us directly whether password setup is needed.
+      if (stored.mw_needs_password === '1') {
+        chrome.storage.local.remove('mw_needs_password')
+        setPasswordSetupRequired(true)
+      } else {
+        chrome.storage.local.remove('mw_needs_password')
+        loadAuthAccount(stored.mw_email)
+      }
     })
   })
 

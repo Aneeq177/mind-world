@@ -55,14 +55,23 @@ function MainApp() {
     const token = sessionStorage.getItem('mw_access_token')
     if (!email || !token) return
 
+    // If a fresh Google login just set the needs_password flag, honour it immediately
+    // without waiting for the async /auth/account call.
+    const needsPasswordFlag = sessionStorage.getItem('mw_needs_password')
+    if (needsPasswordFlag === '1') {
+      sessionStorage.removeItem('mw_needs_password')
+      setPhase('password-setup')
+      return
+    }
+
     let cancelled = false
     ;(async () => {
       try {
         const account = await fetchAuthAccount({ email, accessToken: token })
         if (cancelled || !account || account.has_password) return
         setPhase('password-setup')
-      } catch {
-        // ignore — user can still sign in again
+      } catch (err) {
+        console.error('[MindWorld] Could not verify password status on load:', err)
       }
     })()
 

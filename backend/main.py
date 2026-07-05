@@ -1082,13 +1082,14 @@ async def auth_google_signin_callback(code: str = "", state: str = "", error: st
 
     try:
         profile = exchange_google_auth_code(code, redirect_uri)
-        user_id = link_or_create_google_user(profile["google_id"], profile["email"])
+        user_id, has_password = link_or_create_google_user(profile["google_id"], profile["email"])
         access_token = issue_session_token(user_id)
         params = urllib.parse.urlencode(
             {
                 "access_token": access_token,
                 "email": profile["email"],
                 "source": source if source in ("web", "extension") else "web",
+                "needs_password": "0" if has_password else "1",
             }
         )
         return RedirectResponse(url=f"{frontend_url}/auth/callback?{params}")

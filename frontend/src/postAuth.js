@@ -35,6 +35,20 @@ export async function resolveDashboardAfterSignIn({ setPhase, setConversations, 
     return { destination: 'upload' }
   }
 
+  // Fast path: backend told us whether a password is needed via the OAuth redirect URL.
+  // This avoids an extra /auth/account round-trip that could silently fail.
+  const needsPasswordFlag = sessionStorage.getItem('mw_needs_password')
+  if (needsPasswordFlag === '1') {
+    sessionStorage.removeItem('mw_needs_password')
+    setPhase('password-setup')
+    return { destination: 'password-setup' }
+  }
+  if (needsPasswordFlag === '0') {
+    sessionStorage.removeItem('mw_needs_password')
+    return await openDashboard({ setPhase, setConversations, setCredentials, apiKey })
+  }
+
+  // Fallback: flag not present (e.g. old redirect or direct navigation) — ask the server.
   setPhase('processing')
   try {
     const account = await fetchAuthAccount({ email, accessToken: token })
@@ -43,7 +57,8 @@ export async function resolveDashboardAfterSignIn({ setPhase, setConversations, 
       return { destination: 'password-setup' }
     }
     return await openDashboard({ setPhase, setConversations, setCredentials, apiKey })
-  } catch {
+  } catch (err) {
+    console.error('[MindWorld] Could not check account password status:', err)
     setPhase('landing')
     return { destination: 'upload' }
   }

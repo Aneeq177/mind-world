@@ -25,6 +25,13 @@ export default function AuthCallback() {
     sessionStorage.setItem('mw_access_token', accessToken)
     sessionStorage.setItem('mw_email', email)
 
+    const needsPassword = searchParams.get('needs_password')
+    if (needsPassword === '1') {
+      sessionStorage.setItem('mw_needs_password', '1')
+    } else {
+      sessionStorage.removeItem('mw_needs_password')
+    }
+
     if (source === 'extension') {
       setMessage('Success! You can close this tab and return to the Mind World extension.')
       return

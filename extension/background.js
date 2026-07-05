@@ -81,7 +81,12 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
     const email = parsed.searchParams.get('email')
     if (error || !token || !email) return
 
-    chrome.storage.local.set({ mw_email: email, mw_access_token: token }, () => {
+    const needsPassword = parsed.searchParams.get('needs_password')
+    const storageUpdate = { mw_email: email, mw_access_token: token }
+    if (needsPassword === '1') storageUpdate.mw_needs_password = '1'
+    else storageUpdate.mw_needs_password = '0'
+
+    chrome.storage.local.set(storageUpdate, () => {
       chrome.tabs.remove(tabId).catch(() => {})
       chrome.runtime.sendMessage({ type: 'AUTH_COMPLETE' }).catch(() => {})
     })

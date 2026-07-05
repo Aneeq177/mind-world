@@ -173,23 +173,24 @@ def login_with_password(email: str, password: str) -> dict:
     return _session_response(user["id"], email)
 
 
-def link_or_create_google_user(google_id: str, email: str) -> str:
+def link_or_create_google_user(google_id: str, email: str) -> tuple:
+    """Return (user_id, has_password) — has_password tells the frontend whether to prompt for password setup."""
     from services.database import get_or_create_user, get_supabase
 
     email = email.lower().strip()
     by_google = _get_user_by_google_id(google_id)
     if by_google:
-        return by_google["id"]
+        return by_google["id"], bool(by_google.get("password_hash"))
 
     existing = _get_user_auth_row(email)
     supabase = get_supabase()
     if existing:
         supabase.table("users").update({"google_id": google_id}).eq("id", existing["id"]).execute()
-        return existing["id"]
+        return existing["id"], bool(existing.get("password_hash"))
 
     user_id = get_or_create_user(email)
     supabase.table("users").update({"google_id": google_id}).eq("id", user_id).execute()
-    return user_id
+    return user_id, False
 
 
 def verify_google_id_token(id_token: str) -> dict:
