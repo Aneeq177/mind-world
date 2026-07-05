@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { useStore } from '../store'
 import { processFiles, loadExistingMap, recordConsent, ensureAccessToken, login, register, getGoogleSignInUrl } from '../api'
 
-const CHROME_STORE_URL = 'https://chrome.google.com/webstore/detail/mind-world'
+const CHROME_STORE_URL =
+  'https://chromewebstore.google.com/detail/mind-world/dcbicejbdecfpdjgmnclmafiobgomhdp?utm_source=item'
 const CONSENT_VERSION = '2026-06-2'
 
 const UPLOAD_CONSENT_LABEL = (
