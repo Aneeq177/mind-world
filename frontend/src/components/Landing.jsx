@@ -34,19 +34,19 @@ const UPLOAD_CONSENT_LABEL = (
 
 const FEATURES = [
   {
-    icon: '🧠',
-    title: 'Memory across sessions',
-    desc: 'Mind World watches what you type and surfaces the past conversations that matter — without you having to ask.'
+    icon: '⚡',
+    title: 'One-click Improve',
+    desc: 'Hit Improve (or Alt+Shift+M) and Mind World rewrites your draft into a structured, contextual prompt — using your own past conversations as context. No prompt engineering experience required.'
+  },
+  {
+    icon: '🧩',
+    title: 'Template chips',
+    desc: 'A row of chips sits above every chat box: Debug code, Review essay, Write email, and more. Tap one — a professional prompt scaffold drops in. Works on day one with zero history.'
   },
   {
     icon: '🌍',
-    title: 'Your mind in 2D',
-    desc: 'Upload your Claude and ChatGPT history and see every conversation mapped on a 2D canvas, clustered by topic.'
-  },
-  {
-    icon: '⚡',
-    title: 'Prompt engineering',
-    desc: 'Stop re-explaining yourself. Mind World rewrites your draft into a complete, contextual prompt using what you already know.'
+    title: 'Memory that travels with you',
+    desc: 'New conversations auto-save in the background across Claude, ChatGPT, and Gemini. Import your full history once on mind-world.app — Improve gets smarter every session.'
   }
 ]
 
@@ -797,7 +797,7 @@ export default function Landing() {
               fontWeight: '500'
             }}
           >
-            Try the Map
+            Import History
           </button>
           <a
             href={CHROME_STORE_URL}
@@ -831,7 +831,7 @@ export default function Landing() {
           fontSize: '0.78rem', color: '#a78bfa',
           marginBottom: '32px', letterSpacing: '0.3px'
         }}>
-          Memory · Map · Prompt Engineering
+          Templates · Improve · Memory
         </div>
 
         <h1 style={{
@@ -841,16 +841,16 @@ export default function Landing() {
           marginBottom: '24px',
           letterSpacing: '-0.02em'
         }}>
-          You've had thousands of<br />
+          The prompt engineer that<br />
           <span style={{
             background: 'linear-gradient(135deg, #a78bfa, #7c3aed)',
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent'
           }}>
-            great AI conversations.
+            remembers everything
           </span>
           <br />
-          None of them remember you.
+          you've ever asked AI.
         </h1>
 
         <p style={{
@@ -858,8 +858,9 @@ export default function Landing() {
           lineHeight: '1.7', marginBottom: '48px',
           maxWidth: '560px', margin: '0 auto 48px'
         }}>
-          Mind World gives Claude and ChatGPT memory across sessions — surfaces what you already know,
-          maps your entire AI history on a 2D canvas, and engineers better prompts from your own past.
+          Mind World is a Chrome extension that makes your AI chats smarter. Template chips and a one-click{' '}
+          <strong style={{ color: '#c4b5fd' }}>Improve</strong> button rewrite what you typed using your past
+          conversations — automatically, without searching old chats.
         </p>
 
         <div style={{ display: 'flex', gap: '16px', justifyContent: 'center', flexWrap: 'wrap' }}>
@@ -887,27 +888,97 @@ export default function Landing() {
               fontSize: '1rem', fontWeight: '600', cursor: 'pointer'
             }}
           >
-            Try the Map →
+            Import history & see your map →
           </button>
         </div>
       </div>
 
-      {/* Demo placeholder */}
+      {/* How it works */}
       <div style={{
-        maxWidth: '900px', margin: '0 auto 100px',
+        maxWidth: '860px', margin: '0 auto 100px',
         padding: '0 24px'
       }}>
         <div style={{
-          width: '100%', aspectRatio: '16/9',
-          background: 'rgba(255,255,255,0.03)',
-          border: '1px solid rgba(255,255,255,0.08)',
-          borderRadius: '20px',
-          display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center',
-          gap: '12px', color: '#333'
+          textAlign: 'center',
+          fontSize: '0.75rem', color: '#555',
+          fontWeight: '600', letterSpacing: '0.8px',
+          marginBottom: '36px'
         }}>
-          <div style={{ fontSize: '3rem' }}>🌍</div>
-          <div style={{ fontSize: '0.85rem' }}>Demo video coming soon</div>
+          HOW IT WORKS
+        </div>
+
+        {/* Step flow */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          gap: '0',
+          position: 'relative'
+        }}>
+          {[
+            { step: '1', label: 'Install the extension', detail: 'Add to Chrome. Enter your email in the popup. Done.' },
+            { step: '2', label: 'Start chatting', detail: 'Open Claude, ChatGPT, or Gemini — template chips appear above the input.' },
+            { step: '3', label: 'Hit Improve', detail: 'Type a rough idea and press Improve (or Alt+Shift+M). Mind World rewrites it.' },
+            { step: '4', label: 'Send a better prompt', detail: 'Review the improved version, replace your input, and send. Every new chat auto-saves.' }
+          ].map((item, i, arr) => (
+            <div key={item.step} style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center',
+              padding: '28px 20px', textAlign: 'center',
+              position: 'relative'
+            }}>
+              {i < arr.length - 1 && (
+                <div style={{
+                  position: 'absolute', right: 0, top: '38px',
+                  width: '1px', height: '40px',
+                  background: 'rgba(124,58,237,0.2)',
+                  display: window.innerWidth < 640 ? 'none' : 'block'
+                }} />
+              )}
+              <div style={{
+                width: '40px', height: '40px',
+                borderRadius: '50%',
+                background: 'rgba(124,58,237,0.15)',
+                border: '1px solid rgba(124,58,237,0.4)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '0.9rem', fontWeight: '700', color: '#a78bfa',
+                marginBottom: '14px', flexShrink: 0
+              }}>
+                {item.step}
+              </div>
+              <div style={{ fontWeight: '600', fontSize: '0.95rem', marginBottom: '8px', color: 'white' }}>
+                {item.label}
+              </div>
+              <div style={{ fontSize: '0.82rem', color: '#666', lineHeight: '1.6' }}>
+                {item.detail}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Keyboard shortcut callout */}
+        <div style={{
+          marginTop: '40px',
+          padding: '18px 24px',
+          background: 'rgba(124,58,237,0.07)',
+          border: '1px solid rgba(124,58,237,0.2)',
+          borderRadius: '14px',
+          display: 'flex', alignItems: 'center', gap: '16px',
+          justifyContent: 'center', flexWrap: 'wrap'
+        }}>
+          <span style={{ color: '#888', fontSize: '0.88rem' }}>Keyboard shortcut:</span>
+          <span style={{
+            background: 'rgba(255,255,255,0.08)',
+            border: '1px solid rgba(255,255,255,0.15)',
+            borderRadius: '6px',
+            padding: '4px 10px',
+            fontFamily: 'monospace',
+            fontSize: '0.88rem',
+            color: '#c4b5fd',
+            fontWeight: '600',
+            letterSpacing: '0.5px'
+          }}>
+            Alt + Shift + M
+          </span>
+          <span style={{ color: '#555', fontSize: '0.88rem' }}>— Improve current draft instantly</span>
         </div>
       </div>
 
@@ -950,25 +1021,47 @@ export default function Landing() {
         borderTop: '1px solid rgba(255,255,255,0.05)'
       }}>
         <h2 style={{ fontSize: '2rem', fontWeight: '700', marginBottom: '16px' }}>
-          Start remembering.
+          Write better prompts.<br />
+          <span style={{
+            background: 'linear-gradient(135deg, #a78bfa, #7c3aed)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent'
+          }}>Starting today.</span>
         </h2>
-        <p style={{ color: '#666', fontSize: '0.95rem', marginBottom: '36px' }}>
-          Free to install. Works on Claude, ChatGPT, Gemini, and Perplexity.
+        <p style={{ color: '#666', fontSize: '0.95rem', marginBottom: '12px' }}>
+          Free to install. Works on Claude, ChatGPT, and Gemini.
         </p>
-        <a
-          href={CHROME_STORE_URL}
-          target="_blank"
-          rel="noreferrer"
-          style={{
-            padding: '16px 40px',
-            background: 'linear-gradient(135deg, #7c3aed, #5b21b6)',
-            border: 'none', borderRadius: '12px', color: 'white',
-            fontSize: '1rem', fontWeight: '700', textDecoration: 'none',
-            display: 'inline-block'
-          }}
-        >
-          Install Chrome Extension — Free
-        </a>
+        <p style={{ color: '#555', fontSize: '0.85rem', marginBottom: '36px' }}>
+          Template chips work on day one — no conversation history needed.
+        </p>
+        <div style={{ display: 'flex', gap: '16px', justifyContent: 'center', flexWrap: 'wrap' }}>
+          <a
+            href={CHROME_STORE_URL}
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              padding: '16px 40px',
+              background: 'linear-gradient(135deg, #7c3aed, #5b21b6)',
+              border: 'none', borderRadius: '12px', color: 'white',
+              fontSize: '1rem', fontWeight: '700', textDecoration: 'none',
+              display: 'inline-block'
+            }}
+          >
+            Install Chrome Extension — Free
+          </a>
+          <button
+            onClick={() => setView('upload')}
+            style={{
+              padding: '16px 32px',
+              background: 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: '12px', color: '#aaa',
+              fontSize: '1rem', fontWeight: '600', cursor: 'pointer'
+            }}
+          >
+            Import history & see your map →
+          </button>
+        </div>
       </div>
 
       <footer style={{
