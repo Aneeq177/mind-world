@@ -43,7 +43,23 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"]
-) # Add CORS middleware to allow requests from all origins
+)
+
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request as StarletteRequest
+from starlette.responses import Response as StarletteResponse
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: StarletteRequest, call_next):
+        response: StarletteResponse = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
+app.add_middleware(SecurityHeadersMiddleware)
 
 @app.get("/health") # Simple health check (Basically just checks if the server is running)
 def health():
@@ -170,7 +186,8 @@ async def search(request: SearchRequest):
 
         email = request.email.lower().strip()
         user_id = _user_id(email, request.access_token)
-        query_embedding = model.encode([request.query])[0]
+        _search_model = SentenceTransformer("all-MiniLM-L6-v2")
+        query_embedding = _search_model.encode([request.query])[0]
 
         profile = get_personal_profile(user_id)
         if profile.get("is_profile_enabled"):
@@ -1725,11 +1742,9 @@ async def company_search(request: CompanySearchRequest):
         }
 
     except Exception as e:
-        import traceback
         return {
             "results": [],
-            "error": str(e),
-            "trace": traceback.format_exc()
+            "error": "Search failed"
         }
 
 
@@ -1783,13 +1798,6 @@ async def run_recluster(email: str):
         .execute()
 
     all_convos = result.data or []
-
-    if not all_convos:
-        # Try without user_id filter
-        result = supabase.table("knowledge_nodes")\
-            .select("id, title, full_text, x, y")\
-            .execute()
-        all_convos = result.data or []
 
     if not all_convos:
         return {"success": False, "reason": "no conversations found"}
@@ -1863,9 +1871,7 @@ async def recluster(request: ReclusterRequest):
         return await run_recluster(request.email)
 
     except Exception as e:
-        import traceback
-        return {"success": False, "reason": str(e),
-                "trace": traceback.format_exc()}
+        return {"success": False, "reason": "Recluster failed"}
 
 
 class ShareConversationsRequest(BaseModel):
@@ -1891,6 +1897,7 @@ async def share_conversations(request: ShareConversationsRequest):
                 supabase.table("knowledge_nodes")\
                     .update({"visibility": request.visibility})\
                     .eq("id", conv_id)\
+                    .eq("user_id", user_id)\
                     .execute()
             updated = len(request.conversation_ids)
         else:
@@ -2115,122 +2122,9 @@ def root():
 from fastapi.responses import RedirectResponse
 import uuid
 
-@app.get("/auth/notion/login")
-async def notion_login(email: str):
-    """
-    Redirects the user to the Notion OAuth page.
-    In this mock implementation, we just redirect directly to our callback 
-    with a fake code, since we don't have a real Notion Developer App yet.
-    """
-    if not email:
-        raise HTTPException(status_code=400, detail="Email is required")
-        
-    # In a real app, we would redirect to:
-    # https://api.notion.com/v1/oauth/authorize?client_id=...&response_type=code&owner=user&redirect_uri=...&state=email
-    
-    # Mock redirect straight to callback
-    fake_code = f"mock_code_{uuid.uuid4().hex[:8]}"
-    return RedirectResponse(url=f"/auth/notion/callback?code={fake_code}&state={email}")
-
-@app.get("/auth/notion/callback")
-async def notion_callback(code: str, state: str, background_tasks: BackgroundTasks):
-    """
-    Handles the Notion OAuth callback, exchanges code for token, and starts background sync.
-    """
-    try:
-        from services.database import get_or_create_user, save_user_integration
-        from services.notion import sync_notion_workspace
-        
-        email = state.lower().strip()
-        user_id = get_or_create_user(email)
-        
-        # 1. Exchange code for token (Mocked)
-        # In a real app, we would make a POST to https://api.notion.com/v1/oauth/token
-        mock_access_token = f"secret_mock_token_{uuid.uuid4().hex}"
-        mock_workspace_id = f"workspace_{uuid.uuid4().hex[:8]}"
-        mock_workspace_name = "My Mock Workspace"
-        
-        # 2. Save integration to database
-        save_user_integration(
-            user_id=user_id,
-            provider="notion",
-            token=mock_access_token,
-            metadata={
-                "workspace_id": mock_workspace_id,
-                "workspace_name": mock_workspace_name
-            }
-        )
-        
-        # 3. Trigger background sync
-        background_tasks.add_task(sync_notion_workspace, user_id, email)
-        
-        # 4. Redirect user back to the frontend main app and trigger auto-load
-        import os
-        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173").rstrip('/')
-        return RedirectResponse(url=f"{frontend_url}/?email={email}&autoLoad=true")
-        
-    except Exception as e:
-        print(f"[Notion Auth] Error during callback: {e}")
-        # Redirect back with an error query param
-        import os
-        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173").rstrip('/')
-        return RedirectResponse(url=f"{frontend_url}/?error=notion_auth_failed")
-
 class AuthNotionRequest(BaseModel):
     code: str
 
 @app.post("/auth/notion")
 async def auth_notion(request: AuthNotionRequest):
-    return {"success": True, "provider": "notion", "message": "Notion auth stub"}
-
-@app.get("/auth/google/login")
-async def google_login(email: str):
-    """
-    Redirects the user to the Google OAuth page.
-    In this mock implementation, we redirect directly to our callback.
-    """
-    if not email:
-        raise HTTPException(status_code=400, detail="Email is required")
-        
-    fake_code = f"google_mock_code_{uuid.uuid4().hex[:8]}"
-    return RedirectResponse(url=f"/auth/google/callback?code={fake_code}&state={email}")
-
-@app.get("/auth/google/callback")
-async def google_callback(code: str, state: str, background_tasks: BackgroundTasks):
-    """
-    Handles the Google OAuth callback, exchanges code for token, and starts background sync.
-    """
-    try:
-        from services.database import get_or_create_user, save_user_integration
-        from services.google import sync_google_workspace
-        
-        email = state.lower().strip()
-        user_id = get_or_create_user(email)
-        
-        # 1. Exchange code for token (Mocked)
-        mock_access_token = f"google_token_{uuid.uuid4().hex}"
-        
-        # 2. Save integration to database
-        save_user_integration(
-            user_id=user_id,
-            provider="google",
-            token=mock_access_token,
-            metadata={
-                "workspace_id": email,
-                "workspace_name": f"{email}'s Google Drive"
-            }
-        )
-        
-        # 3. Trigger background sync
-        background_tasks.add_task(sync_google_workspace, user_id, email)
-        
-        # 4. Redirect user back to the frontend main app and trigger auto-load
-        import os
-        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173").rstrip('/')
-        return RedirectResponse(url=f"{frontend_url}/?email={email}&autoLoad=true")
-        
-    except Exception as e:
-        print(f"[Google Auth] Error during callback: {e}")
-        import os
-        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173").rstrip('/')
-        return RedirectResponse(url=f"{frontend_url}/?error=google_auth_failed")
+    raise HTTPException(status_code=501, detail="Notion integration not yet available.")

@@ -1020,11 +1020,11 @@ function updateResults(results, isCompany = false) {
 
       return `
 
-        <div class="mw-result" data-id="${r.id}">
+        <div class="mw-result" data-id="${escapeHtml(String(r.id || ''))}">
 
           <div class="mw-result-header">
 
-            <span class="mw-source-badge" style="background:rgba(99,102,241,0.2);color:#818cf8;border-radius:4px;padding:1px 5px;font-size:0.7rem;font-weight:700;">${initials}</span>
+            <span class="mw-source-badge" style="background:rgba(99,102,241,0.2);color:#818cf8;border-radius:4px;padding:1px 5px;font-size:0.7rem;font-weight:700;">${escapeHtml(initials)}</span>
 
             <span class="mw-similarity">${similarity}% match</span>
 
@@ -1034,7 +1034,7 @@ function updateResults(results, isCompany = false) {
 
           <div class="mw-result-preview">${escapeHtml(cleanPreview)}...</div>
 
-          <div class="mw-result-meta">${r.owner_email || ''} Â· ${(r.created_at || '').slice(0, 10)}</div>
+          <div class="mw-result-meta">${escapeHtml(r.owner_email || '')} · ${escapeHtml((r.created_at || '').slice(0, 10))}</div>
 
         </div>
 
@@ -1068,13 +1068,13 @@ function updateResults(results, isCompany = false) {
 
       <div class="mw-result ${isStaged ? 'mw-staged' : ''}"
 
-           data-id="${r.id}">
+           data-id="${escapeHtml(String(r.id || ''))}">
 
         <div class="mw-result-header">
 
           <span class="mw-source-badge">
 
-            ${r.source === 'claude' ? 'ðŸŸ£' : 'ðŸŸ¢'} ${r.source}
+            ${r.source === 'claude' ? 'ðŸŸ£' : 'ðŸŸ¢'} ${escapeHtml(r.source || '')}
 
           </span>
 
@@ -1092,7 +1092,7 @@ function updateResults(results, isCompany = false) {
 
         <div class="mw-result-meta">
 
-          ${r.num_messages} msgs Â· ${r.created_at.slice(0, 10)}
+          ${escapeHtml(String(r.num_messages || 0))} msgs Â· ${escapeHtml((r.created_at || '').slice(0, 10))}
 
         </div>
 
@@ -1102,9 +1102,9 @@ function updateResults(results, isCompany = false) {
 
                 data-title="${escapeHtml(r.title)}"
 
-                data-source="${r.source}"
+                data-source="${escapeHtml(r.source || '')}"
 
-                data-created="${r.created_at}">
+                data-created="${escapeHtml(r.created_at || '')}">
 
           ${isStaged ? 'âœ“ Added to inject' : '+ Add to inject'}
 
