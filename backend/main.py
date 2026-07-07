@@ -1,5 +1,5 @@
 # Import statements
-from fastapi import FastAPI, UploadFile, File, HTTPException, Form, BackgroundTasks
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 import json
@@ -67,6 +67,9 @@ app.add_middleware(SecurityHeadersMiddleware)
 # Per-user free-tier quota
 # ---------------------------------------------------------------------------
 FREE_TIER_LIMIT = 25  # Improve calls included for free (server-key users)
+
+# Secret header sent by the extension — rejects old/unauthorised clients
+MW_CLIENT_SECRET = "mwext-f8c3a91d-v3"
 
 # ---------------------------------------------------------------------------
 # IP-based rate limiter — 30 Improve calls per minute per IP
@@ -420,8 +423,15 @@ Be concise and specific. Focus on information that will help answer the current 
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/engineer_prompt")
-async def engineer_prompt(request: EngineerPromptRequest):
+async def engineer_prompt(http_req: Request, request: EngineerPromptRequest):
     try:
+        # Verify the request comes from an authorised extension build
+        if http_req.headers.get("X-MW-Client") != MW_CLIENT_SECRET:
+            raise HTTPException(
+                status_code=401,
+                detail="Unauthorised client. Please update the Mind World extension."
+            )
+
         import anthropic
         from sentence_transformers import SentenceTransformer
         from services.database import (

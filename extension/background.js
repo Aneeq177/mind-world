@@ -381,7 +381,10 @@ async function handleEngineerPrompt(userMessage, templateStr, conversationIds, s
 
     const response = await fetch(`${API_BASE}/engineer_prompt`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-MW-Client': 'mwext-f8c3a91d-v3'
+      },
       body: JSON.stringify(body)
     })
 
