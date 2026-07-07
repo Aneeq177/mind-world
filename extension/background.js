@@ -1,6 +1,14 @@
 importScripts('config.js', 'storage-utils.js')
 const API_BASE = CONFIG.API_BASE
 
+// Ensure a stable device fingerprint exists (generated once per browser profile)
+chrome.storage.local.get('mw_device_id', (stored) => {
+  if (!stored.mw_device_id) {
+    const deviceId = crypto.randomUUID()
+    chrome.storage.local.set({ mw_device_id: deviceId })
+  }
+})
+
 // Keep service worker alive during operations
 let keepAliveInterval = null
 
@@ -192,6 +200,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true
   }
 
+  if (message.type === 'OPEN_POPUP') {
+    chrome.action.openPopup().catch(() => {})
+    sendResponse({})
+    return true
+  }
+
   if (message.type === 'PROMPT_FEEDBACK') {
     handlePromptFeedback(message).then(sendResponse)
     return true
@@ -350,6 +364,7 @@ async function handleEngineerPrompt(userMessage, templateStr, conversationIds, s
     if (auth.error) return { error: auth.error }
 
     const memoryEnabled = await isMemoryEnabled()
+    const stored = await chrome.storage.local.get('mw_device_id')
 
     const body = {
       email: auth.email,
@@ -357,7 +372,8 @@ async function handleEngineerPrompt(userMessage, templateStr, conversationIds, s
       message: userMessage,
       template: templateStr || 'none',
       api_key: auth.apiKey || null,
-      skip_memory: !!skipMemory || !memoryEnabled
+      skip_memory: !!skipMemory || !memoryEnabled,
+      device_id: stored.mw_device_id || null
     }
     if (conversationIds && conversationIds.length > 0) {
       body.conversation_ids = conversationIds
@@ -371,6 +387,7 @@ async function handleEngineerPrompt(userMessage, templateStr, conversationIds, s
 
     if (!response.ok) {
       const err = await response.json().catch(() => ({}))
+      // Pass quota_exceeded through as a structured error so the UI can show upgrade CTA
       return { error: err.detail || 'Engineer prompt failed' }
     }
 

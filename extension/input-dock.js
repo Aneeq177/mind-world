@@ -478,14 +478,28 @@
       })
       if (requestId !== engineerRequestId) return
       if (res.error) {
-        const msg = res.error === 'not_logged_in'
-          ? 'Sign in via the Mind World extension icon.'
-          : String(res.error)
         improveInFlight = false
         setImproveButtonBusy(false)
-        openPopover('preview', '<p class="err">' + escapeHtml(msg) + '</p>', `
-          <button class="btn-ghost" id="mw-pop-close">Close</button>
-        `)
+        if (res.error === 'quota_exceeded') {
+          openPopover('preview', `
+            <p style="font-size:13px;font-weight:600;color:#f9a8d4;margin:0;">You've used all 25 free Improve calls</p>
+            <p style="font-size:12px;color:#aaa;margin:6px 0 0;">Add your own Anthropic API key in the extension settings for unlimited use — it takes 30 seconds.</p>
+          `, `
+            <button class="btn-primary" id="mw-pop-upgrade">Add API key (free)</button>
+            <button class="btn-ghost" id="mw-pop-close">Maybe later</button>
+          `)
+          popoverShadow.getElementById('mw-pop-upgrade').onclick = () => {
+            chrome.runtime.sendMessage({ type: 'OPEN_POPUP' }).catch(() => {})
+            closePopover()
+          }
+        } else {
+          const msg = res.error === 'not_logged_in'
+            ? 'Sign in via the Mind World extension icon.'
+            : String(res.error)
+          openPopover('preview', '<p class="err">' + escapeHtml(msg) + '</p>', `
+            <button class="btn-ghost" id="mw-pop-close">Close</button>
+          `)
+        }
         popoverShadow.getElementById('mw-pop-close').onclick = closePopover
         return
       }

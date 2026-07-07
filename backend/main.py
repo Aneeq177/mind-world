@@ -1,9 +1,11 @@
 # Import statements
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 import json
 import os
+import time
+from collections import defaultdict
 import pandas as pd
 from dotenv import load_dotenv
 
@@ -60,6 +62,41 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         return response
 
 app.add_middleware(SecurityHeadersMiddleware)
+
+# ---------------------------------------------------------------------------
+# Per-user free-tier quota
+# ---------------------------------------------------------------------------
+FREE_TIER_LIMIT = 25  # Improve calls included for free (server-key users)
+
+# ---------------------------------------------------------------------------
+# IP-based rate limiter — 30 Improve calls per minute per IP
+# ---------------------------------------------------------------------------
+_ip_call_log: dict[str, list[float]] = defaultdict(list)
+_IP_WINDOW_SECS = 60
+_IP_MAX_CALLS = 30
+_RATE_LIMITED_PATHS = {"/engineer_prompt"}
+
+
+class IPRateLimitMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: StarletteRequest, call_next):
+        if request.url.path in _RATE_LIMITED_PATHS and request.method == "POST":
+            ip = request.client.host if request.client else "unknown"
+            now = time.time()
+            window_start = now - _IP_WINDOW_SECS
+            log = _ip_call_log[ip]
+            log[:] = [t for t in log if t > window_start]
+            if len(log) >= _IP_MAX_CALLS:
+                return StarletteResponse(
+                    content='{"detail":"Too many requests — slow down and try again in a minute."}',
+                    status_code=429,
+                    media_type="application/json",
+                )
+            log.append(now)
+        return await call_next(request)
+
+
+app.add_middleware(IPRateLimitMiddleware)
+
 
 @app.get("/health") # Simple health check (Basically just checks if the server is running)
 def health():
@@ -239,6 +276,7 @@ class EngineerPromptRequest(BaseModel):
     api_key: Optional[str] = None
     template: Optional[str] = None
     skip_memory: Optional[bool] = False
+    device_id: Optional[str] = None
 
 
 class ContextPreviewRequest(BaseModel):
@@ -403,6 +441,35 @@ async def engineer_prompt(request: EngineerPromptRequest):
         email = request.email.lower().strip()
         user_id = _user_id(email, request.access_token, request.api_key)
         skip_memory = bool(request.skip_memory)
+
+        # ── Quota & abuse checks (only for users on the shared server key) ──
+        _using_server_key = not bool(request.api_key)
+        _quota_row: dict = {}
+        if _using_server_key:
+            from services.database import get_supabase as _get_sb
+            _sb = _get_sb()
+
+            # Bind device_id to account on first seen (fraud signal)
+            if request.device_id:
+                _sb.table("users").update({"device_id": request.device_id})\
+                    .eq("id", user_id).is_("device_id", "null").execute()
+
+                # If this device_id is linked to 3+ OTHER accounts → likely multi-account abuse
+                _others = _sb.table("users").select("id")\
+                    .eq("device_id", request.device_id)\
+                    .neq("id", user_id).execute()
+                if len(_others.data or []) >= 3:
+                    raise HTTPException(status_code=429, detail="quota_exceeded")
+
+            # Fetch quota counters
+            _urow = _sb.table("users")\
+                .select("improve_calls_used, is_pro")\
+                .eq("id", user_id).execute()
+            _quota_row = _urow.data[0] if _urow.data else {}
+
+            if not _quota_row.get("is_pro") and \
+               (_quota_row.get("improve_calls_used") or 0) >= FREE_TIER_LIMIT:
+                raise HTTPException(status_code=402, detail="quota_exceeded")
 
         if skip_memory:
             selected = []
@@ -610,6 +677,15 @@ Adaptive preference hint: {adaptation_hint}"""
         from services.prompt_format import format_engineered_prompt
         raw_prompt = response.content[0].text
         formatted = format_engineered_prompt(raw_prompt)
+
+        # ── Increment free-tier usage counter on successful call ──
+        if _using_server_key:
+            try:
+                _get_sb().table("users").update({
+                    "improve_calls_used": (_quota_row.get("improve_calls_used") or 0) + 1
+                }).eq("id", user_id).execute()
+            except Exception:
+                pass  # non-fatal — don't fail the response over a counter write
 
         return {
             "engineered_prompt": formatted,
