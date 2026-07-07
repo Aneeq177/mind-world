@@ -483,7 +483,7 @@
           : String(res.error)
         improveInFlight = false
         setImproveButtonBusy(false)
-        openPopover('preview', '<p class="err">' + msg + '</p>', `
+        openPopover('preview', '<p class="err">' + escapeHtml(msg) + '</p>', `
           <button class="btn-ghost" id="mw-pop-close">Close</button>
         `)
         popoverShadow.getElementById('mw-pop-close').onclick = closePopover

@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from models import BlendRequest # Import models from models.py
 from services.parser import parse_claude, parse_chatgpt # Import functions from parser.py
 from services.database import (
@@ -88,6 +88,12 @@ async def process_files(
             status_code=400,
             detail="At least one file required" # This is the error message
         )
+
+    MAX_UPLOAD_BYTES = 200 * 1024 * 1024  # 200 MB hard limit per file
+    if claude_file and claude_file.size and claude_file.size > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Claude export file too large (max 200 MB)")
+    if chatgpt_file and chatgpt_file.size and chatgpt_file.size > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="ChatGPT export file too large (max 200 MB)")
 
     all_dfs = [] # This is an empty list that is being defined that will later store the parsed conversation tables for all the files that the user uploads
 # The files are stored as DataFrames which is a table like structure from pandas ( rows = conversations and columns = titles, messages, dates etc.)
@@ -173,6 +179,11 @@ class SearchRequest(BaseModel):
     email: str
     access_token: str
     limit: int = 5
+
+    @field_validator("limit")
+    @classmethod
+    def clamp_limit(cls, v: int) -> int:
+        return max(1, min(v, 20))
 
 @app.post("/search")
 async def search(request: SearchRequest):
@@ -1658,27 +1669,6 @@ async def company_search(request: CompanySearchRequest):
         supabase = get_supabase()
         email = request.email.lower().strip()
         user_id = _user_id(email, request.access_token)
-        print(f"[/company_search] email: {email}, user_id: {user_id}")
-
-        # SELF-HEALING: Verify and correct user_id mapping
-        try:
-            print("[/company_search] Running self-healing on user_ids and emails...")
-            # 1. Fix mixed-case emails that create duplicate user records
-            users_res = supabase.table("users").select("id, email").execute()
-            for u in (users_res.data or []):
-                if u["email"] and u["email"] != u["email"].lower():
-                    supabase.table("users").update({"email": u["email"].lower()}).eq("id", u["id"]).execute()
-            
-            # 2. Fix missing user_ids in team conversations
-            convs_res = supabase.table("knowledge_nodes").select("id, user_id").eq("visibility", "team").execute()
-            for c in (convs_res.data or []):
-                if not c.get("user_id"):
-                    emb_res = supabase.table("embeddings").select("user_id").eq("conversation_id", c["id"]).execute()
-                    if emb_res.data and emb_res.data[0].get("user_id"):
-                        supabase.table("knowledge_nodes").update({"user_id": emb_res.data[0]["user_id"]}).eq("id", c["id"]).execute()
-                        print(f"[/company_search] Healed conversation {c['id']} with user_id {emb_res.data[0]['user_id']}")
-        except Exception as heal_err:
-            print(f"[/company_search] Heal error: {heal_err}")
 
         user_result = supabase.table("users")\
             .select("company_id")\
@@ -1697,7 +1687,6 @@ async def company_search(request: CompanySearchRequest):
 
         company_user_ids = [u["id"] for u in (company_users.data or [])]
         company_user_emails = {u["id"]: u["email"] for u in (company_users.data or [])}
-        print(f"[/company_search] Found {len(company_user_ids)} members in company {company_id}: {company_user_emails}")
 
         if not company_user_ids:
             return {"results": [], "message": "No company members found"}

@@ -40,9 +40,18 @@ def parse_claude(data: dict | list) -> pd.DataFrame:
         df = df.sort_values('created_at').reset_index(drop=True)
     return df
 
+MAX_ZIP_EXTRACTED_BYTES = 500 * 1024 * 1024  # 500 MB decompressed safety limit
+
+
 def parse_chatgpt(zip_bytes: bytes) -> pd.DataFrame:
     rows = []
     with zipfile.ZipFile(io.BytesIO(zip_bytes)) as z:
+        total_uncompressed = sum(info.file_size for info in z.infolist())
+        if total_uncompressed > MAX_ZIP_EXTRACTED_BYTES:
+            raise ValueError(
+                f"Zip archive expands to {total_uncompressed // (1024 * 1024)} MB, "
+                "which exceeds the 500 MB safety limit."
+            )
         json_files = sorted([
             f for f in z.namelist()
             if f.startswith('conversations') and f.endswith('.json')
@@ -78,7 +87,7 @@ def parse_chatgpt(zip_bytes: bytes) -> pd.DataFrame:
                         float(create_time)).isoformat()
                     updated_at = datetime.fromtimestamp(
                         float(update_time)).isoformat()
-                except:
+                except Exception:
                     created_at = ''
                     updated_at = ''
                 rows.append({
