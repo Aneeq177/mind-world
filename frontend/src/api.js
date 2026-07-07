@@ -1,9 +1,5 @@
 const BASE_URL = import.meta.env.VITE_API_URL || 'https://mind-world-app-mv4yv.ondigitalocean.app'
 
-export function getGoogleSignInUrl(source = 'web') {
-  return `${BASE_URL}/auth/google/signin?source=${source}`
-}
-
 export async function login({ email, password }) {
   const response = await fetch(`${BASE_URL}/auth/login`, {
     method: 'POST',

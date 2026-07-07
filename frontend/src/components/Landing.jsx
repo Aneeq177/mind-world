@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useStore } from '../store'
-import { processFiles, loadExistingMap, recordConsent, ensureAccessToken, login, register, getGoogleSignInUrl } from '../api'
+import { processFiles, loadExistingMap, recordConsent, ensureAccessToken, login, register } from '../api'
 
 const CHROME_STORE_URL =
   'https://chromewebstore.google.com/detail/mind-world/dcbicejbdecfpdjgmnclmafiobgomhdp?utm_source=item'
@@ -192,10 +192,6 @@ export default function Landing() {
     } finally {
       setAuthLoading(false)
     }
-  }
-
-  function handleGoogleAuth() {
-    window.location.href = getGoogleSignInUrl('web')
   }
 
   function handleSignOut() {
@@ -648,18 +644,6 @@ export default function Landing() {
                 }}
               >
                 {authLoading ? 'Please wait…' : (isRegisterMode ? 'Create account' : 'Sign in')}
-              </button>
-              <button
-                type="button"
-                onClick={handleGoogleAuth}
-                style={{
-                  width: '100%', padding: '14px',
-                  background: 'white', border: 'none', borderRadius: '10px',
-                  color: '#333', fontWeight: 600, cursor: 'pointer',
-                  marginBottom: '10px'
-                }}
-              >
-                Continue with Google
               </button>
               <button
                 type="button"

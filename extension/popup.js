@@ -48,7 +48,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const passwordInput = document.getElementById('password-input-login')
   const toggleAuthMode = document.getElementById('toggle-auth-mode')
-  const googleSigninBtn = document.getElementById('google-signin-btn')
   const passwordSetupSection = document.getElementById('password-setup-section')
   const connectedMainContent = document.getElementById('connected-main-content')
   const setupPasswordInput = document.getElementById('setup-password-input')
@@ -265,43 +264,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     })
   }
-
-  if (googleSigninBtn) {
-    googleSigninBtn.addEventListener('click', () => {
-      if (consentCheckbox && !consentCheckbox.checked) {
-        loginError.textContent = 'Please acknowledge the privacy notice to continue.'
-        return
-      }
-      loginError.textContent = ''
-      chrome.tabs.create({ url: `${API_BASE}/auth/google/signin?source=extension` })
-    })
-  }
-
-  chrome.runtime.onMessage.addListener((message) => {
-    if (message.type !== 'AUTH_COMPLETE') return
-    chrome.storage.local.get(['mw_email', 'mw_api_key', 'mw_access_token', 'mw_needs_password'], async (stored) => {
-      if (!stored.mw_email || !stored.mw_access_token) return
-      currentEmail = stored.mw_email
-      try {
-        await recordConsent(stored.mw_email, stored.mw_access_token, 'extension')
-      } catch {
-        // consent may already exist
-      }
-      showConnectedView(stored.mw_email, stored.mw_api_key || null)
-      loadStats(stored.mw_email)
-      loginView.style.display = 'none'
-      connectedView.style.display = 'block'
-
-      // Fast path: backend told us directly whether password setup is needed.
-      if (stored.mw_needs_password === '1') {
-        chrome.storage.local.remove('mw_needs_password')
-        setPasswordSetupRequired(true)
-      } else {
-        chrome.storage.local.remove('mw_needs_password')
-        loadAuthAccount(stored.mw_email)
-      }
-    })
-  })
 
   // Load saved credentials and visibility
   const stored = await chrome.storage.local.get([
