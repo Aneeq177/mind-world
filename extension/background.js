@@ -27,6 +27,19 @@ function stopKeepAlive() {
 
 startKeepAlive()
 
+function formatApiErrorDetail(body) {
+  const d = body && body.detail
+  if (typeof d === 'string') return d
+  if (Array.isArray(d)) return d.map((x) => x.msg || JSON.stringify(x)).join('; ')
+  return 'Request failed'
+}
+
+function replyAsync(sendResponse, promise) {
+  Promise.resolve(promise)
+    .then((result) => sendResponse(result ?? { error: 'empty_response' }))
+    .catch((err) => sendResponse({ error: (err && err.message) || 'Background handler failed' }))
+}
+
 async function isMemoryEnabled() {
   const prefs = await chrome.storage.local.get(['mw_memory_enabled'])
   return prefs.mw_memory_enabled !== false
@@ -78,6 +91,13 @@ async function getAccessToken() {
   return null
 }
 
+// Refresh session when the service worker wakes so Improve/weave work without opening the popup.
+chrome.storage.local.get(['mw_email', 'mw_api_key'], (stored) => {
+  if (stored.mw_email) {
+    establishSession(stored.mw_email, stored.mw_api_key || null).catch(() => {})
+  }
+})
+
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   const url = changeInfo.url || ''
   if (!url.includes('/auth/callback')) return
@@ -128,75 +148,75 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'SEARCH') {
-    handleSearch(message.query).then(sendResponse)
+    replyAsync(sendResponse, handleSearch(message.query))
     return true // Keep channel open for async
   }
 
   if (message.type === 'SUMMARIZE') {
-    handleSummarize(
+    replyAsync(sendResponse, handleSummarize(
       message.conversationIds,
       message.currentQuery
-    ).then(sendResponse)
+    ))
     return true
   }
 
   if (message.type === 'ENGINEER_PROMPT') {
-    handleEngineerPrompt(
+    replyAsync(sendResponse, handleEngineerPrompt(
       message.message,
       message.template,
       message.conversationIds,
       !!message.skipMemory
-    ).then(sendResponse)
+    ))
     return true
   }
 
   if (message.type === 'GET_PERSONALIZATION_SUMMARY') {
-    handlePersonalizationSummary().then(sendResponse)
+    replyAsync(sendResponse, handlePersonalizationSummary())
     return true
   }
 
   if (message.type === 'CONFIRM_PERSONALIZATION_SUMMARY') {
-    handleConfirmPersonalizationSummary(message.action, message.correctionIds).then(sendResponse)
+    replyAsync(sendResponse, handleConfirmPersonalizationSummary(message.action, message.correctionIds))
     return true
   }
 
   if (message.type === 'GET_TEMPLATES') {
-    handleGetTemplates(!!message.forceRefresh).then(sendResponse)
+    replyAsync(sendResponse, handleGetTemplates(!!message.forceRefresh))
     return true
   }
 
   if (message.type === 'SEARCH_TEMPLATES') {
-    handleSearchTemplates(message).then(sendResponse)
+    replyAsync(sendResponse, handleSearchTemplates(message))
     return true
   }
 
   if (message.type === 'GET_TEMPLATE_CATEGORIES') {
-    handleGetTemplateCategories().then(sendResponse)
+    replyAsync(sendResponse, handleGetTemplateCategories())
     return true
   }
 
   if (message.type === 'SUGGEST_TEMPLATES') {
-    handleSuggestTemplates(
+    replyAsync(sendResponse, handleSuggestTemplates(
       message.draft,
       message.limit,
       message.category,
       message.tier
-    ).then(sendResponse)
+    ))
     return true
   }
 
   if (message.type === 'TRACK_TEMPLATE_USE') {
-    handleTrackTemplateUse(message.name).then(sendResponse)
+    replyAsync(sendResponse, handleTrackTemplateUse(message.name))
     return true
   }
 
   if (message.type === 'CONTEXT_PREVIEW') {
-    handleContextPreview(message.draft, message.limit).then(sendResponse)
+    replyAsync(sendResponse, handleContextPreview(message.draft, message.limit))
     return true
   }
 
   if (message.type === 'GET_MEMORY_STATS') {
-    handleMemoryStats().then(sendResponse)
+    replyAsync(sendResponse, handleMemoryStats())
     return true
   }
 
@@ -207,17 +227,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'PROMPT_FEEDBACK') {
-    handlePromptFeedback(message).then(sendResponse)
+    replyAsync(sendResponse, handlePromptFeedback(message))
     return true
   }
 
   if (message.type === 'PROMPT_EDIT_FEEDBACK') {
-    handlePromptFeedback(message).then(sendResponse)
+    replyAsync(sendResponse, handlePromptFeedback(message))
     return true
   }
 
   if (message.type === 'COMPANY_SEARCH') {
-    handleCompanySearch(message.query, message.limit).then(sendResponse)
+    replyAsync(sendResponse, handleCompanySearch(message.query, message.limit))
     return true
   }
 
@@ -391,7 +411,7 @@ async function handleEngineerPrompt(userMessage, templateStr, conversationIds, s
     if (!response.ok) {
       const err = await response.json().catch(() => ({}))
       // Pass quota_exceeded through as a structured error so the UI can show upgrade CTA
-      return { error: err.detail || 'Engineer prompt failed' }
+      return { error: formatApiErrorDetail(err) || 'Engineer prompt failed' }
     }
 
     const data = await response.json()

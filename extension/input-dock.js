@@ -97,6 +97,34 @@
   }
 
   window.formatEngineeredPrompt = formatEngineeredPrompt
+
+  function bindPopoverClose() {
+    const btn = popoverShadow && popoverShadow.getElementById('mw-pop-close')
+    if (btn) btn.onclick = closePopover
+  }
+
+  function friendlyEngineerError(err) {
+    const code = String(err || '').trim()
+    if (!code) return 'Something went wrong. Try again.'
+    if (code === 'not_logged_in') return 'Sign in via the Mind World extension icon.'
+    if (code === 'auth_required') {
+      return 'Session expired. Open the Mind World extension and sign in again.'
+    }
+    if (code === 'extension_unreachable' || code === 'empty_response') {
+      return 'Extension connection lost. Reload Mind World at chrome://extensions, then refresh this page.'
+    }
+    if (/message port closed|receiving end does not exist|extension context invalidated/i.test(code)) {
+      return 'Extension connection lost. Reload Mind World at chrome://extensions, then refresh this page.'
+    }
+    return code
+  }
+
+  async function sendRuntimeMessage(payload) {
+    const res = await chrome.runtime.sendMessage(payload)
+    if (res == null) return { error: 'extension_unreachable' }
+    return res
+  }
+
   let dockHost = null
   let popoverShadow = null
   let anchoredInput = null
@@ -482,7 +510,7 @@
     const loadingMsg = await getImproveLoadingMessage()
     openPopover('loading', loadingBodyHtml(loadingMsg), '')
     try {
-      const res = await chrome.runtime.sendMessage({
+      const res = await sendRuntimeMessage({
         type: 'ENGINEER_PROMPT',
         message,
         template: templateName || 'none'
@@ -504,14 +532,12 @@
             closePopover()
           }
         } else {
-          const msg = res.error === 'not_logged_in'
-            ? 'Sign in via the Mind World extension icon.'
-            : String(res.error)
+          const msg = friendlyEngineerError(res.error)
           openPopover('preview', '<p class="err">' + escapeHtml(msg) + '</p>', `
             <button class="btn-ghost" id="mw-pop-close">Close</button>
           `)
         }
-        popoverShadow.getElementById('mw-pop-close').onclick = closePopover
+        bindPopoverClose()
         return
       }
       emitPromptEditFeedback({
@@ -542,10 +568,11 @@
       if (requestId !== engineerRequestId) return
       improveInFlight = false
       setImproveButtonBusy(false)
-      openPopover('preview', '<p class="err">Network error. Try again.</p>', `
+      const msg = friendlyEngineerError(e && e.message)
+      openPopover('preview', '<p class="err">' + escapeHtml(msg) + '</p>', `
         <button class="btn-ghost" id="mw-pop-close">Close</button>
       `)
-      popoverShadow.getElementById('mw-pop-close').onclick = closePopover
+      bindPopoverClose()
     } finally {
       if (requestId === engineerRequestId && popoverState.mode !== 'preview' && popoverState.mode !== 'confirm') {
         improveInFlight = false
@@ -938,7 +965,7 @@
     }
 
     try {
-      const res = await chrome.runtime.sendMessage({
+      const res = await sendRuntimeMessage({
         type: 'ENGINEER_PROMPT',
         message: draft,
         template: tName || 'none',
@@ -947,11 +974,11 @@
       if (res.error) {
         const msg = res.error === 'not_logged_in'
           ? 'Sign in via the Mind World extension icon to weave templates.'
-          : String(res.error)
+          : friendlyEngineerError(res.error)
         openPopover('preview', '<p class="err">' + escapeHtml(msg) + '</p>', `
           <button class="btn-ghost" id="mw-pop-close">Close</button>
         `)
-        popoverShadow.getElementById('mw-pop-close').onclick = closePopover
+        bindPopoverClose()
         positionPopover()
         return
       }
@@ -971,10 +998,11 @@
       })
       if (!chipEl) closePopover()
     } catch (e) {
-      openPopover('preview', '<p class="err">Could not weave template. Try again.</p>', `
+      const msg = friendlyEngineerError(e && e.message)
+      openPopover('preview', '<p class="err">' + escapeHtml(msg) + '</p>', `
         <button class="btn-ghost" id="mw-pop-close">Close</button>
       `)
-      popoverShadow.getElementById('mw-pop-close').onclick = closePopover
+      bindPopoverClose()
       positionPopover()
     } finally {
       if (chipEl) {
