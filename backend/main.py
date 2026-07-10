@@ -104,6 +104,12 @@ _RATE_LIMITED_PATHS = {"/engineer_prompt", "/compare_answers"}
 _DEMO_ANSWER_MODEL = "claude-sonnet-4-6"
 _DEMO_ENGINEER_MODEL = "claude-haiku-4-5-20251001"
 
+# Human-readable labels for the model-transparency note in the compare UI.
+_MODEL_DISPLAY_NAMES = {
+    "claude-sonnet-4-6": "Claude Sonnet 4.6",
+    "claude-haiku-4-5-20251001": "Claude Haiku 4.5",
+}
+
 
 def _engineer_system_prompt(adaptation_hint: str) -> str:
     """The v3 prompt-engineering system prompt. Validated in backend/evals/
@@ -867,6 +873,12 @@ async def compare_answers(http_req: Request, request: CompareAnswersRequest):
             "engineered_prompt": improved_prompt,
             "raw_answer": raw_answer,
             "improved_answer": improved_answer,
+            # Transparency: both answers came from the same model, so the
+            # prompt is the only variable. Surfaced in the UI, not just claimed.
+            "answer_model": _DEMO_ANSWER_MODEL,
+            "answer_model_display": _MODEL_DISPLAY_NAMES.get(_DEMO_ANSWER_MODEL, _DEMO_ANSWER_MODEL),
+            "engineer_model": _DEMO_ENGINEER_MODEL,
+            "engineer_model_display": _MODEL_DISPLAY_NAMES.get(_DEMO_ENGINEER_MODEL, _DEMO_ENGINEER_MODEL),
         }
 
     except HTTPException:

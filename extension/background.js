@@ -462,7 +462,9 @@ async function handleCompareAnswers(userMessage) {
       engineeredPrompt: data.engineered_prompt,
       rawAnswer: data.raw_answer,
       improvedAnswer: data.improved_answer,
-      originalDraft: data.original_draft
+      originalDraft: data.original_draft,
+      answerModelDisplay: data.answer_model_display || data.answer_model || '',
+      engineerModelDisplay: data.engineer_model_display || data.engineer_model || ''
     }
   } catch (error) {
     return { error: error.message }
