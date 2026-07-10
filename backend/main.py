@@ -63,6 +63,24 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(SecurityHeadersMiddleware)
 
+
+@app.on_event("startup")
+def _warm_embedding_model():
+    """Load the sentence-transformer once at boot (in a thread so health
+    checks aren't blocked) instead of paying the load on a user's first
+    search/Improve call."""
+    import threading
+
+    def _warm():
+        try:
+            from services.embedder import get_embedding_model
+            get_embedding_model().encode(["warmup"])
+            print("[startup] embedding model warmed")
+        except Exception as e:
+            print(f"[startup] embedding warmup failed (will load lazily): {e}")
+
+    threading.Thread(target=_warm, daemon=True).start()
+
 # ---------------------------------------------------------------------------
 # Per-user free-tier quota
 # ---------------------------------------------------------------------------
@@ -233,12 +251,11 @@ async def search(request: SearchRequest):
             search_conversations_candidates,
             get_personal_profile,
         )
-        from sentence_transformers import SentenceTransformer
+        from services.embedder import get_embedding_model
 
         email = request.email.lower().strip()
         user_id = _user_id(email, request.access_token)
-        _search_model = SentenceTransformer("all-MiniLM-L6-v2")
-        query_embedding = _search_model.encode([request.query])[0]
+        query_embedding = get_embedding_model().encode([request.query])[0]
 
         profile = get_personal_profile(user_id)
         if profile.get("is_profile_enabled"):
@@ -433,7 +450,7 @@ async def engineer_prompt(http_req: Request, request: EngineerPromptRequest):
             )
 
         import anthropic
-        from sentence_transformers import SentenceTransformer
+        from services.embedder import get_embedding_model
         from services.database import (
             search_conversations,
             search_conversations_candidates,
@@ -481,6 +498,9 @@ async def engineer_prompt(http_req: Request, request: EngineerPromptRequest):
                (_quota_row.get("improve_calls_used") or 0) >= FREE_TIER_LIMIT:
                 raise HTTPException(status_code=402, detail="quota_exceeded")
 
+        _prefetched_profile = None
+        _prefetched_facts = None
+
         if skip_memory:
             selected = []
         elif request.conversation_ids:
@@ -496,8 +516,7 @@ async def engineer_prompt(http_req: Request, request: EngineerPromptRequest):
                     .execute()
                 selected = result.data or []
         else:
-            model = SentenceTransformer("all-MiniLM-L6-v2")
-            embedding = model.encode([request.message])[0]
+            embedding = get_embedding_model().encode([request.message])[0]
             profile = get_personal_profile(user_id)
             profile_data = profile.get("profile_data") or {}
             if profile.get("is_profile_enabled"):
@@ -517,13 +536,34 @@ async def engineer_prompt(http_req: Request, request: EngineerPromptRequest):
                     embedding,
                     limit=15,
                 )
-            from services.personalization_llm import rerank_conversations_llm
-            selected = rerank_conversations_llm(
-                request.message,
-                candidates,
-                api_key,
-                limit=5,
+            # Rerank and profile-fact picking are independent LLM calls —
+            # run them concurrently instead of back-to-back.
+            from concurrent.futures import ThreadPoolExecutor
+            from services.personalization_llm import (
+                rerank_conversations_llm,
+                pick_relevant_profile_facts_llm,
             )
+            with ThreadPoolExecutor(max_workers=2) as _pool:
+                _rerank_future = _pool.submit(
+                    rerank_conversations_llm,
+                    request.message,
+                    candidates,
+                    api_key,
+                    5,
+                )
+                _facts_future = None
+                if profile.get("is_profile_enabled"):
+                    _facts_future = _pool.submit(
+                        pick_relevant_profile_facts_llm,
+                        profile_data,
+                        request.message,
+                        api_key,
+                        6,
+                    )
+                selected = _rerank_future.result()
+                if _facts_future is not None:
+                    _prefetched_facts = _facts_future.result()
+            _prefetched_profile = profile
 
         if selected:
             from services.database import get_supabase
@@ -569,7 +609,7 @@ async def engineer_prompt(http_req: Request, request: EngineerPromptRequest):
         profile_context = ""
         adaptive = {}
         if not skip_memory:
-            profile = get_personal_profile(user_id)
+            profile = _prefetched_profile or get_personal_profile(user_id)
             profile_data = (profile.get("profile_data") or {}) if profile else {}
             confirmed_facts = extract_confirmed_anchor_facts(profile_data)
             if confirmed_facts:
@@ -579,13 +619,16 @@ async def engineer_prompt(http_req: Request, request: EngineerPromptRequest):
                 profile_context += "\n"
             if profile and profile.get("is_profile_enabled"):
                 adaptive = profile_data.get("adaptive_weights") or {}
-                from services.personalization_llm import pick_relevant_profile_facts_llm
-                relevant_profile_facts = pick_relevant_profile_facts_llm(
-                    profile_data,
-                    request.message,
-                    api_key,
-                    max_facts=6,
-                )
+                if _prefetched_facts is not None:
+                    relevant_profile_facts = _prefetched_facts
+                else:
+                    from services.personalization_llm import pick_relevant_profile_facts_llm
+                    relevant_profile_facts = pick_relevant_profile_facts_llm(
+                        profile_data,
+                        request.message,
+                        api_key,
+                        max_facts=6,
+                    )
                 if not relevant_profile_facts:
                     relevant_profile_facts = extract_relevant_profile_facts(
                         profile_data,
@@ -648,10 +691,18 @@ Output rules:
 - Never ask clarifying questions. Make reasonable assumptions and proceed."""
 
         else:
-            system_prompt = f"""You are an expert prompt engineer. Transform the user's rough message into a clear, effective prompt for an AI assistant.
-Use past conversations and profile context only when directly relevant to the current draft. Never invent details. Skip unrelated background.
-Choose whatever structure and formatting you think works best for this specific task — prose, bullets, numbered steps, or labeled sections are all fine.
-Output plain text ready to paste into a chat box (no markdown bold or code fences). Output ONLY the final prompt — no preamble, labels like "Here is your prompt", or commentary. Never ask clarifying questions or include question lists in the output; if something is ambiguous, make a reasonable assumption and proceed.
+            # v3 prompt — validated against the old prompt in backend/evals/
+            # (won 6-0-2 in blind pairwise judging; old prompt fabricated user
+            # facts and inflated simple questions into demand-everything lists).
+            system_prompt = f"""You are a prompt engineer. Rewrite the user's rough draft into the message they should have sent — nothing else.
+
+Rules, in priority order:
+1. Your entire output is the rewritten prompt itself. It must read as a message from the user to an AI assistant. No commentary, no preamble, no "Here's the prompt", no notes about what you changed or don't know.
+2. Never invent facts the user didn't give — no made-up names, dates, numbers, projects, reasons, or personal details. Where a needed detail is missing, have the prompt tell the assistant to use a clearly marked placeholder or offer options.
+3. Match depth to the ask. A simple question stays a short prompt with at most a line about audience, depth, or format. Only requests for documents or complex work earn structure. Never demand exhaustive coverage the user didn't ask for — the goal is the right answer at the right length, not the longest one.
+4. Add only what sharpens the answer: the user's goal or situation, the deliverable's form, the audience. If the draft is already clear, change little.
+5. Use past conversations and profile context only when directly relevant; weave details in naturally.
+6. Plain text only (no markdown bold or code fences; simple lists are fine). Never ask the user clarifying questions.
 Adaptive preference hint: {adaptation_hint}"""
 
         user_content = (
@@ -713,7 +764,7 @@ Adaptive preference hint: {adaptation_hint}"""
 async def context_preview(request: ContextPreviewRequest):
     """Return relevant past conversations for a draft without engineering a prompt."""
     try:
-        from sentence_transformers import SentenceTransformer
+        from services.embedder import get_embedding_model
         from services.database import search_conversations
 
         email = request.email.lower().strip()
@@ -722,8 +773,7 @@ async def context_preview(request: ContextPreviewRequest):
         if len(draft) < 3:
             return {"sources": [], "total_conversations": 0}
 
-        model = SentenceTransformer("all-MiniLM-L6-v2")
-        embedding = model.encode([draft])[0]
+        embedding = get_embedding_model().encode([draft])[0]
         results = search_conversations(user_id, embedding, limit=min(request.limit, 8))
 
         from services.database import get_supabase
@@ -1750,7 +1800,7 @@ class CompanySearchRequest(BaseModel):
 async def company_search(request: CompanySearchRequest):
     try:
         from services.database import get_or_create_user, get_supabase
-        from sentence_transformers import SentenceTransformer
+        from services.embedder import get_embedding_model
 
         supabase = get_supabase()
         email = request.email.lower().strip()
@@ -1777,8 +1827,7 @@ async def company_search(request: CompanySearchRequest):
         if not company_user_ids:
             return {"results": [], "message": "No company members found"}
 
-        model = SentenceTransformer('all-MiniLM-L6-v2')
-        query_embedding = model.encode([request.query])[0]
+        query_embedding = get_embedding_model().encode([request.query])[0]
 
         print(f"[/company_search] Calling match_company_conversations with exclude_user_id={user_id}, company_user_ids={company_user_ids}")
 
@@ -1896,9 +1945,8 @@ async def run_recluster(email: str):
         all_texts.append(f"{title}. {text}")
 
     # Embed all texts
-    from sentence_transformers import SentenceTransformer
-    model = SentenceTransformer('all-MiniLM-L6-v2')
-    embeddings = model.encode(all_texts, show_progress_bar=False)
+    from services.embedder import get_embedding_model
+    embeddings = get_embedding_model().encode(all_texts, show_progress_bar=False)
 
     # Run UMAP on all embeddings together
     import umap

@@ -1,8 +1,18 @@
+from functools import lru_cache
+
 import numpy as np
 import pandas as pd
 from sentence_transformers import SentenceTransformer
 import umap
 import hdbscan as hdbscan_lib
+
+
+@lru_cache(maxsize=1)
+def get_embedding_model() -> SentenceTransformer:
+    """Process-wide shared embedding model. Loading takes seconds — construct
+    once and reuse across requests instead of per-call."""
+    return SentenceTransformer('all-MiniLM-L6-v2')
+
 
 def build_text(row):
     title = str(row['name']) if pd.notna(row['name']) else 'Untitled'
@@ -12,7 +22,7 @@ def build_text(row):
 def embed_and_position(df: pd.DataFrame) -> tuple[list[dict], np.ndarray]:
     texts = [build_text(row) for _, row in df.iterrows()]
 
-    model = SentenceTransformer('all-MiniLM-L6-v2')
+    model = get_embedding_model()
     embeddings = model.encode(texts, show_progress_bar=False)
 
     n_neighbors = min(10, len(df) - 1)
@@ -63,6 +73,6 @@ def embed_and_position(df: pd.DataFrame) -> tuple[list[dict], np.ndarray]:
     return result, embeddings
 
 def embed_single(text: str):
-    model = SentenceTransformer('all-MiniLM-L6-v2')
+    model = get_embedding_model()
     embedding = model.encode([text])[0]
     return embedding
