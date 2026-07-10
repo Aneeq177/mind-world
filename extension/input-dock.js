@@ -107,6 +107,9 @@
     const code = String(err || '').trim()
     if (!code) return 'Something went wrong. Try again.'
     if (code === 'not_logged_in') return 'Sign in via the Mind World extension icon.'
+    if (code === 'quota_exceeded') {
+      return "You've used all 25 free Improve calls. Add your own Anthropic API key in the extension settings for unlimited use."
+    }
     if (code === 'auth_required') {
       return 'Session expired. Open the Mind World extension and sign in again.'
     }
