@@ -96,7 +96,29 @@ MW_CLIENT_SECRET = "mwext-f8c3a91d-v3"
 _ip_call_log: dict[str, list[float]] = defaultdict(list)
 _IP_WINDOW_SECS = 60
 _IP_MAX_CALLS = 30
-_RATE_LIMITED_PATHS = {"/engineer_prompt"}
+_RATE_LIMITED_PATHS = {"/engineer_prompt", "/compare_answers"}
+
+# Model used for the one-time "see the difference" demo answers. Both the raw
+# draft and the improved prompt are answered by the SAME model so the only
+# variable in the comparison is the prompt itself — this keeps the demo honest.
+_DEMO_ANSWER_MODEL = "claude-sonnet-4-6"
+_DEMO_ENGINEER_MODEL = "claude-haiku-4-5-20251001"
+
+
+def _engineer_system_prompt(adaptation_hint: str) -> str:
+    """The v3 prompt-engineering system prompt. Validated in backend/evals/
+    (beat the prior prompt 6-0-2 in blind pairwise judging). Shared by
+    /engineer_prompt (no-memory path) and the /compare_answers demo."""
+    return f"""You are a prompt engineer. Rewrite the user's rough draft into the message they should have sent — nothing else.
+
+Rules, in priority order:
+1. Your entire output is the rewritten prompt itself. It must read as a message from the user to an AI assistant. No commentary, no preamble, no "Here's the prompt", no notes about what you changed or don't know.
+2. Never invent facts the user didn't give — no made-up names, dates, numbers, projects, reasons, or personal details. Where a needed detail is missing, have the prompt tell the assistant to use a clearly marked placeholder or offer options.
+3. Match depth to the ask. A simple question stays a short prompt with at most a line about audience, depth, or format. Only requests for documents or complex work earn structure. Never demand exhaustive coverage the user didn't ask for — the goal is the right answer at the right length, not the longest one.
+4. Add only what sharpens the answer: the user's goal or situation, the deliverable's form, the audience. If the draft is already clear, change little.
+5. Use past conversations and profile context only when directly relevant; weave details in naturally.
+6. Plain text only (no markdown bold or code fences; simple lists are fine). Never ask the user clarifying questions.
+Adaptive preference hint: {adaptation_hint}"""
 
 
 class IPRateLimitMiddleware(BaseHTTPMiddleware):
@@ -305,6 +327,14 @@ class ContextPreviewRequest(BaseModel):
     access_token: str
     draft: str
     limit: int = 5
+
+
+class CompareAnswersRequest(BaseModel):
+    email: str
+    access_token: str
+    message: str
+    api_key: Optional[str] = None
+    device_id: Optional[str] = None
 
 
 class UpdateProfileSettingsRequest(BaseModel):
@@ -706,16 +736,7 @@ Output rules:
             # v3 prompt — validated against the old prompt in backend/evals/
             # (won 6-0-2 in blind pairwise judging; old prompt fabricated user
             # facts and inflated simple questions into demand-everything lists).
-            system_prompt = f"""You are a prompt engineer. Rewrite the user's rough draft into the message they should have sent — nothing else.
-
-Rules, in priority order:
-1. Your entire output is the rewritten prompt itself. It must read as a message from the user to an AI assistant. No commentary, no preamble, no "Here's the prompt", no notes about what you changed or don't know.
-2. Never invent facts the user didn't give — no made-up names, dates, numbers, projects, reasons, or personal details. Where a needed detail is missing, have the prompt tell the assistant to use a clearly marked placeholder or offer options.
-3. Match depth to the ask. A simple question stays a short prompt with at most a line about audience, depth, or format. Only requests for documents or complex work earn structure. Never demand exhaustive coverage the user didn't ask for — the goal is the right answer at the right length, not the longest one.
-4. Add only what sharpens the answer: the user's goal or situation, the deliverable's form, the audience. If the draft is already clear, change little.
-5. Use past conversations and profile context only when directly relevant; weave details in naturally.
-6. Plain text only (no markdown bold or code fences; simple lists are fine). Never ask the user clarifying questions.
-Adaptive preference hint: {adaptation_hint}"""
+            system_prompt = _engineer_system_prompt(adaptation_hint)
 
         user_content = (
             f"ROUGH DRAFT (rewrite as a prompt for another AI — do NOT answer this):\n"
@@ -764,6 +785,88 @@ Adaptive preference hint: {adaptation_hint}"""
             "engineered_prompt": formatted,
             "conversations_used": len(context_parts),
             "sources_used": sources_used,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/compare_answers")
+async def compare_answers(http_req: Request, request: CompareAnswersRequest):
+    """One-time 'see the difference' demo. Engineers the rough draft into an
+    improved prompt, then answers BOTH the raw draft and the improved prompt
+    with the SAME model — so the only variable is the prompt. Returns both
+    answers plus the improved prompt for a side-by-side view.
+
+    Does not touch the Improve free-tier counter (it's an activation demo, not
+    an Improve call). Abuse is bounded by the client one-time flag, auth, and
+    the shared IP rate limiter."""
+    try:
+        if http_req.headers.get("X-MW-Client") != MW_CLIENT_SECRET:
+            raise HTTPException(
+                status_code=401,
+                detail="Unauthorised client. Please update the Mind World extension.",
+            )
+
+        import anthropic
+        from concurrent.futures import ThreadPoolExecutor
+        from services.prompt_format import format_engineered_prompt
+
+        api_key = request.api_key or os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise HTTPException(
+                status_code=400,
+                detail="Anthropic API key required — add one in the extension or configure the server.",
+            )
+
+        # Require valid auth (session token or the user's own API key).
+        _user_id(request.email.lower().strip(), request.access_token, request.api_key)
+
+        draft = (request.message or "").strip()
+        if len(draft) < 3:
+            raise HTTPException(status_code=400, detail="Draft too short to compare.")
+
+        client = anthropic.Anthropic(api_key=api_key)
+
+        # 1) Engineer the improved prompt (no-memory path, same v3 prompt as prod).
+        eng = client.messages.create(
+            model=_DEMO_ENGINEER_MODEL,
+            max_tokens=1000,
+            system=_engineer_system_prompt("Balance clarity with enough detail for the task."),
+            messages=[{
+                "role": "user",
+                "content": (
+                    "ROUGH DRAFT (rewrite as a prompt for another AI — do NOT answer this):\n"
+                    f"{draft}\n"
+                ),
+            }],
+        )
+        improved_prompt = format_engineered_prompt(eng.content[0].text)
+
+        # 2) Answer the raw draft and the improved prompt with the SAME model,
+        #    in parallel. Capped short so the two columns stay scannable.
+        def _answer(prompt: str) -> str:
+            resp = client.messages.create(
+                model=_DEMO_ANSWER_MODEL,
+                max_tokens=700,
+                system="You are a helpful AI assistant in a chat product. Answer directly and concisely.",
+                messages=[{"role": "user", "content": prompt}],
+            )
+            return "".join(b.text for b in resp.content if b.type == "text").strip()
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            raw_future = pool.submit(_answer, draft)
+            improved_future = pool.submit(_answer, improved_prompt)
+            raw_answer = raw_future.result()
+            improved_answer = improved_future.result()
+
+        return {
+            "original_draft": draft,
+            "engineered_prompt": improved_prompt,
+            "raw_answer": raw_answer,
+            "improved_answer": improved_answer,
         }
 
     except HTTPException:

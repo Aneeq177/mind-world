@@ -369,6 +369,45 @@
         background: rgba(124,58,237,0.06); border-radius: 4px;
         white-space: pre-wrap; word-break: break-word;
       }
+      .mw-pop .mw-diff-cta-btn {
+        width: 100%; box-sizing: border-box; cursor: pointer;
+        background: linear-gradient(90deg, rgba(124,58,237,0.25), rgba(236,72,153,0.25));
+        border: 1px solid rgba(167,139,250,0.5); color: #e9d5ff;
+        font-size: 12px; font-weight: 600; padding: 9px 12px; border-radius: 8px;
+        margin-bottom: 4px;
+      }
+      .mw-pop .mw-diff-cta-btn:hover {
+        border-color: rgba(167,139,250,0.9);
+        background: linear-gradient(90deg, rgba(124,58,237,0.4), rgba(236,72,153,0.4));
+      }
+      .mw-pop.compare { width: 680px; max-width: 92vw; max-height: 80vh; }
+      .mw-pop .mw-compare-grid {
+        display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+        overflow-y: auto; max-height: 62vh; padding-right: 2px;
+      }
+      .mw-pop .mw-compare-col {
+        display: flex; flex-direction: column; gap: 6px;
+        border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 10px;
+      }
+      .mw-pop .mw-compare-col-improved {
+        border-color: rgba(167,139,250,0.45);
+        background: rgba(124,58,237,0.06);
+      }
+      .mw-pop .mw-compare-head { font-size: 12px; font-weight: 700; }
+      .mw-pop .mw-compare-head-raw { color: #9ca3af; }
+      .mw-pop .mw-compare-head-improved { color: #c4b5fd; }
+      .mw-pop .mw-compare-prompt {
+        font-size: 10px; color: #888; line-height: 1.4; white-space: pre-wrap;
+        word-break: break-word; padding: 6px 8px; border-radius: 4px;
+        background: rgba(255,255,255,0.03); max-height: 120px; overflow-y: auto;
+      }
+      .mw-pop .mw-compare-answer-label {
+        font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em; color: #666;
+      }
+      .mw-pop .mw-compare-answer {
+        font-size: 11px; color: #ddd; line-height: 1.45; white-space: pre-wrap;
+        word-break: break-word;
+      }
       .mw-pop .mw-import-guide { font-size: 11px; color: #aaa; line-height: 1.5; }
       .mw-pop .mw-import-guide ol { margin: 8px 0 0; padding-left: 18px; }
       .mw-pop .mw-import-guide li { margin-bottom: 4px; }
@@ -478,6 +517,7 @@
     if (pop) {
       pop.classList.remove('open')
       pop.classList.remove('library')
+      pop.classList.remove('compare')
     }
     popoverState.mode = 'closed'
     improveInFlight = false
@@ -677,6 +717,7 @@
          <div class="mw-original" id="mw-original" style="display:none;">${escapeHtml(originalDraft)}</div>`
       : ''
     openPopover('preview', `
+      <div id="mw-diff-cta"></div>
       <p class="note">${note}</p>
       ${compareHtml}
       ${sourcesHtml}
@@ -760,10 +801,76 @@
       closePopover()
     }
     popoverShadow.getElementById('mw-pop-close').onclick = closePopover
+
+    // One-time "see the difference" CTA — shown until the user has seen it once.
+    const ctaSlot = popoverShadow.getElementById('mw-diff-cta')
+    if (ctaSlot && originalDraft) {
+      chrome.storage.local.get('mw_seen_difference').then((r) => {
+        if (r && r.mw_seen_difference) return
+        ctaSlot.innerHTML = `<button type="button" class="mw-diff-cta-btn" id="mw-diff-cta-btn">✨ See the difference this makes →</button>`
+        const b = popoverShadow.getElementById('mw-diff-cta-btn')
+        if (b) b.onclick = () => runCompareDifference(originalDraft)
+      }).catch(() => {})
+    }
+
     popoverState.goal = goal
     popoverState.template = templateName
     improveInFlight = false
     setImproveButtonBusy(false)
+    positionPopover()
+  }
+
+  async function runCompareDifference(draft) {
+    openPopover('loading', loadingBodyHtml('Answering your original draft and the improved prompt with the same AI…'), '')
+    try {
+      const res = await sendRuntimeMessage({ type: 'COMPARE_ANSWERS', message: draft })
+      if (!res || res.error) {
+        const msg = res && res.error === 'quota_exceeded'
+          ? 'You have reached the free usage limit. Add your own API key in the extension settings for unlimited use.'
+          : (res && res.error ? String(res.error) : 'Could not run the comparison.')
+        openPopover('preview', '<p class="err">' + escapeHtml(msg) + '</p>',
+          '<button class="btn-ghost" id="mw-pop-close">Close</button>')
+        const c = popoverShadow.getElementById('mw-pop-close')
+        if (c) c.onclick = closePopover
+        return
+      }
+      renderCompareResult(draft, res)
+      chrome.storage.local.set({ mw_seen_difference: true }).catch(() => {})
+      emitPromptEditFeedback({ eventType: 'see_difference', rating: 1 })
+    } catch (e) {
+      openPopover('preview', '<p class="err">Network error. Try again.</p>',
+        '<button class="btn-ghost" id="mw-pop-close">Close</button>')
+      const c = popoverShadow.getElementById('mw-pop-close')
+      if (c) c.onclick = closePopover
+    }
+  }
+
+  function renderCompareResult(draft, res) {
+    const pop = popoverShadow.getElementById('mw-pop-inner')
+    if (pop) pop.classList.add('compare')
+    openPopover('preview', `
+      <p class="note">Same AI, two prompts. Left: what you typed. Right: what Mind World wrote.</p>
+      <div class="mw-compare-grid">
+        <div class="mw-compare-col">
+          <div class="mw-compare-head mw-compare-head-raw">Your original prompt</div>
+          <div class="mw-compare-prompt">${escapeHtml(draft)}</div>
+          <div class="mw-compare-answer-label">Answer</div>
+          <div class="mw-compare-answer">${escapeHtml(res.rawAnswer || '')}</div>
+        </div>
+        <div class="mw-compare-col mw-compare-col-improved">
+          <div class="mw-compare-head mw-compare-head-improved">✨ Improved by Mind World</div>
+          <div class="mw-compare-prompt">${escapeHtml(res.engineeredPrompt || '')}</div>
+          <div class="mw-compare-answer-label">Answer</div>
+          <div class="mw-compare-answer">${escapeHtml(res.improvedAnswer || '')}</div>
+        </div>
+      </div>
+    `, `
+      <button class="btn-primary" id="mw-compare-done">Got it</button>
+    `)
+    const title = popoverShadow.getElementById('mw-pop-title')
+    if (title) title.textContent = 'See the difference'
+    const done = popoverShadow.getElementById('mw-compare-done')
+    if (done) done.onclick = closePopover
     positionPopover()
   }
 

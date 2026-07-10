@@ -170,6 +170,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true
   }
 
+  if (message.type === 'COMPARE_ANSWERS') {
+    replyAsync(sendResponse, handleCompareAnswers(message.message))
+    return true
+  }
+
   if (message.type === 'GET_PERSONALIZATION_SUMMARY') {
     replyAsync(sendResponse, handlePersonalizationSummary())
     return true
@@ -420,6 +425,44 @@ async function handleEngineerPrompt(userMessage, templateStr, conversationIds, s
       conversationsUsed: data.conversations_used || 0,
       sourcesUsed: data.sources_used || [],
       latencyMs: Date.now() - startedAt
+    }
+  } catch (error) {
+    return { error: error.message }
+  }
+}
+
+async function handleCompareAnswers(userMessage) {
+  try {
+    const auth = await getAuthContext()
+    if (auth.error) return { error: auth.error }
+
+    const stored = await chrome.storage.local.get('mw_device_id')
+    const response = await fetch(`${API_BASE}/compare_answers`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-MW-Client': 'mwext-f8c3a91d-v3'
+      },
+      body: JSON.stringify({
+        email: auth.email,
+        access_token: auth.accessToken,
+        message: userMessage,
+        api_key: auth.apiKey || null,
+        device_id: stored.mw_device_id || null
+      })
+    })
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}))
+      return { error: formatApiErrorDetail(err) || 'Comparison failed' }
+    }
+
+    const data = await response.json()
+    return {
+      engineeredPrompt: data.engineered_prompt,
+      rawAnswer: data.raw_answer,
+      improvedAnswer: data.improved_answer,
+      originalDraft: data.original_draft
     }
   } catch (error) {
     return { error: error.message }
