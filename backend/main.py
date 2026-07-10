@@ -6,6 +6,7 @@ import json
 import os
 import time
 from collections import defaultdict
+from datetime import datetime, timedelta
 import pandas as pd
 from dotenv import load_dotenv
 
@@ -476,27 +477,38 @@ async def engineer_prompt(http_req: Request, request: EngineerPromptRequest):
             from services.database import get_supabase as _get_sb
             _sb = _get_sb()
 
-            # Bind device_id to account on first seen (fraud signal)
-            if request.device_id:
-                _sb.table("users").update({"device_id": request.device_id})\
-                    .eq("id", user_id).is_("device_id", "null").execute()
-
-                # If this device_id is linked to 3+ OTHER accounts → likely multi-account abuse
-                _others = _sb.table("users").select("id")\
-                    .eq("device_id", request.device_id)\
-                    .neq("id", user_id).execute()
-                if len(_others.data or []) >= 3:
-                    raise HTTPException(status_code=429, detail="quota_exceeded")
-
-            # Fetch quota counters
+            # Fetch quota counters first — pro users are exempt from every
+            # check below (device fingerprint included). Checking is_pro
+            # only *after* the device check let a shared dev/test machine
+            # with old throwaway accounts permanently block paid accounts.
             _urow = _sb.table("users")\
                 .select("improve_calls_used, is_pro")\
                 .eq("id", user_id).execute()
             _quota_row = _urow.data[0] if _urow.data else {}
 
-            if not _quota_row.get("is_pro") and \
-               (_quota_row.get("improve_calls_used") or 0) >= FREE_TIER_LIMIT:
-                raise HTTPException(status_code=402, detail="quota_exceeded")
+            if not _quota_row.get("is_pro"):
+                # Bind device_id to account on first seen (fraud signal)
+                if request.device_id:
+                    _sb.table("users").update({"device_id": request.device_id})\
+                        .eq("id", user_id).is_("device_id", "null").execute()
+
+                    # If this device_id is linked to 3+ OTHER accounts that have
+                    # actually used the free tier *recently* → likely multi-account
+                    # abuse. Scoped to recent + active accounts only, so a dev/QA
+                    # machine that has accumulated old throwaway test accounts over
+                    # weeks doesn't permanently brick every account that touches it.
+                    _abuse_cutoff = (datetime.utcnow() - timedelta(days=3)).isoformat()
+                    _others = _sb.table("users").select("id")\
+                        .eq("device_id", request.device_id)\
+                        .neq("id", user_id)\
+                        .gt("improve_calls_used", 0)\
+                        .gte("created_at", _abuse_cutoff)\
+                        .execute()
+                    if len(_others.data or []) >= 3:
+                        raise HTTPException(status_code=429, detail="quota_exceeded")
+
+                if (_quota_row.get("improve_calls_used") or 0) >= FREE_TIER_LIMIT:
+                    raise HTTPException(status_code=402, detail="quota_exceeded")
 
         _prefetched_profile = None
         _prefetched_facts = None
