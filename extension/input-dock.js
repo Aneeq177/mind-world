@@ -327,6 +327,17 @@
       .mw-pop .mw-source-item p { margin: 4px 0 0; color: #888; font-size: 10px; line-height: 1.3; }
       .mw-pop .mw-import-hint { font-size: 11px; color: #888; }
       .mw-pop .mw-import-hint a { color: #a78bfa; cursor: pointer; }
+      .mw-pop .mw-compare-toggle {
+        background: none; border: none; color: #a78bfa; cursor: pointer;
+        font-size: 11px; padding: 0; text-align: left; align-self: flex-start;
+      }
+      .mw-pop .mw-compare-toggle:hover { color: #c4b5fd; text-decoration: underline; }
+      .mw-pop .mw-original {
+        font-size: 11px; color: #999; line-height: 1.4; margin: 0;
+        padding: 8px 10px; border-left: 2px solid rgba(124,58,237,0.4);
+        background: rgba(124,58,237,0.06); border-radius: 4px;
+        white-space: pre-wrap; word-break: break-word;
+      }
       .mw-pop .mw-import-guide { font-size: 11px; color: #aaa; line-height: 1.5; }
       .mw-pop .mw-import-guide ol { margin: 8px 0 0; padding-left: 18px; }
       .mw-pop .mw-import-guide li { margin-bottom: 4px; }
@@ -543,10 +554,14 @@
     }
   }
 
+  function sourcesToggleLabel(n, open) {
+    return `✨ Personalized with ${n} of your past chat${n > 1 ? 's' : ''} (${open ? 'hide' : 'show'})`
+  }
+
   function buildSourcesHtml(sourcesUsed, conversationsUsed) {
     if (sourcesUsed && sourcesUsed.length) {
       let html = `<div class="mw-sources">
-        <button type="button" class="mw-sources-toggle" id="mw-sources-toggle">Context from ${sourcesUsed.length} conversation${sourcesUsed.length > 1 ? 's' : ''} (show)</button>
+        <button type="button" class="mw-sources-toggle" id="mw-sources-toggle">${sourcesToggleLabel(sourcesUsed.length, false)}</button>
         <div class="mw-sources-list" id="mw-sources-list" style="display:none;">`
       sourcesUsed.forEach(s => {
         const sim = s.similarity != null ? ` \u00b7 ${s.similarity}% match` : ''
@@ -626,8 +641,14 @@
       ? 'Improved using your draft + past conversations below'
       : 'Engineered from your draft'
     const sourcesHtml = buildSourcesHtml(sourcesUsed, conversationsUsed)
+    const originalDraft = (goal || '').trim()
+    const compareHtml = originalDraft
+      ? `<button type="button" class="mw-compare-toggle" id="mw-compare-toggle">See your original</button>
+         <div class="mw-original" id="mw-original" style="display:none;">${escapeHtml(originalDraft)}</div>`
+      : ''
     openPopover('preview', `
       <p class="note">${note}</p>
+      ${compareHtml}
       ${sourcesHtml}
       <textarea id="mw-pop-preview-text" spellcheck="false"></textarea>
     `, `
@@ -648,6 +669,16 @@
         originalDraft: (telemetry && telemetry.originalDraft) ? telemetry.originalDraft : goal,
         engineeredPrompt: formatEngineeredPrompt(text)
       }
+    const compareToggle = popoverShadow.getElementById('mw-compare-toggle')
+    const originalBox = popoverShadow.getElementById('mw-original')
+    if (compareToggle && originalBox) {
+      let originalOpen = false
+      compareToggle.onclick = () => {
+        originalOpen = !originalOpen
+        originalBox.style.display = originalOpen ? 'block' : 'none'
+        compareToggle.textContent = originalOpen ? 'Hide your original' : 'See your original'
+      }
+    }
     const toggle = popoverShadow.getElementById('mw-sources-toggle')
     const list = popoverShadow.getElementById('mw-sources-list')
     if (toggle && list) {
@@ -655,8 +686,7 @@
       toggle.onclick = () => {
         sourcesOpen = !sourcesOpen
         list.style.display = sourcesOpen ? 'block' : 'none'
-        const n = sourcesUsed.length
-        toggle.textContent = `Context from ${n} conversation${n > 1 ? 's' : ''} (${sourcesOpen ? 'hide' : 'show'})`
+        toggle.textContent = sourcesToggleLabel(sourcesUsed.length, sourcesOpen)
       }
     }
     const importLink = popoverShadow.getElementById('mw-import-hint-link')
