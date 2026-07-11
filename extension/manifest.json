@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Mind World",
-  "version": "1.3.3",
+  "version": "1.3.4",
   "description": "Improve your AI prompts as you type. Searchable template library and one-click Improve for Claude, ChatGPT, Gemini, and Perplexity.",
   "permissions": [
     "storage"
