@@ -86,6 +86,7 @@ def _warm_embedding_model():
 # Per-user free-tier quota
 # ---------------------------------------------------------------------------
 FREE_TIER_LIMIT = 25  # Improve calls included for free (server-key users)
+COMPARE_FREE_LIMIT = 5  # "See the difference" demo calls included for free
 
 # Secret header sent by the extension — rejects old/unauthorised clients
 MW_CLIENT_SECRET = "mwext-f8c3a91d-v3"
@@ -801,14 +802,11 @@ Output rules:
 
 @app.post("/compare_answers")
 async def compare_answers(http_req: Request, request: CompareAnswersRequest):
-    """One-time 'see the difference' demo. Engineers the rough draft into an
-    improved prompt, then answers BOTH the raw draft and the improved prompt
-    with the SAME model — so the only variable is the prompt. Returns both
-    answers plus the improved prompt for a side-by-side view.
-
-    Does not touch the Improve free-tier counter (it's an activation demo, not
-    an Improve call). Abuse is bounded by the client one-time flag, auth, and
-    the shared IP rate limiter."""
+    """'See the difference' demo — limited to COMPARE_FREE_LIMIT uses for
+    free-tier users. Engineers the rough draft into an improved prompt, then
+    answers BOTH the raw draft and the improved prompt with the SAME model so
+    the only variable is the prompt. Returns both answers plus the improved
+    prompt for a side-by-side view."""
     try:
         if http_req.headers.get("X-MW-Client") != MW_CLIENT_SECRET:
             raise HTTPException(
@@ -828,7 +826,20 @@ async def compare_answers(http_req: Request, request: CompareAnswersRequest):
             )
 
         # Require valid auth (session token or the user's own API key).
-        _user_id(request.email.lower().strip(), request.access_token, request.api_key)
+        user_id = _user_id(request.email.lower().strip(), request.access_token, request.api_key)
+
+        # ── Compare quota (free-tier users only) ──────────────────────────────
+        _using_server_key = not bool(request.api_key)
+        _compare_quota_row: dict = {}
+        if _using_server_key:
+            from services.database import get_supabase as _get_sb
+            _sb = _get_sb()
+            _crow = _sb.table("users").select("compare_calls_used, is_pro")\
+                .eq("id", user_id).execute()
+            _compare_quota_row = _crow.data[0] if _crow.data else {}
+            if not _compare_quota_row.get("is_pro"):
+                if (_compare_quota_row.get("compare_calls_used") or 0) >= COMPARE_FREE_LIMIT:
+                    raise HTTPException(status_code=402, detail="compare_quota_exceeded")
 
         draft = (request.message or "").strip()
         if len(draft) < 3:
@@ -868,17 +879,29 @@ async def compare_answers(http_req: Request, request: CompareAnswersRequest):
             raw_answer = raw_future.result()
             improved_answer = improved_future.result()
 
+        # ── Increment compare usage counter on success (free-tier only) ───────
+        if _using_server_key and not _compare_quota_row.get("is_pro"):
+            try:
+                _get_sb().table("users").update({
+                    "compare_calls_used": (_compare_quota_row.get("compare_calls_used") or 0) + 1
+                }).eq("id", user_id).execute()
+            except Exception:
+                pass  # Non-fatal — don't fail the response over a counter update
+
+        remaining = None
+        if _using_server_key and not _compare_quota_row.get("is_pro"):
+            remaining = max(0, COMPARE_FREE_LIMIT - ((_compare_quota_row.get("compare_calls_used") or 0) + 1))
+
         return {
             "original_draft": draft,
             "engineered_prompt": improved_prompt,
             "raw_answer": raw_answer,
             "improved_answer": improved_answer,
-            # Transparency: both answers came from the same model, so the
-            # prompt is the only variable. Surfaced in the UI, not just claimed.
+            # Only expose the evaluation model — the prompt-engineering model
+            # is an internal implementation detail and is not shown to users.
             "answer_model": _DEMO_ANSWER_MODEL,
             "answer_model_display": _MODEL_DISPLAY_NAMES.get(_DEMO_ANSWER_MODEL, _DEMO_ANSWER_MODEL),
-            "engineer_model": _DEMO_ENGINEER_MODEL,
-            "engineer_model_display": _MODEL_DISPLAY_NAMES.get(_DEMO_ENGINEER_MODEL, _DEMO_ENGINEER_MODEL),
+            "remaining_compare_uses": remaining,
         }
 
     except HTTPException:
