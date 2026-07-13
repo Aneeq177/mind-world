@@ -12,7 +12,7 @@ const MW_HOST_PATTERNS = [
 // Platforms with dedicated message-scraping selectors (auto-save + rich context capture).
 const MW_KNOWN_PLATFORM_HOSTS = ['claude.ai', 'chatgpt.com', 'gemini.google.com', 'perplexity.ai']
 
-// Our own web app / API \u2014 never show the input dock there even in Universal Mode.
+// Our own web app / API — never show the input dock there even in Universal Mode.
 const MW_OWN_HOSTS = ['mind-world.app', 'mind-world-app-mv4yv.ondigitalocean.app']
 
 // Broad origin patterns requested at runtime for Universal Mode (Improve on any AI chat site).
