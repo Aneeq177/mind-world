@@ -1,4 +1,4 @@
-﻿// Mind World Content Script v2
+// Mind World Content Script v2
 
 // v1: input dock + Improve only. Legacy sidebar is disabled.
 const MW_LEGACY_SIDEBAR = false
@@ -290,15 +290,35 @@ function watchForNewMessages() {
 
 
 
-function init() {
+async function init() {
+
+  const hostname = window.location.hostname
+
+  // Never show the dock on our own web app / API — it can get matched once
+  // Universal Mode grants broad host access.
+  if (isMindWorldOwnHost(hostname)) return
+
+  const knownPlatform = isMindWorldKnownPlatform(hostname)
+
+  if (!knownPlatform) {
+    // Unrecognized site: only run if the user explicitly turned on Universal Mode
+    // (auto-save/message scraping still only runs on the four known platforms —
+    // their selectors don't generalize to arbitrary chat UIs).
+    const stored = await chrome.storage.local.get(['mw_universal_enabled'])
+    if (!stored.mw_universal_enabled) return
+  }
 
   setTimeout(() => {
 
     watchInputField()
 
-    startAutoSave()
+    if (knownPlatform) {
 
-    watchForNewMessages()
+      startAutoSave()
+
+      watchForNewMessages()
+
+    }
 
   }, 2000)
 
@@ -318,7 +338,7 @@ function init() {
 
         watchInputField()
 
-        startAutoSave()
+        if (knownPlatform) startAutoSave()
 
       }, 2000)
 

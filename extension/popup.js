@@ -42,6 +42,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   const apikeyInputConnected = document.getElementById('apikey-input-connected')
   const saveApikeyBtn = document.getElementById('save-apikey-btn')
   const apikeyStatus = document.getElementById('apikey-status')
+  const universalModeToggle = document.getElementById('universal-mode-toggle')
+  const universalModeStatus = document.getElementById('universal-mode-status')
 
   let currentEmail = null
   let isRegisterMode = false
@@ -890,6 +892,55 @@ document.addEventListener('DOMContentLoaded', async () => {
       await chrome.storage.local.set({ mw_memory_enabled: enabled })
       showPrivacyStatus(enabled ? 'Chat history enabled for Improve' : 'Improve will use only your draft — no past chats or profile', false)
       setTimeout(() => { if (privacyActionStatus) privacyActionStatus.style.display = 'none' }, 3000)
+    })
+  }
+
+  // Universal Mode — Improve + templates on any AI chat site via optional broad host access.
+  function showUniversalStatus(message, isError) {
+    if (!universalModeStatus) return
+    universalModeStatus.style.display = 'block'
+    universalModeStatus.textContent = message
+    universalModeStatus.style.color = isError ? '#f87171' : '#6ee7b7'
+    setTimeout(() => { universalModeStatus.style.display = 'none' }, 5000)
+  }
+
+  async function refreshUniversalModeToggle() {
+    if (!universalModeToggle || !chrome.permissions) return
+    try {
+      const granted = await chrome.permissions.contains({ origins: MW_UNIVERSAL_ORIGINS })
+      universalModeToggle.checked = granted
+      await chrome.storage.local.set({ mw_universal_enabled: granted })
+    } catch (e) {
+      universalModeToggle.checked = false
+    }
+  }
+  refreshUniversalModeToggle()
+
+  if (universalModeToggle) {
+    universalModeToggle.addEventListener('change', async (e) => {
+      const wantsEnabled = e.target.checked
+      universalModeToggle.disabled = true
+      try {
+        if (wantsEnabled) {
+          const granted = await chrome.permissions.request({ origins: MW_UNIVERSAL_ORIGINS })
+          if (!granted) {
+            universalModeToggle.checked = false
+            showUniversalStatus('Permission was not granted.', true)
+            return
+          }
+          await chrome.storage.local.set({ mw_universal_enabled: true })
+          showUniversalStatus('Enabled! Refresh any open AI chat tabs (or open a new one) to activate.', false)
+        } else {
+          await chrome.storage.local.set({ mw_universal_enabled: false })
+          await chrome.permissions.remove({ origins: MW_UNIVERSAL_ORIGINS }).catch(() => {})
+          showUniversalStatus('Disabled. Mind World will only run on Claude, ChatGPT, Gemini, and Perplexity.', false)
+        }
+      } catch (err) {
+        universalModeToggle.checked = !wantsEnabled
+        showUniversalStatus('Something went wrong. Try again.', true)
+      } finally {
+        universalModeToggle.disabled = false
+      }
     })
   }
 

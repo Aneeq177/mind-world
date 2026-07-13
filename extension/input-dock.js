@@ -1436,6 +1436,14 @@
     label.textContent = 'Mind World'
     label.style.cssText = 'font-size:11px;color:#a78bfa;font-weight:600;'
 
+    const isKnownPlatform = typeof isMindWorldKnownPlatform === 'function'
+      ? isMindWorldKnownPlatform(window.location.hostname)
+      : true
+    if (!isKnownPlatform) {
+      label.title = 'Universal Mode — Improve works here. Auto-save memory only runs on Claude, ChatGPT, Gemini, and Perplexity.'
+      label.textContent = 'Mind World \u00b7 Universal'
+    }
+
     const memoryBadge = document.createElement('button')
     memoryBadge.type = 'button'
     memoryBadge.id = 'mw-memory-badge'

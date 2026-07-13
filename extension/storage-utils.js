@@ -9,6 +9,25 @@ const MW_HOST_PATTERNS = [
   'https://perplexity.ai/*'
 ]
 
+// Platforms with dedicated message-scraping selectors (auto-save + rich context capture).
+const MW_KNOWN_PLATFORM_HOSTS = ['claude.ai', 'chatgpt.com', 'gemini.google.com', 'perplexity.ai']
+
+// Our own web app / API \u2014 never show the input dock there even in Universal Mode.
+const MW_OWN_HOSTS = ['mind-world.app', 'mind-world-app-mv4yv.ondigitalocean.app']
+
+// Broad origin patterns requested at runtime for Universal Mode (Improve on any AI chat site).
+const MW_UNIVERSAL_ORIGINS = ['https://*/*', 'http://*/*']
+
+function isMindWorldKnownPlatform(hostname) {
+  const h = hostname || (typeof window !== 'undefined' ? window.location.hostname : '')
+  return MW_KNOWN_PLATFORM_HOSTS.some((known) => h.includes(known))
+}
+
+function isMindWorldOwnHost(hostname) {
+  const h = hostname || (typeof window !== 'undefined' ? window.location.hostname : '')
+  return MW_OWN_HOSTS.some((own) => h.includes(own))
+}
+
 async function getMindWorldStorageKeys() {
   const all = await chrome.storage.local.get(null)
   return Object.keys(all).filter((k) => k.startsWith(MW_STORAGE_PREFIX))
