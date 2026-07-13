@@ -420,6 +420,22 @@ def increment_personalization_counter(user_id: str, key: str, amount: int = 1) -
     }, on_conflict="user_id,metric_day,key").execute()
 
 
+def log_growth_event(user_id: str, event: str, platform: str | None = None) -> None:
+    """Metadata-only activation/funnel event (no prompt or conversation content).
+    Never raises — a missed growth metric must not break the caller's request."""
+    if not user_id or not event:
+        return
+    try:
+        supabase = get_supabase()
+        supabase.table("growth_events").insert({
+            "user_id": user_id,
+            "event": event,
+            "platform": (platform or "")[:50] or None,
+        }).execute()
+    except Exception as exc:
+        print(f"growth_events insert warning: {exc}")
+
+
 def record_user_consent(user_id: str, consent_version: str, source: str = "extension") -> dict:
     """Persist consent timestamp and version for audit."""
     supabase = get_supabase()

@@ -561,7 +561,8 @@
       const res = await sendRuntimeMessage({
         type: 'ENGINEER_PROMPT',
         message,
-        template: templateName || 'none'
+        template: templateName || 'none',
+        platform: location.hostname
       })
       if (requestId !== engineerRequestId) return
       if (res.error) {
@@ -1101,7 +1102,8 @@
         type: 'ENGINEER_PROMPT',
         message: draft,
         template: tName || 'none',
-        skipMemory: true
+        skipMemory: true,
+        platform: location.hostname
       })
       if (res.error) {
         const msg = res.error === 'not_logged_in'

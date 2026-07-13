@@ -327,6 +327,7 @@ class EngineerPromptRequest(BaseModel):
     template: Optional[str] = None
     skip_memory: Optional[bool] = False
     device_id: Optional[str] = None
+    platform: Optional[str] = None
 
 
 class ContextPreviewRequest(BaseModel):
@@ -787,6 +788,9 @@ Output rules:
                 }).eq("id", user_id).execute()
             except Exception:
                 pass  # non-fatal — don't fail the response over a counter write
+
+        from services.database import log_growth_event
+        log_growth_event(user_id, "improve_used", platform=request.platform)
 
         return {
             "engineered_prompt": formatted,
@@ -1460,7 +1464,7 @@ async def auth_session(request: SessionRequest):
 @app.post("/record_consent")
 async def record_consent(request: RecordConsentRequest):
     try:
-        from services.database import get_or_create_user, record_user_consent, CONSENT_VERSION
+        from services.database import get_or_create_user, record_user_consent, log_growth_event, CONSENT_VERSION
 
         email = request.email.lower().strip()
         if not request.consent_version:
@@ -1468,6 +1472,9 @@ async def record_consent(request: RecordConsentRequest):
 
         user_id = _user_id(email, request.access_token)
         result = record_user_consent(user_id, request.consent_version, request.source or "extension")
+        # Consent is recorded once right after sign-in completes in the popup —
+        # the cleanest available signal for "activated" in the funnel.
+        log_growth_event(user_id, "connected", platform=request.source or "extension")
         return {"success": True, "current_consent_version": CONSENT_VERSION, **result}
     except HTTPException:
         raise
@@ -1785,6 +1792,9 @@ async def save_conversation(request: SaveConversationRequest, background_tasks: 
             "user_id": user_id,
             "embedding": embedding.tolist()
         }, on_conflict="conversation_id,user_id").execute()
+
+        from services.database import log_growth_event
+        log_growth_event(user_id, "autosave_used", platform=source)
 
         background_tasks.add_task(run_recluster, email)
 

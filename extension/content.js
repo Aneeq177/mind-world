@@ -1263,7 +1263,9 @@ async function openEngineerPanel(conversationIds) {
 
     message: currentQuery,
 
-    conversationIds: conversationIds && conversationIds.length > 0 ? conversationIds : null
+    conversationIds: conversationIds && conversationIds.length > 0 ? conversationIds : null,
+
+    platform: location.hostname
 
   })
 

@@ -165,7 +165,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       message.message,
       message.template,
       message.conversationIds,
-      !!message.skipMemory
+      !!message.skipMemory,
+      message.platform
     ))
     return true
   }
@@ -382,7 +383,7 @@ async function handleSummarize(conversationIds, currentQuery) {
   }
 }
 
-async function handleEngineerPrompt(userMessage, templateStr, conversationIds, skipMemory) {
+async function handleEngineerPrompt(userMessage, templateStr, conversationIds, skipMemory, platform) {
   try {
     const startedAt = Date.now()
     const auth = await getAuthContext()
@@ -398,7 +399,8 @@ async function handleEngineerPrompt(userMessage, templateStr, conversationIds, s
       template: templateStr || 'none',
       api_key: auth.apiKey || null,
       skip_memory: !!skipMemory || !memoryEnabled,
-      device_id: stored.mw_device_id || null
+      device_id: stored.mw_device_id || null,
+      platform: platform || null
     }
     if (conversationIds && conversationIds.length > 0) {
       body.conversation_ids = conversationIds
