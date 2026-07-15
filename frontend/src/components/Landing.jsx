@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useStore } from '../store'
 import { processFiles, loadExistingMap, recordConsent, ensureAccessToken, login, register } from '../api'
+import CompareDemo from './CompareDemo'
 
 const CHROME_STORE_URL =
   'https://chromewebstore.google.com/detail/mind-world/dcbicejbdecfpdjgmnclmafiobgomhdp?utm_source=item'
@@ -965,6 +966,8 @@ export default function Landing() {
           <span style={{ color: '#555', fontSize: '0.88rem' }}>— Improve current draft instantly</span>
         </div>
       </div>
+
+      <CompareDemo />
 
       {/* Feature callouts */}
       <div style={{
