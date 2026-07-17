@@ -47,6 +47,83 @@ function MemClause({ children }) {
 
 const EXAMPLES = [
   {
+    id: 'student',
+    tab: '🎓 Writing a school paper',
+    topic: 'Getting help with a school essay',
+    basicPrompt: 'can you help me write my essay on the causes of world war 1',
+    basicAnswer: "Sure! Here's a possible outline: I. Introduction with thesis II. Militarism III. The alliance system IV. Imperialism V. Nationalism VI. The assassination of Archduke Franz Ferdinand VII. Conclusion. Let me know if you'd like help expanding any section.",
+    improvedPrompt: (
+      <>
+        Need help outlining my WWI causes essay.
+        <MemClause>
+          Same class as my Cold War essay last month — Ms. Patel wants MLA format, a thesis in the first paragraph, and at least 3 sources cited. Her feedback on that essay was that my paragraphs need clearer topic sentences.
+        </MemClause>
+        Given that, can you build an outline that fixes the topic-sentence problem this time?
+      </>
+    ),
+    improvedAnswer: (
+      <>
+        Since <HL>Ms. Patel's feedback on your last essay was about weak topic sentences</HL>, here's an outline where every paragraph opens with a sentence that states its argument, not just its topic — e.g. "Militarism turned a regional dispute into a continental arms race" instead of "This paragraph is about militarism." <HL>Formatted in MLA with placeholders for your 3 required sources</HL>, matching exactly what she asked for last time.
+      </>
+    ),
+    whyBetter: [
+      'Remembers the exact feedback the teacher gave on the last essay',
+      'Applies the class formatting rules (MLA, 3 sources) without being asked',
+      'Fixes the specific weakness flagged before, not generic essay advice'
+    ]
+  },
+  {
+    id: 'teacher',
+    tab: '📚 Planning a lesson',
+    topic: 'Planning a class lesson',
+    basicPrompt: 'create a lesson plan about the water cycle for 4th grade',
+    basicAnswer: "Sure! Here's a basic lesson plan. Objective: Students will understand the stages of the water cycle. Materials: diagram, worksheet. Warm-up (10 min): class discussion. Direct instruction (15 min): explain evaporation, condensation, precipitation. Activity (15 min): worksheet. Wrap-up (5 min): review. Let me know if you'd like more detail on any part.",
+    improvedPrompt: (
+      <>
+        Need a lesson plan on the water cycle for my 4th grade class.
+        <MemClause>
+          Same class as the volcano lesson three weeks ago — the station-rotation format worked really well with these 24 kids in mixed-ability groups, and I only have 45-minute periods.
+        </MemClause>
+        Can you build it the same way, sized for 45 minutes?
+      </>
+    ),
+    improvedAnswer: (
+      <>
+        Since <HL>station rotation is the format that already worked with this class</HL>, here are 4 stations sized for a 45-minute period with 24 students in mixed-ability groups (6 per station, ~9 min each + transitions): Station 1 — evaporation demo with a hot plate and mirror, Station 2 — condensation in a sealed jar, Station 3 — precipitation simulator, Station 4 — labeling diagram. <HL>Timed and grouped exactly like the lesson that already worked with these kids</HL>, so there's nothing new to test.
+      </>
+    ),
+    whyBetter: [
+      'Reuses the exact format (station rotation) that already worked with this class',
+      'Matches real constraints — 45-minute periods, 24 students, mixed-ability groups',
+      'Ready to teach tomorrow, not a generic template to adapt'
+    ]
+  },
+  {
+    id: 'admin',
+    tab: '🗂️ Writing a work email',
+    topic: 'Drafting a school or office announcement',
+    basicPrompt: 'write an email to parents about the upcoming field trip',
+    basicAnswer: 'Dear Parents and Guardians, We are excited to announce our upcoming field trip! This will be a wonderful opportunity for students to learn outside the classroom. Please review the attached permission slip and return it by the deadline. We will need a few parent volunteers to serve as chaperones. If you have any questions, please don\'t hesitate to reach out. Thank you for your continued support. Best regards,',
+    improvedPrompt: (
+      <>
+        Need the field trip email for parents.
+        <MemClause>
+          Same list as the Fall Festival email in October — sign off as "Lincoln Elementary Front Office," and keep it under 150 words this time since the PTA said the October one was too long to skim on a phone.
+        </MemClause>
+      </>
+    ),
+    improvedAnswer: (
+      <>
+        Since <HL>parents said the October email was too long to skim on a phone</HL>, here's a version under 150 words with the same sign-off as before: "Hi families — [trip name] is on [date]. Permission slip due [date], linked here: [link]. Chaperone spots are limited — reply to volunteer. Questions? Just reply to this email. — Lincoln Elementary Front Office." <HL>Same sign-off and tone as the Fall Festival note</HL>, just short enough to read in one glance.
+      </>
+    ),
+    whyBetter: [
+      'Remembers parent feedback about email length from last time',
+      'Keeps the same sign-off and tone as previous announcements',
+      'Sends as-is — no rewriting needed to match past communications'
+    ]
+  },
+  {
     id: 'debug',
     tab: '🐛 Fixing a bug',
     topic: 'Debugging a production error',
@@ -184,9 +261,10 @@ export default function CompareDemo() {
       </h2>
       <p style={{
         textAlign: 'center', color: '#777', fontSize: '0.95rem',
-        maxWidth: '560px', margin: '0 auto 40px', lineHeight: '1.6'
+        maxWidth: '600px', margin: '0 auto 40px', lineHeight: '1.6'
       }}>
         One prompt gets a generic, textbook reply. The other silently pulls in what you told AI last time — and gets a real answer.
+        Whether you're a student, teacher, office admin, or engineer.
       </p>
 
       {/* Tabs */}
