@@ -746,6 +746,7 @@ async def engineer_prompt(http_req: Request, request: EngineerPromptRequest):
                 "title": conv.get("title") or "Untitled",
                 "preview": (conv.get("preview") or full_text[:120] or "")[:120],
                 "source": conv.get("source_app") or conv.get("source") or "unknown",
+                "created_at": str(conv.get("created_at") or "")[:10],
                 "similarity": round(float(sim) * 100, 1) if sim is not None else None,
             })
             if full_text:

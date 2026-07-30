@@ -133,6 +133,11 @@
   let anchoredInput = null
   let popoverState = { mode: 'closed', template: 'none', goal: '' }
 
+  // Which past chats fed the current Improve result, and which the user has
+  // kept ticked. `pool` is held client-side (not re-read from the response) so
+  // a chat the user unticks stays visible and re-tickable after a regenerate.
+  let sourcePicker = { pool: [], selected: new Set(), open: true, searchOpen: false, appliedKey: '' }
+
   const FALLBACK_TEMPLATES = [
     { name: 'Code Debugger', template: 'You are an expert senior software engineer. Review the provided code, identify bugs, suggest optimizations, and explain your reasoning clearly.\n\n[Describe your code or paste it here:]' },
     { name: 'Academic Reviewer', template: 'Act as an expert academic reviewer. Analyze the draft for logic, flow, and evidence. Provide structured feedback.\n\n[Paste your draft here:]' },
@@ -226,6 +231,8 @@
         gap: 10px;
       }
       .mw-pop.open { display: flex; }
+      /* The sources picker expands the preview body — keep it inside the viewport. */
+      .mw-pop #mw-pop-body { max-height: 68vh; overflow-y: auto; }
       .mw-pop h4 { margin: 0; font-size: 13px; font-weight: 600; color: #c4b5fd; }
       .mw-pop .note { font-size: 11px; color: #888; text-align: center; margin: 0; }
       .mw-loading { display: flex; align-items: center; gap: 10px; justify-content: center; }
@@ -345,7 +352,7 @@
         cursor: pointer; padding: 0; text-decoration: underline;
       }
       .mw-pop .mw-sources-list {
-        margin-top: 8px; max-height: 120px; overflow-y: auto;
+        margin-top: 8px; max-height: 200px; overflow-y: auto;
         display: flex; flex-direction: column; gap: 6px;
       }
       .mw-pop .mw-source-item {
@@ -356,6 +363,43 @@
       .mw-pop .mw-source-item strong { color: #e9d5ff; display: block; }
       .mw-pop .mw-source-meta { color: #666; font-size: 10px; }
       .mw-pop .mw-source-item p { margin: 4px 0 0; color: #888; font-size: 10px; line-height: 1.3; }
+      .mw-pop .mw-source-item.off { opacity: 0.45; background: rgba(255,255,255,0.03); border-color: rgba(255,255,255,0.08); }
+      .mw-pop .mw-source-row { display: flex; align-items: flex-start; gap: 8px; }
+      .mw-pop .mw-source-row input[type="checkbox"] {
+        margin: 2px 0 0; accent-color: #7c3aed; cursor: pointer; flex-shrink: 0;
+      }
+      .mw-pop .mw-source-row label { cursor: pointer; flex: 1; min-width: 0; }
+      .mw-pop .mw-sources-actions {
+        display: flex; align-items: center; gap: 10px; margin-top: 8px; flex-wrap: wrap;
+      }
+      .mw-pop .mw-sources-link {
+        background: none; border: none; color: #a78bfa; font-size: 11px;
+        cursor: pointer; padding: 0; text-decoration: underline;
+      }
+      .mw-pop .mw-sources-link:hover { color: #c4b5fd; }
+      .mw-pop .mw-regen-btn {
+        background: rgba(124,58,237,0.25); border: 1px solid rgba(124,58,237,0.5);
+        color: #e9d5ff; font-size: 11px; font-weight: 600; border-radius: 6px;
+        padding: 4px 10px; cursor: pointer;
+      }
+      .mw-pop .mw-regen-btn:hover { background: rgba(124,58,237,0.4); }
+      .mw-pop .mw-regen-btn[disabled] { opacity: 0.4; cursor: default; }
+      .mw-pop .mw-source-search { margin-top: 8px; }
+      .mw-pop .mw-source-search input[type="text"] {
+        width: 100%; box-sizing: border-box; font-size: 11px; color: #eee;
+        background: rgba(255,255,255,0.05); border: 1px solid rgba(124,58,237,0.35);
+        border-radius: 6px; padding: 5px 8px; outline: none;
+      }
+      .mw-pop .mw-source-search input[type="text"]::placeholder { color: #777; }
+      .mw-pop .mw-source-results { margin-top: 6px; display: flex; flex-direction: column; gap: 4px; max-height: 120px; overflow-y: auto; }
+      .mw-pop .mw-source-result {
+        text-align: left; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 6px; padding: 5px 8px; font-size: 11px; color: #ddd; cursor: pointer;
+      }
+      .mw-pop .mw-source-result:hover { border-color: rgba(124,58,237,0.5); background: rgba(124,58,237,0.12); }
+      .mw-pop .mw-source-result[disabled] { opacity: 0.4; cursor: default; }
+      .mw-pop .mw-source-result span { display: block; color: #666; font-size: 10px; }
+      .mw-pop .mw-source-status { font-size: 10px; color: #888; margin: 6px 0 0; }
       .mw-pop .mw-import-hint { font-size: 11px; color: #888; }
       .mw-pop .mw-import-hint a { color: #a78bfa; cursor: pointer; }
       .mw-pop .mw-compare-toggle {
@@ -550,20 +594,30 @@
     popoverState.mode = mode
   }
 
-  async function runEngineer(message, templateName, metadata = {}) {
+  async function runEngineer(message, templateName, metadata = {}, options = {}) {
     const requestId = ++engineerRequestId
     const requestStartedAt = Date.now()
+    // `conversationIds` present = user picked the chats by hand. An empty array
+    // means "use none of them", which the backend expresses as skip_memory.
+    const manualIds = Array.isArray(options.conversationIds) ? options.conversationIds : null
     improveInFlight = true
     setImproveButtonBusy(true)
-    const loadingMsg = await getImproveLoadingMessage()
+    const loadingMsg = manualIds
+      ? 'Rewriting with the chats you picked…'
+      : await getImproveLoadingMessage()
     openPopover('loading', loadingBodyHtml(loadingMsg), '')
     try {
-      const res = await sendRuntimeMessage({
+      const req = {
         type: 'ENGINEER_PROMPT',
         message,
         template: templateName || 'none',
         platform: location.hostname
-      })
+      }
+      if (manualIds) {
+        if (manualIds.length) req.conversationIds = manualIds
+        else req.skipMemory = true
+      }
+      const res = await sendRuntimeMessage(req)
       if (requestId !== engineerRequestId) return
       if (res.error) {
         improveInFlight = false
@@ -600,12 +654,33 @@
           conversations_used: res.conversationsUsed || 0
         }
       })
+      const returnedSources = res.sourcesUsed || []
+      if (manualIds) {
+        // Keep the full pool so unticked chats stay listed; merge in anything
+        // the response knows more about (e.g. a title we only had partially).
+        returnedSources.forEach(s => {
+          const i = sourcePicker.pool.findIndex(p => String(p.id) === String(s.id))
+          if (i >= 0) sourcePicker.pool[i] = Object.assign({}, sourcePicker.pool[i], s)
+          else sourcePicker.pool.push(s)
+        })
+        sourcePicker.selected = new Set(manualIds.map(String))
+      } else {
+        sourcePicker = {
+          pool: returnedSources.slice(),
+          selected: new Set(returnedSources.map(s => String(s.id))),
+          open: sourcePicker.open,
+          searchOpen: false
+        }
+      }
+      // Snapshot of what actually produced the prompt on screen — the
+      // Regenerate button only lights up once the ticks drift from this.
+      sourcePicker.appliedKey = selectionKey(sourcePicker.selected)
       showPreviewResult(
         res.engineeredPrompt,
         res.conversationsUsed || 0,
         message,
         templateName,
-        res.sourcesUsed || [],
+        sourcePicker.pool,
         {
           startedAt: requestStartedAt,
           latencyMs: res.latencyMs || (Date.now() - requestStartedAt),
@@ -630,31 +705,199 @@
     }
   }
 
-  function sourcesToggleLabel(n, open) {
-    return `✨ Personalized with ${n} of your past chat${n > 1 ? 's' : ''} (${open ? 'hide' : 'show'})`
+  function selectionKey(set) {
+    return Array.from(set).sort().join('|')
+  }
+
+  function sourceLabel(source) {
+    const s = String(source || '').toLowerCase()
+    if (s.includes('chatgpt') || s.includes('openai')) return 'ChatGPT'
+    if (s.includes('claude')) return 'Claude'
+    if (s.includes('gemini')) return 'Gemini'
+    if (s.includes('perplexity')) return 'Perplexity'
+    return source ? String(source) : 'Saved chat'
+  }
+
+  function sourcesToggleLabel(open) {
+    const total = sourcePicker.pool.length
+    const picked = sourcePicker.selected.size
+    const noun = `past chat${total === 1 ? '' : 's'}`
+    const count = picked === total ? `${total}` : `${picked} of ${total}`
+    return `✨ Using ${count} ${noun} (${open ? 'hide' : 'show'})`
+  }
+
+  function sourceItemHtml(s) {
+    const checked = sourcePicker.selected.has(String(s.id))
+    const sim = s.similarity != null ? ` · ${s.similarity}% match` : ''
+    const date = s.created_at ? ` · ${escapeHtml(String(s.created_at).slice(0, 10))}` : ''
+    const id = escapeHtml(String(s.id))
+    const preview = (s.preview || '').replace(/\[human\]|\[assistant\]/g, '').trim()
+    return `<div class="mw-source-item${checked ? '' : ' off'}" data-src-id="${id}">
+      <div class="mw-source-row">
+        <input type="checkbox" data-src-check="${id}"${checked ? ' checked' : ''}>
+        <label>
+          <strong>${escapeHtml(s.title || 'Untitled')}</strong>
+          <span class="mw-source-meta">${escapeHtml(sourceLabel(s.source))}${sim}${date}</span>
+          ${preview ? `<p>${escapeHtml(preview)}</p>` : ''}
+        </label>
+      </div>
+    </div>`
   }
 
   function buildSourcesHtml(sourcesUsed, conversationsUsed) {
     if (sourcesUsed && sourcesUsed.length) {
-      let html = `<div class="mw-sources">
-        <button type="button" class="mw-sources-toggle" id="mw-sources-toggle">${sourcesToggleLabel(sourcesUsed.length, false)}</button>
-        <div class="mw-sources-list" id="mw-sources-list" style="display:none;">`
-      sourcesUsed.forEach(s => {
-        const sim = s.similarity != null ? ` \u00b7 ${s.similarity}% match` : ''
-        const src = (s.source || 'unknown').replace('chatgpt', 'ChatGPT').replace('claude', 'Claude')
-        html += `<div class="mw-source-item">
-          <strong>${escapeHtml(s.title)}</strong>
-          <span class="mw-source-meta">${escapeHtml(src)}${sim}</span>
-          ${s.preview ? `<p>${escapeHtml(s.preview)}</p>` : ''}
-        </div>`
-      })
-      html += '</div></div>'
-      return html
+      const open = sourcePicker.open !== false
+      const hide = open ? '' : ' style="display:none;"'
+      return `<div class="mw-sources">
+        <button type="button" class="mw-sources-toggle" id="mw-sources-toggle">${sourcesToggleLabel(open)}</button>
+        <div class="mw-sources-list" id="mw-sources-list"${hide}>
+          ${sourcesUsed.map(sourceItemHtml).join('')}
+        </div>
+        <div class="mw-sources-actions" id="mw-sources-actions"${hide}>
+          <button type="button" class="mw-sources-link" id="mw-sources-add">+ Add another chat</button>
+          <button type="button" class="mw-regen-btn" id="mw-sources-regen" disabled>Rewrite with these chats</button>
+        </div>
+        <div class="mw-source-search" id="mw-source-search" style="display:none;">
+          <input type="text" id="mw-source-search-input" placeholder="Search your past chats…" spellcheck="false">
+          <div class="mw-source-results" id="mw-source-results"></div>
+        </div>
+      </div>`
     }
     if (!conversationsUsed) {
-      return `<p class="mw-import-hint">No past chats yet. <a id="mw-import-hint-link">Import your chat history</a> so Improve remembers what you've discussed before.</p>`
+      return `<p class="mw-import-hint">No past chats matched this draft. <a id="mw-import-hint-link">Import your chat history</a> so Improve remembers what you've discussed before.</p>`
     }
     return ''
+  }
+
+  function bindSourcePicker(goal, templateName) {
+    const toggle = popoverShadow.getElementById('mw-sources-toggle')
+    const list = popoverShadow.getElementById('mw-sources-list')
+    const actions = popoverShadow.getElementById('mw-sources-actions')
+    if (!toggle || !list) return
+
+    const regen = popoverShadow.getElementById('mw-sources-regen')
+    const addBtn = popoverShadow.getElementById('mw-sources-add')
+    const searchBox = popoverShadow.getElementById('mw-source-search')
+    const searchInput = popoverShadow.getElementById('mw-source-search-input')
+    const resultsBox = popoverShadow.getElementById('mw-source-results')
+
+    function refreshControls() {
+      toggle.textContent = sourcesToggleLabel(sourcePicker.open !== false)
+      if (!regen) return
+      const changed = selectionKey(sourcePicker.selected) !== sourcePicker.appliedKey
+      regen.disabled = !changed
+      regen.textContent = sourcePicker.selected.size === 0
+        ? 'Rewrite without past chats'
+        : 'Rewrite with these chats'
+    }
+
+    function bindCheckboxes() {
+      list.querySelectorAll('input[data-src-check]').forEach(cb => {
+        cb.onchange = () => {
+          const id = cb.getAttribute('data-src-check')
+          if (cb.checked) sourcePicker.selected.add(id)
+          else sourcePicker.selected.delete(id)
+          const item = cb.closest('.mw-source-item')
+          if (item) item.classList.toggle('off', !cb.checked)
+          refreshControls()
+        }
+      })
+    }
+
+    function renderList() {
+      list.innerHTML = sourcePicker.pool.map(sourceItemHtml).join('')
+      bindCheckboxes()
+      refreshControls()
+      positionPopover()
+    }
+
+    bindCheckboxes()
+    refreshControls()
+
+    toggle.onclick = () => {
+      sourcePicker.open = sourcePicker.open === false
+      const shown = sourcePicker.open !== false
+      list.style.display = shown ? 'flex' : 'none'
+      if (actions) actions.style.display = shown ? 'flex' : 'none'
+      if (!shown && searchBox) {
+        searchBox.style.display = 'none'
+        sourcePicker.searchOpen = false
+      }
+      refreshControls()
+      positionPopover()
+    }
+
+    if (addBtn && searchBox && searchInput && resultsBox) {
+      addBtn.onclick = () => {
+        sourcePicker.searchOpen = !sourcePicker.searchOpen
+        searchBox.style.display = sourcePicker.searchOpen ? 'block' : 'none'
+        if (sourcePicker.searchOpen) setTimeout(() => searchInput.focus(), 0)
+        positionPopover()
+      }
+
+      let searchTimer = null
+      let searchSeq = 0
+      searchInput.oninput = () => {
+        const q = searchInput.value.trim()
+        clearTimeout(searchTimer)
+        if (q.length < 2) {
+          resultsBox.innerHTML = ''
+          positionPopover()
+          return
+        }
+        const seq = ++searchSeq
+        resultsBox.innerHTML = '<p class="mw-source-status">Searching…</p>'
+        searchTimer = setTimeout(async () => {
+          let res = null
+          try {
+            res = await sendRuntimeMessage({ type: 'SEARCH', query: q })
+          } catch (e) { /* offline or worker asleep — treated as no results */ }
+          if (seq !== searchSeq) return
+          const results = (res && res.results) || []
+          if (!results.length) {
+            resultsBox.innerHTML = '<p class="mw-source-status">No matching chats.</p>'
+            positionPopover()
+            return
+          }
+          resultsBox.innerHTML = results.map(r => {
+            const already = sourcePicker.pool.some(p => String(p.id) === String(r.id))
+            const sim = r.similarity != null ? ` · ${Math.round(r.similarity * 100)}% match` : ''
+            return `<button type="button" class="mw-source-result" data-add-id="${escapeHtml(String(r.id))}"${already ? ' disabled' : ''}>
+              ${escapeHtml(r.title || 'Untitled')}
+              <span>${escapeHtml(sourceLabel(r.source))}${sim}${already ? ' · already added' : ''}</span>
+            </button>`
+          }).join('')
+          resultsBox.querySelectorAll('button[data-add-id]').forEach(btn => {
+            btn.onclick = () => {
+              const id = btn.getAttribute('data-add-id')
+              const found = results.find(r => String(r.id) === id)
+              if (!found) return
+              sourcePicker.pool.push({
+                id: found.id,
+                title: found.title,
+                preview: (found.preview || '').slice(0, 120),
+                source: found.source,
+                created_at: found.created_at,
+                similarity: found.similarity != null ? Math.round(found.similarity * 1000) / 10 : null
+              })
+              sourcePicker.selected.add(String(id))
+              btn.disabled = true
+              renderList()
+            }
+          })
+          positionPopover()
+        }, 350)
+      }
+    }
+
+    if (regen) {
+      regen.onclick = () => {
+        if (regen.disabled) return
+        runEngineer(goal, templateName, { originalDraft: goal }, {
+          conversationIds: Array.from(sourcePicker.selected)
+        })
+      }
+    }
   }
 
   const IMPORT_STEPS = {
@@ -756,16 +999,7 @@
         compareToggle.textContent = originalOpen ? 'Hide your original' : 'See your original'
       }
     }
-    const toggle = popoverShadow.getElementById('mw-sources-toggle')
-    const list = popoverShadow.getElementById('mw-sources-list')
-    if (toggle && list) {
-      let sourcesOpen = false
-      toggle.onclick = () => {
-        sourcesOpen = !sourcesOpen
-        list.style.display = sourcesOpen ? 'block' : 'none'
-        toggle.textContent = sourcesToggleLabel(sourcesUsed.length, sourcesOpen)
-      }
-    }
+    bindSourcePicker(goal, templateName)
     const importLink = popoverShadow.getElementById('mw-import-hint-link')
     if (importLink) {
       importLink.onclick = (e) => {
