@@ -929,9 +929,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             return
           }
           await chrome.storage.local.set({ mw_universal_enabled: true })
+          await chrome.runtime.sendMessage({ type: 'REGISTER_UNIVERSAL_CONTENT_SCRIPTS' })
           showUniversalStatus('Enabled! Refresh any open AI chat tabs (or open a new one) to activate.', false)
         } else {
           await chrome.storage.local.set({ mw_universal_enabled: false })
+          await chrome.runtime.sendMessage({ type: 'UNREGISTER_UNIVERSAL_CONTENT_SCRIPTS' })
           await chrome.permissions.remove({ origins: MW_UNIVERSAL_ORIGINS }).catch(() => {})
           showUniversalStatus('Disabled. Mind World will only run on Claude, ChatGPT, Gemini, and Perplexity.', false)
         }

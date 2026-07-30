@@ -165,9 +165,14 @@ export default function Privacy() {
 
         <h2 style={S.h2}>Security</h2>
         <p style={S.p}>
-          We use HTTPS for all transfers, hashed session tokens, and access controls on database
-          rows per user. No system is perfectly secure; report concerns to{' '}
-          <a href="mailto:support@mind-world.app" style={S.a}>support@mind-world.app</a>.
+          We use HTTPS for all transfers, hashed session tokens (SHA-256, verified with constant-time
+          comparison), bcrypt password hashes, and access controls on database rows per user. The API
+          enforces HSTS, HTTPS redirection, CORS restricted to the web app and the extension, security
+          headers (X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy), and
+          per-IP rate limits on AI-intensive endpoints. Your Anthropic API key is stored only in your
+          browser&apos;s local extension storage if you choose to provide one. No system is perfectly
+          secure; report concerns to{' '}
+          <a href="mailto:security@mind-world.app" style={S.a}>security@mind-world.app</a>.
         </p>
 
         <h2 style={S.h2}>Breach notification</h2>
@@ -233,10 +238,18 @@ export default function Privacy() {
 
         <h2 style={S.h2}>Chrome extension</h2>
         <p style={S.p}>
-          The extension runs only on AI chat sites you visit (Claude, ChatGPT, Gemini, Perplexity).
-          It reads your chat input to power search and Improve, and may capture conversation
-          messages from the page to save them to your account when auto-save is on. It does not read
-          passwords, browsing history on other sites, or data from unrelated tabs.
+          By default, the extension runs only on the supported AI chat sites you visit (Claude, ChatGPT,
+          Gemini, Perplexity). It reads your chat input to power search and Improve, and may capture
+          conversation messages from the page to save them to your account when auto-save is on. It does
+          not read passwords, browsing history on other sites, or data from unrelated tabs.
+        </p>
+        <p style={S.p}>
+          <strong style={{ color: 'white' }}>Universal Mode</strong> is an optional feature you can
+          enable in the extension. If you turn it on, the extension will request permission to run on
+          additional websites you visit so Improve and templates can appear on other AI chat sites. On
+          those additional sites, the extension reads the chat input you type in the same way it does on
+          the supported platforms. Auto-save memory still only runs on the four supported platforms,
+          regardless of Universal Mode. You can disable Universal Mode at any time in the extension popup.
         </p>
 
         <h2 style={S.h2}>Data retention</h2>

@@ -1,6 +1,5 @@
 # Import statements
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form, BackgroundTasks, Request
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 import json
 import os
@@ -33,24 +32,76 @@ from services.personalization import (
 
 load_dotenv() # Load environment variables from .env file
 
+import re
+
+_EMAIL_RE = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
+_MAX_FIELD_LEN = 5000
+
+
+def _validate_email(email: str) -> str:
+    email = (email or "").lower().strip()
+    if not email or not _EMAIL_RE.match(email) or len(email) > 254:
+        raise HTTPException(status_code=400, detail="Valid email required.")
+    return email
+
+
 def _user_id(email: str, access_token: Optional[str] = None, api_key: Optional[str] = None) -> str:
     from services.auth import authenticate_user
+    email = _validate_email(email)
     return authenticate_user(email, access_token, api_key)
 
 app = FastAPI(title="Mind World API", version="1.0.0") # Create FastAPI app
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["*"]
-)
-
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request as StarletteRequest
-from starlette.responses import Response as StarletteResponse
+from starlette.responses import Response as StarletteResponse, RedirectResponse
+
+_ALLOWED_WEB_ORIGINS = {
+    os.getenv("FRONTEND_URL", "https://mind-world.app").rstrip("/"),
+    "https://mind-world.app",
+    "https://www.mind-world.app",
+}
+
+_ALLOWED_LOCAL_ORIGINS = {
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "https://localhost:5173",
+    "https://localhost:3000",
+}
+
+
+def _is_allowed_origin(origin: str | None) -> bool:
+    if not origin:
+        return True
+    if origin.startswith("chrome-extension://"):
+        return True
+    if origin in _ALLOWED_WEB_ORIGINS or origin in _ALLOWED_LOCAL_ORIGINS:
+        return True
+    return False
+
+
+class MindWorldCORSMiddleware(BaseHTTPMiddleware):
+    """CORS middleware that allows the public web app, local dev, and any
+    chrome-extension:// origin (the extension ID differs between unpacked and
+    Web Store builds). Credentials are never accepted via cookies; auth is sent
+    in request bodies/headers by the extension."""
+    async def dispatch(self, request: StarletteRequest, call_next):
+        origin = request.headers.get("origin")
+        allowed = _is_allowed_origin(origin)
+
+        if request.method == "OPTIONS":
+            response = StarletteResponse(status_code=204)
+        else:
+            response = await call_next(request)
+
+        if allowed and origin:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Vary"] = "Origin"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-MW-Client"
+        response.headers["Access-Control-Max-Age"] = "86400"
+        return response
+
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: StarletteRequest, call_next):
@@ -60,9 +111,25 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
         response.headers["Cache-Control"] = "no-store"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         return response
 
+
+class HTTPSRedirectMiddleware(BaseHTTPMiddleware):
+    """Redirect plain HTTP requests to HTTPS. Skipped for local development and
+    when the app is behind a trusted reverse proxy that sets X-Forwarded-Proto."""
+    async def dispatch(self, request: StarletteRequest, call_next):
+        scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
+        host = request.headers.get("x-forwarded-host", request.url.hostname) or ""
+        if scheme.lower() == "http" and not host.startswith("localhost") and not host.startswith("127."):
+            url = request.url.replace(scheme="https")
+            return RedirectResponse(str(url), status_code=308)
+        return await call_next(request)
+
+
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(MindWorldCORSMiddleware)
+app.add_middleware(HTTPSRedirectMiddleware)
 
 
 @app.on_event("startup")
@@ -94,10 +161,34 @@ MW_CLIENT_SECRET = "mwext-f8c3a91d-v3"
 # ---------------------------------------------------------------------------
 # IP-based rate limiter — 30 Improve calls per minute per IP
 # ---------------------------------------------------------------------------
-_ip_call_log: dict[str, list[float]] = defaultdict(list)
+_ip_call_log: dict[tuple[str, str], list[float]] = defaultdict(list)
 _IP_WINDOW_SECS = 60
-_IP_MAX_CALLS = 30
-_RATE_LIMITED_PATHS = {"/engineer_prompt", "/compare_answers"}
+_RATE_LIMITED_PATHS = {
+    "/engineer_prompt": 30,
+    "/compare_answers": 10,
+    "/templates/suggest": 30,
+    "/templates/track_use": 60,
+    "/save_conversation": 60,
+    "/process": 10,
+}
+
+
+def _client_ip(request: StarletteRequest) -> str:
+    """Return the client IP.
+
+    DigitalOcean App Platform exposes the real client in `do-connecting-ip`.
+    If that header is missing we fall back to the leftmost X-Forwarded-For hop
+    (the original client when behind a trusted proxy) and finally the transport
+    client host. Spoofing is possible only if the app is reached directly; in
+    production it is always behind the platform ingress.
+    """
+    do_ip = request.headers.get("do-connecting-ip")
+    if do_ip:
+        return do_ip.strip()
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
 
 # Model used for the one-time "see the difference" demo answers. Both the raw
 # draft and the improved prompt are answered by the SAME model so the only
@@ -130,13 +221,16 @@ Adaptive preference hint: {adaptation_hint}"""
 
 class IPRateLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: StarletteRequest, call_next):
-        if request.url.path in _RATE_LIMITED_PATHS and request.method == "POST":
-            ip = request.client.host if request.client else "unknown"
+        path = request.url.path
+        if path in _RATE_LIMITED_PATHS and request.method == "POST":
+            ip = _client_ip(request)
             now = time.time()
             window_start = now - _IP_WINDOW_SECS
-            log = _ip_call_log[ip]
+            key = (ip, path)
+            log = _ip_call_log[key]
             log[:] = [t for t in log if t > window_start]
-            if len(log) >= _IP_MAX_CALLS:
+            limit = _RATE_LIMITED_PATHS[path]
+            if len(log) >= limit:
                 return StarletteResponse(
                     content='{"detail":"Too many requests — slow down and try again in a minute."}',
                     status_code=429,
@@ -382,8 +476,16 @@ class PersonalizationSummaryRequest(BaseModel):
 class ConfirmPersonalizationSummaryRequest(BaseModel):
     email: str
     access_token: str
-    action: str  # confirm | correct | skip
+    action: str  # confirm | correct | skip | shown
     correction_ids: Optional[list[str]] = None
+
+    @field_validator("action")
+    @classmethod
+    def validate_action(cls, v: str) -> str:
+        allowed = {"confirm", "correct", "skip", "shown"}
+        if (v or "").strip().lower() not in allowed:
+            raise ValueError("action must be one of confirm, correct, skip, shown")
+        return v.strip().lower()
 
 @app.post("/summarize")
 async def summarize(request: SummarizeRequest):
@@ -1125,23 +1227,68 @@ async def template_categories():
 
 
 class TemplateSuggestRequest(BaseModel):
+    email: str
+    access_token: str
     draft: str
     limit: int = 5
     category: str = ""
     tier: str = ""
+    api_key: Optional[str] = None
+
+    @field_validator("limit")
+    @classmethod
+    def clamp_limit(cls, v: int) -> int:
+        return max(1, min(v, 12))
+
+    @field_validator("draft")
+    @classmethod
+    def clamp_draft(cls, v: str) -> str:
+        return (v or "")[:5000]
 
 
 @app.post("/templates/suggest")
 async def suggest_templates(request: TemplateSuggestRequest):
     try:
         from services.template_suggester import suggest_templates_with_ai
+        from services.database import get_supabase as _get_sb
+
+        email = request.email.lower().strip()
+        user_id = _user_id(email, request.access_token, request.api_key)
+
+        # Apply the same server-key quota check used by /engineer_prompt so free-tier
+        # users cannot burn unlimited server Anthropic credits.
+        _using_server_key = not bool(request.api_key)
+        _quota_row: dict = {}
+        if _using_server_key:
+            _sb = _get_sb()
+            _urow = _sb.table("users")\
+                .select("improve_calls_used, is_pro")\
+                .eq("id", user_id).execute()
+            _quota_row = _urow.data[0] if _urow.data else {}
+            if not _quota_row.get("is_pro"):
+                if (_quota_row.get("improve_calls_used") or 0) >= FREE_TIER_LIMIT:
+                    raise HTTPException(status_code=402, detail="quota_exceeded")
+
         templates = suggest_templates_with_ai(
             request.draft,
-            min(request.limit, 12),
+            request.limit,
             category=request.category or "",
             tier=request.tier or "",
+            api_key=request.api_key or None,
         )
+
+        # Charge the server-key quota on successful AI suggestion.
+        if _using_server_key:
+            try:
+                _get_sb().table("users").update({
+                    "improve_calls_used": (_quota_row.get("improve_calls_used") or 0) + 1
+                }).eq("id", user_id).execute()
+            except Exception:
+                pass
+
         return {"templates": templates, "ai": True}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1667,6 +1814,22 @@ class SaveConversationRequest(BaseModel):
     access_token: str
     conversation: dict
     visibility: str = 'private'
+
+    @field_validator("visibility")
+    @classmethod
+    def validate_visibility(cls, v: str) -> str:
+        if v not in ('private', 'team'):
+            raise ValueError("visibility must be private or team")
+        return v
+
+    @field_validator("conversation")
+    @classmethod
+    def validate_conversation(cls, v: dict) -> dict:
+        if not isinstance(v, dict):
+            raise ValueError("conversation must be an object")
+        if len(str(v)) > 100_000:
+            raise ValueError("conversation payload too large")
+        return v
 
 
 async def run_profile_inference_from_delta(user_id: str, conversation_delta_text: str):
@@ -2402,7 +2565,6 @@ def root():
         "endpoints": ["/health", "/process", "/blend", "/recluster"]
     }
 
-from fastapi.responses import RedirectResponse
 import uuid
 
 class AuthNotionRequest(BaseModel):

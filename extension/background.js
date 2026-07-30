@@ -1,6 +1,9 @@
 importScripts('config.js', 'storage-utils.js')
 const API_BASE = CONFIG.API_BASE
 
+const UNIVERSAL_CONTENT_SCRIPT_ID = 'mw-universal-content-script'
+const UNIVERSAL_ORIGINS = ['https://*/*', 'http://*/*']
+
 // Ensure a stable device fingerprint exists (generated once per browser profile)
 chrome.storage.local.get('mw_device_id', (stored) => {
   if (!stored.mw_device_id) {
@@ -26,6 +29,49 @@ function stopKeepAlive() {
 }
 
 startKeepAlive()
+
+async function registerUniversalContentScripts() {
+  if (!chrome.scripting || !chrome.scripting.registerContentScripts) return
+  try {
+    const existing = await chrome.scripting.getRegisteredContentScripts({ ids: [UNIVERSAL_CONTENT_SCRIPT_ID] })
+    if (existing && existing.length > 0) return
+    await chrome.scripting.registerContentScripts([{
+      id: UNIVERSAL_CONTENT_SCRIPT_ID,
+      matches: UNIVERSAL_ORIGINS,
+      excludeMatches: [
+        'https://claude.ai/*',
+        'https://chatgpt.com/*',
+        'https://gemini.google.com/*',
+        'https://perplexity.ai/*',
+        'https://mind-world.app/*',
+        'https://mind-world-app-mv4yv.ondigitalocean.app/*'
+      ],
+      js: ['storage-utils.js', 'content.js', 'input-dock.js'],
+      runAt: 'document_idle'
+    }])
+  } catch (e) {
+    console.warn('Failed to register universal content script:', e)
+  }
+}
+
+async function unregisterUniversalContentScripts() {
+  if (!chrome.scripting || !chrome.scripting.unregisterContentScripts) return
+  try {
+    await chrome.scripting.unregisterContentScripts({ ids: [UNIVERSAL_CONTENT_SCRIPT_ID] })
+  } catch (e) {
+    console.warn('Failed to unregister universal content script:', e)
+  }
+}
+
+async function syncUniversalContentScripts() {
+  const stored = await chrome.storage.local.get(['mw_universal_enabled'])
+  const granted = await chrome.permissions.contains({ origins: UNIVERSAL_ORIGINS }).catch(() => false)
+  const enabled = stored.mw_universal_enabled === true && granted
+  if (enabled) await registerUniversalContentScripts()
+  else await unregisterUniversalContentScripts()
+}
+
+syncUniversalContentScripts()
 
 function formatApiErrorDetail(body) {
   const d = body && body.detail
@@ -144,6 +190,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'LOCAL_STATE_CLEARED') {
     chrome.storage.local.set({ mw_save_queue: [] }).catch(() => {})
     sendResponse({ success: true })
+    return true
+  }
+
+  if (message.type === 'REGISTER_UNIVERSAL_CONTENT_SCRIPTS') {
+    replyAsync(sendResponse, registerUniversalContentScripts().then(() => ({ success: true })))
+    return true
+  }
+
+  if (message.type === 'UNREGISTER_UNIVERSAL_CONTENT_SCRIPTS') {
+    replyAsync(sendResponse, unregisterUniversalContentScripts().then(() => ({ success: true })))
     return true
   }
 
@@ -622,15 +678,23 @@ async function handleGetTemplateCategories() {
 
 async function handleSuggestTemplates(draft, limit, category, tier) {
   try {
+    const auth = await getAuthContext()
+    if (auth.error) return { templates: [], error: auth.error }
+
+    const body = {
+      email: auth.email,
+      access_token: auth.accessToken,
+      draft: draft || '',
+      limit: limit || 5,
+      category: category || '',
+      tier: tier || ''
+    }
+    if (auth.apiKey) body.api_key = auth.apiKey
+
     const response = await fetch(`${API_BASE}/templates/suggest`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        draft: draft || '',
-        limit: limit || 5,
-        category: category || '',
-        tier: tier || ''
-      })
+      body: JSON.stringify(body)
     })
     if (!response.ok) {
       return { templates: [], error: 'suggest_failed' }

@@ -13,9 +13,18 @@ import urllib.request
 from typing import Optional
 
 import bcrypt
+import re
 from fastapi import HTTPException
 
 MIN_PASSWORD_LENGTH = 8
+_EMAIL_RE = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
+
+
+def _validate_email_format(email: str) -> str:
+    email = (email or "").lower().strip()
+    if not email or not _EMAIL_RE.match(email) or len(email) > 254:
+        raise HTTPException(status_code=400, detail="Valid email required.")
+    return email
 
 
 def hash_secret(value: str) -> str:
@@ -142,9 +151,7 @@ def _session_response(user_id: str, email: str, refreshed: bool = False) -> dict
 
 
 def register_with_password(email: str, password: str) -> dict:
-    email = email.lower().strip()
-    if not email or "@" not in email:
-        raise HTTPException(status_code=400, detail="Valid email required.")
+    email = _validate_email_format(email)
     if len(password or "") < MIN_PASSWORD_LENGTH:
         raise HTTPException(
             status_code=400,
@@ -164,7 +171,7 @@ def register_with_password(email: str, password: str) -> dict:
 
 
 def login_with_password(email: str, password: str) -> dict:
-    email = email.lower().strip()
+    email = _validate_email_format(email)
     user = _get_user_auth_row(email)
     if not user or not user.get("password_hash"):
         raise HTTPException(status_code=401, detail="Invalid email or password.")
@@ -177,7 +184,7 @@ def link_or_create_google_user(google_id: str, email: str) -> tuple:
     """Return (user_id, has_password) — has_password tells the frontend whether to prompt for password setup."""
     from services.database import get_or_create_user, get_supabase
 
-    email = email.lower().strip()
+    email = _validate_email_format(email)
     by_google = _get_user_by_google_id(google_id)
     if by_google:
         return by_google["id"], bool(by_google.get("password_hash"))
@@ -296,7 +303,7 @@ def google_signin_redirect_url(source: str = "web") -> str:
 
 def verify_session_token(email: str, access_token: str) -> str:
     """Return user_id if token is valid for email, else raise HTTPException."""
-    email = email.lower().strip()
+    email = _validate_email_format(email)
     token = (access_token or "").strip()
     if not token:
         raise HTTPException(status_code=401, detail="Access token required.")
@@ -321,7 +328,7 @@ def establish_session(email: str, access_token: Optional[str] = None, api_key: O
     """
     from services.database import get_or_create_user
 
-    email = email.lower().strip()
+    email = _validate_email_format(email)
     user_id = get_or_create_user(email)
     user = _get_user_auth_row(email) or {"id": user_id, "session_token_hash": None, "api_key_hash": None}
 
@@ -346,7 +353,7 @@ def authenticate_user(
     api_key: Optional[str] = None,
 ) -> str:
     """Return user_id after verifying session token or API key."""
-    email = email.lower().strip()
+    email = _validate_email_format(email)
     token = (access_token or "").strip()
     key = (api_key or "").strip()
 

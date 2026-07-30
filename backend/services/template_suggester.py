@@ -87,8 +87,13 @@ def suggest_templates_with_ai(
     limit: int = 5,
     category: str = "",
     tier: str = "",
+    api_key: str | None = None,
 ) -> list[dict]:
-    """Pick the best templates for a user's draft using Claude Haiku."""
+    """Pick the best templates for a user's draft using Claude Haiku.
+
+    If ``api_key`` is provided, the request is charged to that key; otherwise the
+    server key is used and the caller should enforce server-key quotas.
+    """
     draft = (draft or "").strip()
     limit = max(1, min(limit, 12))
     all_templates = get_prompt_templates()
@@ -106,7 +111,7 @@ def suggest_templates_with_ai(
     if cached and (time.time() - cached[0]) < _CACHE_TTL_SEC:
         return cached[1][:limit]
 
-    api_key = os.getenv("ANTHROPIC_API_KEY")
+    api_key = (api_key or "").strip() or os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
         results = suggest_prompt_templates(draft, limit)
         _CACHE[key] = (time.time(), results)
