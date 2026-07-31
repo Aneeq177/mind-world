@@ -138,6 +138,9 @@
   // a chat the user unticks stays visible and re-tickable after a regenerate.
   let sourcePicker = { pool: [], selected: new Set(), open: true, searchOpen: false, appliedKey: '' }
 
+  // Server's explanation for why memory contributed nothing — see /engineer_prompt.
+  let lastMemoryStatus = null
+
   const FALLBACK_TEMPLATES = [
     { name: 'Code Debugger', template: 'You are an expert senior software engineer. Review the provided code, identify bugs, suggest optimizations, and explain your reasoning clearly.\n\n[Describe your code or paste it here:]' },
     { name: 'Academic Reviewer', template: 'Act as an expert academic reviewer. Analyze the draft for logic, flow, and evidence. Provide structured feedback.\n\n[Paste your draft here:]' },
@@ -649,9 +652,11 @@
         acceptedUnedited: false,
         edited: false,
         latencyMs: res.latencyMs || (Date.now() - requestStartedAt),
+        conversationsUsed: res.conversationsUsed || 0,
         diffMetrics: {
           clarification_count: metadata.clarificationCount || 0,
-          conversations_used: res.conversationsUsed || 0
+          conversations_used: res.conversationsUsed || 0,
+          memory_status: (res.memory && res.memory.status) || null
         }
       })
       const returnedSources = res.sourcesUsed || []
@@ -675,6 +680,7 @@
       // Snapshot of what actually produced the prompt on screen — the
       // Regenerate button only lights up once the ticks drift from this.
       sourcePicker.appliedKey = selectionKey(sourcePicker.selected)
+      lastMemoryStatus = res.memory || null
       showPreviewResult(
         res.engineeredPrompt,
         res.conversationsUsed || 0,
@@ -764,25 +770,54 @@
       </div>`
     }
     if (!conversationsUsed) {
-      return `<p class="mw-import-hint">No past chats matched this draft. <a id="mw-import-hint-link">Import your chat history</a> so Improve remembers what you've discussed before.</p>`
+      return emptyMemoryHtml()
     }
     return ''
+  }
+
+  // The old copy always blamed a missing import, which is wrong (and alarming)
+  // for someone with hundreds of chats stored. Say what actually happened.
+  function emptyMemoryHtml() {
+    const m = lastMemoryStatus || {}
+    const stored = m.stored_conversations
+    if (m.status === 'skipped') {
+      return `<p class="mw-import-hint">Memory is turned off, so this was engineered from your draft alone. Turn it back on in the Mind World popup.</p>`
+    }
+    if (m.status === 'not_indexed') {
+      return `<p class="mw-import-hint">You have ${stored} chats stored but none are searchable yet — their embeddings are missing, so nothing can be matched. Re-import your history to rebuild the index.</p>`
+    }
+    if (m.status === 'no_match') {
+      return `<div class="mw-sources">
+        <p class="mw-import-hint">None of your ${stored} stored chats were close enough to this draft.</p>
+        <div class="mw-sources-list" id="mw-sources-list"></div>
+        <div class="mw-sources-actions">
+          <button type="button" class="mw-sources-link" id="mw-sources-add">+ Pick a chat yourself</button>
+          <button type="button" class="mw-regen-btn" id="mw-sources-regen" disabled>Rewrite with these chats</button>
+        </div>
+        <div class="mw-source-search" id="mw-source-search" style="display:none;">
+          <input type="text" id="mw-source-search-input" placeholder="Search your past chats…" spellcheck="false">
+          <div class="mw-source-results" id="mw-source-results"></div>
+        </div>
+      </div>`
+    }
+    return `<p class="mw-import-hint">No past chats yet. <a id="mw-import-hint-link">Import your chat history</a> so Improve remembers what you've discussed before.</p>`
   }
 
   function bindSourcePicker(goal, templateName) {
     const toggle = popoverShadow.getElementById('mw-sources-toggle')
     const list = popoverShadow.getElementById('mw-sources-list')
     const actions = popoverShadow.getElementById('mw-sources-actions')
-    if (!toggle || !list) return
-
     const regen = popoverShadow.getElementById('mw-sources-regen')
     const addBtn = popoverShadow.getElementById('mw-sources-add')
     const searchBox = popoverShadow.getElementById('mw-source-search')
     const searchInput = popoverShadow.getElementById('mw-source-search-input')
     const resultsBox = popoverShadow.getElementById('mw-source-results')
+    // The "nothing matched" state renders the search + rewrite controls without
+    // a list or toggle, so every block below has to stand on its own.
+    if (!toggle && !addBtn) return
 
     function refreshControls() {
-      toggle.textContent = sourcesToggleLabel(sourcePicker.open !== false)
+      if (toggle) toggle.textContent = sourcesToggleLabel(sourcePicker.open !== false)
       if (!regen) return
       const changed = selectionKey(sourcePicker.selected) !== sourcePicker.appliedKey
       regen.disabled = !changed
@@ -792,6 +827,7 @@
     }
 
     function bindCheckboxes() {
+      if (!list) return
       list.querySelectorAll('input[data-src-check]').forEach(cb => {
         cb.onchange = () => {
           const id = cb.getAttribute('data-src-check')
@@ -805,7 +841,7 @@
     }
 
     function renderList() {
-      list.innerHTML = sourcePicker.pool.map(sourceItemHtml).join('')
+      if (list) list.innerHTML = sourcePicker.pool.map(sourceItemHtml).join('')
       bindCheckboxes()
       refreshControls()
       positionPopover()
@@ -814,17 +850,19 @@
     bindCheckboxes()
     refreshControls()
 
-    toggle.onclick = () => {
-      sourcePicker.open = sourcePicker.open === false
-      const shown = sourcePicker.open !== false
-      list.style.display = shown ? 'flex' : 'none'
-      if (actions) actions.style.display = shown ? 'flex' : 'none'
-      if (!shown && searchBox) {
-        searchBox.style.display = 'none'
-        sourcePicker.searchOpen = false
+    if (toggle && list) {
+      toggle.onclick = () => {
+        sourcePicker.open = sourcePicker.open === false
+        const shown = sourcePicker.open !== false
+        list.style.display = shown ? 'flex' : 'none'
+        if (actions) actions.style.display = shown ? 'flex' : 'none'
+        if (!shown && searchBox) {
+          searchBox.style.display = 'none'
+          sourcePicker.searchOpen = false
+        }
+        refreshControls()
+        positionPopover()
       }
-      refreshControls()
-      positionPopover()
     }
 
     if (addBtn && searchBox && searchInput && resultsBox) {

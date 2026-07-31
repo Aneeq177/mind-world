@@ -318,8 +318,9 @@ async def process_files(
         chats, embeddings = embed_and_position(df) # This embeds the conversations into a 384-dimensional vector space and then labels the clusters
         chats = label_clusters(chats, effective_api_key) # This groups the chats by cluster_id, sends sample titles from each cluster to claude, claude returns a short label (e.g. "Job Search", "Python Help"), each chat then gets a 'region' (topic name) and a 'color' (hex code). Uses the same api key as the user's api key.
 
+        storage_report = {}
         try:
-            store_conversations(user_id, chats, embeddings) # Stores the conversations in the database using the user_id and the conversations and embeddings.
+            storage_report = store_conversations(user_id, chats, embeddings) or {} # Stores the conversations in the database using the user_id and the conversations and embeddings.
         except Exception as db_error:
             print(f"DB storage error: {db_error}") # This prints the error if the conversations are not stored in the database
             user_id = None
@@ -347,6 +348,10 @@ async def process_files(
             "sources": sources, # number of claude and chatgpt conversations
             "user_id": user_id, # user_id of the user who uploaded the files
             "access_token": session_token,
+            # Import is only useful if the embeddings landed — without them the
+            # conversations show on the map but nothing is ever retrievable.
+            "indexed": storage_report.get("embeddings_stored", 0),
+            "storage_errors": storage_report.get("errors", []),
         }
 
     except HTTPException: # If there is an error, it raises an error with a status code of 500 (Internal Server Error)
@@ -652,6 +657,7 @@ async def engineer_prompt(http_req: Request, request: EngineerPromptRequest):
 
         _prefetched_profile = None
         _prefetched_facts = None
+        _candidate_count = 0
 
         if skip_memory:
             selected = []
@@ -688,6 +694,7 @@ async def engineer_prompt(http_req: Request, request: EngineerPromptRequest):
                     embedding,
                     limit=15,
                 )
+            _candidate_count = len(candidates or [])
             # Rerank and profile-fact picking are independent LLM calls —
             # run them concurrently instead of back-to-back.
             from concurrent.futures import ThreadPoolExecutor
@@ -895,10 +902,36 @@ Output rules:
         from services.database import log_growth_event
         log_growth_event(user_id, "improve_used", platform=request.platform)
 
+        # Why memory did or didn't contribute. Without this the extension can
+        # only say "no past chats", which is wrong and confusing for a user who
+        # has hundreds stored but whose embeddings/user_id are out of sync.
+        memory = {"status": "used"}
+        if skip_memory:
+            memory["status"] = "skipped"
+        elif not sources_used:
+            from services.database import get_supabase as _sb_diag
+            _sbd = _sb_diag()
+            _nodes = _sbd.table("knowledge_nodes").select("id", count="exact")\
+                .eq("user_id", user_id).limit(1).execute()
+            _embs = _sbd.table("embeddings").select("conversation_id", count="exact")\
+                .eq("user_id", user_id).limit(1).execute()
+            memory["stored_conversations"] = _nodes.count or 0
+            memory["embedded_conversations"] = _embs.count or 0
+            memory["candidates"] = _candidate_count
+            if memory["stored_conversations"] == 0:
+                memory["status"] = "no_data"
+            elif memory["embedded_conversations"] == 0:
+                # Conversations exist but nothing is searchable — the import
+                # wrote knowledge_nodes without embeddings, or under another id.
+                memory["status"] = "not_indexed"
+            else:
+                memory["status"] = "no_match"
+
         return {
             "engineered_prompt": formatted,
             "conversations_used": len(context_parts),
             "sources_used": sources_used,
+            "memory": memory,
         }
 
     except HTTPException:

@@ -38,8 +38,17 @@ def store_conversations(
     user_id: str,
     chats: list[dict],
     embeddings
-):
+) -> dict:
+    """Upsert conversations and their embeddings.
+
+    Returns per-stage counts. A failed embedding batch used to be swallowed
+    silently, which left conversations visible in the UI while search returned
+    nothing for them — the caller must be able to see that happen.
+    """
     supabase = get_supabase()
+    stored_conversations = 0
+    stored_embeddings = 0
+    errors: list[str] = []
 
     # Store conversations in batches of 50
     batch_size = 50
@@ -70,8 +79,10 @@ def store_conversations(
             supabase.table("knowledge_nodes")\
                 .upsert(rows, on_conflict="id")\
                 .execute()
+            stored_conversations += len(rows)
         except Exception as e:
             print(f"Batch conversation upsert error: {e}")
+            errors.append(f"conversations[{i}:{i + len(rows)}]: {e}")
             continue
 
     # Store embeddings in batches of 50
@@ -93,9 +104,25 @@ def store_conversations(
                     on_conflict="conversation_id,user_id"
                 )\
                 .execute()
+            stored_embeddings += len(embedding_rows)
         except Exception as e:
             print(f"Batch embedding upsert error: {e}")
+            errors.append(f"embeddings[{i}:{i + len(embedding_rows)}]: {e}")
             continue
+
+    if stored_embeddings == 0 and chats:
+        # Nothing is searchable — surface it rather than reporting a clean import.
+        print(
+            f"[store_conversations] user={user_id}: stored {stored_conversations} "
+            f"conversations but ZERO embeddings. Search will return nothing. "
+            f"First error: {errors[0] if errors else 'none reported'}"
+        )
+
+    return {
+        "conversations_stored": stored_conversations,
+        "embeddings_stored": stored_embeddings,
+        "errors": errors[:5],
+    }
 
 def search_conversations(
     user_id: str,

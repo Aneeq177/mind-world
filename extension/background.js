@@ -482,6 +482,7 @@ async function handleEngineerPrompt(userMessage, templateStr, conversationIds, s
       engineeredPrompt: data.prompt || data.engineered_prompt,
       conversationsUsed: data.conversations_used || 0,
       sourcesUsed: data.sources_used || [],
+      memory: data.memory || null,
       latencyMs: Date.now() - startedAt
     }
   } catch (error) {
