@@ -353,27 +353,50 @@
       .mw-pop .mw-sources-toggle {
         background: none; border: none; color: #a78bfa; font-size: 11px;
         cursor: pointer; padding: 0; text-decoration: underline;
+        flex: 0 0 auto; min-width: 0; width: auto; text-align: left;
       }
       .mw-pop .mw-sources-list {
-        margin-top: 8px; max-height: 200px; overflow-y: auto;
+        margin-top: 8px; max-height: 200px; overflow-x: hidden; overflow-y: auto;
         display: flex; flex-direction: column; gap: 6px;
+        min-width: 0; width: 100%; box-sizing: border-box;
       }
       .mw-pop .mw-source-item {
         padding: 6px 8px; border-radius: 6px;
         background: rgba(124,58,237,0.08); border: 1px solid rgba(124,58,237,0.2);
-        font-size: 11px;
+        font-size: 11px; min-width: 0; width: 100%; box-sizing: border-box;
+        overflow: hidden;
       }
-      .mw-pop .mw-source-item strong { color: #e9d5ff; display: block; }
-      .mw-pop .mw-source-meta { color: #666; font-size: 10px; }
-      .mw-pop .mw-source-item p { margin: 4px 0 0; color: #888; font-size: 10px; line-height: 1.3; }
+      .mw-pop .mw-source-item strong {
+        color: #e9d5ff; display: block;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
+      .mw-pop .mw-source-meta { color: #666; font-size: 10px; display: block; }
+      .mw-pop .mw-source-item p {
+        margin: 4px 0 0; color: #888; font-size: 10px; line-height: 1.3;
+        overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+      }
       .mw-pop .mw-source-item.off { opacity: 0.45; background: rgba(255,255,255,0.03); border-color: rgba(255,255,255,0.08); }
-      .mw-pop .mw-source-row { display: flex; align-items: flex-start; gap: 8px; }
-      .mw-pop .mw-source-row input[type="checkbox"] {
-        margin: 2px 0 0; accent-color: #7c3aed; cursor: pointer; flex-shrink: 0;
+      .mw-pop .mw-source-row {
+        display: flex; align-items: flex-start; gap: 8px;
+        min-width: 0; width: 100%;
       }
-      .mw-pop .mw-source-row label { cursor: pointer; flex: 1; min-width: 0; }
+      /* Override the global `.mw-pop input { width:100% }` — that stretched
+         checkboxes into a full-width empty panel and shoved titles sideways. */
+      .mw-pop .mw-source-row input[type="checkbox"] {
+        width: 14px; height: 14px; min-width: 14px; max-width: 14px;
+        margin: 3px 0 0; padding: 0; accent-color: #7c3aed;
+        cursor: pointer; flex-shrink: 0; box-sizing: border-box;
+        background: transparent; border: none; border-radius: 0;
+      }
+      .mw-pop .mw-source-row label {
+        cursor: pointer; flex: 1; min-width: 0; width: auto;
+        color: inherit; font-size: inherit;
+      }
       .mw-pop .mw-sources-actions {
         display: flex; align-items: center; gap: 10px; margin-top: 8px; flex-wrap: wrap;
+      }
+      .mw-pop .mw-sources-actions button {
+        flex: 0 0 auto; min-width: 0; width: auto;
       }
       .mw-pop .mw-sources-link {
         background: none; border: none; color: #a78bfa; font-size: 11px;
