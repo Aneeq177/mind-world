@@ -150,20 +150,36 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
 
   try {
     const parsed = new URL(url)
+    const host = parsed.hostname.toLowerCase()
+    const allowedHosts = new Set(['mind-world.app', 'www.mind-world.app', 'localhost', '127.0.0.1'])
+    if (!allowedHosts.has(host)) return
+
     const error = parsed.searchParams.get('error')
-    const token = parsed.searchParams.get('access_token')
-    const email = parsed.searchParams.get('email')
-    if (error || !token || !email) return
+    // Legacy token-in-URL redirects are no longer accepted.
+    if (parsed.searchParams.get('access_token')) return
 
-    const needsPassword = parsed.searchParams.get('needs_password')
-    const storageUpdate = { mw_email: email, mw_access_token: token }
-    if (needsPassword === '1') storageUpdate.mw_needs_password = '1'
-    else storageUpdate.mw_needs_password = '0'
+    const code = parsed.searchParams.get('code')
+    if (error || !code) return
 
-    chrome.storage.local.set(storageUpdate, () => {
-      chrome.tabs.remove(tabId).catch(() => {})
-      chrome.runtime.sendMessage({ type: 'AUTH_COMPLETE' }).catch(() => {})
+    fetch(`${API_BASE}/auth/google/exchange`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code })
     })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!data || !data.access_token || !data.email) return
+        const storageUpdate = {
+          mw_email: data.email,
+          mw_access_token: data.access_token,
+          mw_needs_password: data.needs_password ? '1' : '0'
+        }
+        chrome.storage.local.set(storageUpdate, () => {
+          chrome.tabs.remove(tabId).catch(() => {})
+          chrome.runtime.sendMessage({ type: 'AUTH_COMPLETE' }).catch(() => {})
+        })
+      })
+      .catch(() => {})
   } catch {
     // ignore malformed callback URLs
   }

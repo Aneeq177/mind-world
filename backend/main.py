@@ -170,6 +170,16 @@ _RATE_LIMITED_PATHS = {
     "/templates/track_use": 60,
     "/save_conversation": 60,
     "/process": 10,
+    "/auth/login": 10,
+    "/auth/register": 5,
+    "/auth/session": 30,
+    "/auth/google/token": 10,
+    "/auth/google/exchange": 20,
+}
+
+# GET endpoints rate-limited separately (OAuth start is a GET redirect).
+_RATE_LIMITED_GET_PATHS = {
+    "/auth/google/signin": 10,
 }
 
 
@@ -222,14 +232,19 @@ Adaptive preference hint: {adaptation_hint}"""
 class IPRateLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: StarletteRequest, call_next):
         path = request.url.path
-        if path in _RATE_LIMITED_PATHS and request.method == "POST":
+        limit = None
+        if request.method == "POST" and path in _RATE_LIMITED_PATHS:
+            limit = _RATE_LIMITED_PATHS[path]
+        elif request.method == "GET" and path in _RATE_LIMITED_GET_PATHS:
+            limit = _RATE_LIMITED_GET_PATHS[path]
+
+        if limit is not None:
             ip = _client_ip(request)
             now = time.time()
             window_start = now - _IP_WINDOW_SECS
             key = (ip, path)
             log = _ip_call_log[key]
             log[:] = [t for t in log if t > window_start]
-            limit = _RATE_LIMITED_PATHS[path]
             if len(log) >= limit:
                 return StarletteResponse(
                     content='{"detail":"Too many requests — slow down and try again in a minute."}',
@@ -1503,6 +1518,10 @@ class GoogleTokenRequest(BaseModel):
     id_token: str
 
 
+class GoogleHandoffExchangeRequest(BaseModel):
+    code: str
+
+
 class AuthAccountRequest(BaseModel):
     email: str
     access_token: str
@@ -1556,25 +1575,54 @@ async def auth_google_signin(source: str = "web"):
     from fastapi.responses import RedirectResponse
     from services.auth import google_signin_redirect_url
 
-    return RedirectResponse(url=google_signin_redirect_url(source))
+    url, state_token = google_signin_redirect_url(source)
+    response = RedirectResponse(url=url)
+    response.set_cookie(
+        key="mw_oauth_state",
+        value=state_token,
+        max_age=600,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        path="/auth/google",
+    )
+    return response
 
 
 @app.get("/auth/google/signin/callback")
-async def auth_google_signin_callback(code: str = "", state: str = "", error: str = ""):
+async def auth_google_signin_callback(
+    request: StarletteRequest,
+    code: str = "",
+    state: str = "",
+    error: str = "",
+):
     from fastapi.responses import RedirectResponse
-    from services.auth import exchange_google_auth_code, link_or_create_google_user, issue_session_token
+    from services.auth import (
+        create_auth_handoff_code,
+        exchange_google_auth_code,
+        link_or_create_google_user,
+        verify_oauth_state,
+    )
     import urllib.parse
 
     frontend_url = os.getenv("FRONTEND_URL", "https://mind-world.app").rstrip("/")
+
+    def _error_redirect(message: str) -> RedirectResponse:
+        resp = RedirectResponse(url=f"{frontend_url}/auth/callback?error={urllib.parse.quote(message)}")
+        resp.delete_cookie("mw_oauth_state", path="/auth/google")
+        return resp
+
     if error:
-        return RedirectResponse(url=f"{frontend_url}/auth/callback?error={urllib.parse.quote(error)}")
+        return _error_redirect(error)
 
     if not code:
-        return RedirectResponse(url=f"{frontend_url}/auth/callback?error=missing_code")
+        return _error_redirect("missing_code")
 
-    source = "web"
-    if state and ":" in state:
-        _, source = state.rsplit(":", 1)
+    cookie_state = request.cookies.get("mw_oauth_state")
+    try:
+        source = verify_oauth_state(state, cookie_state)
+    except HTTPException as exc:
+        return _error_redirect(str(exc.detail))
 
     api_base = (os.getenv("API_PUBLIC_URL") or "https://mind-world-app-mv4yv.ondigitalocean.app").rstrip("/")
     redirect_uri = f"{api_base}/auth/google/signin/callback"
@@ -1582,20 +1630,37 @@ async def auth_google_signin_callback(code: str = "", state: str = "", error: st
     try:
         profile = exchange_google_auth_code(code, redirect_uri)
         user_id, has_password = link_or_create_google_user(profile["google_id"], profile["email"])
-        access_token = issue_session_token(user_id)
+        handoff_code = create_auth_handoff_code(
+            user_id=user_id,
+            email=profile["email"],
+            source=source,
+            has_password=has_password,
+        )
         params = urllib.parse.urlencode(
             {
-                "access_token": access_token,
-                "email": profile["email"],
-                "source": source if source in ("web", "extension") else "web",
-                "needs_password": "0" if has_password else "1",
+                "code": handoff_code,
+                "source": source,
             }
         )
-        return RedirectResponse(url=f"{frontend_url}/auth/callback?{params}")
+        response = RedirectResponse(url=f"{frontend_url}/auth/callback?{params}")
+        response.delete_cookie("mw_oauth_state", path="/auth/google")
+        return response
     except HTTPException as exc:
-        return RedirectResponse(url=f"{frontend_url}/auth/callback?error={urllib.parse.quote(str(exc.detail))}")
+        return _error_redirect(str(exc.detail))
     except Exception as exc:
-        return RedirectResponse(url=f"{frontend_url}/auth/callback?error={urllib.parse.quote(str(exc))}")
+        return _error_redirect(str(exc))
+
+
+@app.post("/auth/google/exchange")
+async def auth_google_exchange(request: GoogleHandoffExchangeRequest):
+    try:
+        from services.auth import exchange_auth_handoff_code
+
+        return exchange_auth_handoff_code(request.code)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/auth/account")

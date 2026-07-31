@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { exchangeGoogleHandoffCode } from '../api'
 
 export default function AuthCallback() {
   const [searchParams] = useSearchParams()
@@ -7,37 +8,57 @@ export default function AuthCallback() {
   const [message, setMessage] = useState('Signing you in…')
 
   useEffect(() => {
-    const error = searchParams.get('error')
-    const accessToken = searchParams.get('access_token')
-    const email = searchParams.get('email')
-    const source = searchParams.get('source')
+    let cancelled = false
 
-    if (error) {
-      setMessage(`Sign-in failed: ${error}`)
-      return
+    async function finishSignIn() {
+      const error = searchParams.get('error')
+      const code = searchParams.get('code')
+      const source = searchParams.get('source')
+
+      // Legacy redirects that still include access_token — refuse to accept them.
+      if (searchParams.get('access_token')) {
+        setMessage('Sign-in link is outdated. Close this tab and sign in again.')
+        return
+      }
+
+      if (error) {
+        setMessage(`Sign-in failed: ${error}`)
+        return
+      }
+
+      if (!code) {
+        setMessage('Sign-in incomplete. Close this tab and try again.')
+        return
+      }
+
+      // Extension flow: background.js exchanges the one-time code. Do not consume it here.
+      if (source === 'extension') {
+        setMessage('Success! You can close this tab and return to the Mind World extension.')
+        return
+      }
+
+      try {
+        const data = await exchangeGoogleHandoffCode(code)
+        if (cancelled) return
+
+        sessionStorage.setItem('mw_access_token', data.access_token)
+        sessionStorage.setItem('mw_email', data.email)
+
+        if (data.needs_password) {
+          sessionStorage.setItem('mw_needs_password', '1')
+        } else {
+          sessionStorage.removeItem('mw_needs_password')
+        }
+
+        navigate('/?postAuth=true', { replace: true })
+      } catch (err) {
+        if (cancelled) return
+        setMessage(`Sign-in failed: ${err.message || 'Could not complete Google sign-in.'}`)
+      }
     }
 
-    if (!accessToken || !email) {
-      setMessage('Sign-in incomplete. Close this tab and try again.')
-      return
-    }
-
-    sessionStorage.setItem('mw_access_token', accessToken)
-    sessionStorage.setItem('mw_email', email)
-
-    const needsPassword = searchParams.get('needs_password')
-    if (needsPassword === '1') {
-      sessionStorage.setItem('mw_needs_password', '1')
-    } else {
-      sessionStorage.removeItem('mw_needs_password')
-    }
-
-    if (source === 'extension') {
-      setMessage('Success! You can close this tab and return to the Mind World extension.')
-      return
-    }
-
-    navigate('/?postAuth=true', { replace: true })
+    finishSignIn()
+    return () => { cancelled = true }
   }, [navigate, searchParams])
 
   return (

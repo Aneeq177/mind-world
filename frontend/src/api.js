@@ -26,6 +26,19 @@ export async function register({ email, password }) {
   return response.json()
 }
 
+export async function exchangeGoogleHandoffCode(code) {
+  const response = await fetch(`${BASE_URL}/auth/google/exchange`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code })
+  })
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}))
+    throw new Error(error.detail || 'Google sign-in failed')
+  }
+  return response.json()
+}
+
 export async function fetchAuthAccount({ email, accessToken }) {
   const response = await fetch(`${BASE_URL}/auth/account`, {
     method: 'POST',
