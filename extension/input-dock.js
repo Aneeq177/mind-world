@@ -380,7 +380,7 @@
         display: flex; align-items: flex-start; gap: 8px;
         min-width: 0; width: 100%;
       }
-      /* Override the global `.mw-pop input { width:100% }` — that stretched
+      /* Override the global .mw-pop input width:100% rule — that stretched
          checkboxes into a full-width empty panel and shoved titles sideways. */
       .mw-pop .mw-source-row input[type="checkbox"] {
         width: 14px; height: 14px; min-width: 14px; max-width: 14px;
