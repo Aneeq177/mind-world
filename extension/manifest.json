@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Mind World",
   "version": "1.5.0",
-  "description": "Improve your AI prompts as you type. Works on Claude, ChatGPT, Gemini, and Perplexity out of the box — and on any AI chat site with Universal Mode.",
+  "description": "Improve your AI prompts as you type. Works on Claude, ChatGPT, Gemini, Perplexity, and any AI chat site with Universal Mode.",
   "permissions": [
     "storage",
     "scripting"
