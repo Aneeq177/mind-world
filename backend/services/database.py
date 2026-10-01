@@ -34,12 +34,35 @@ def get_or_create_user(email: str) -> str:
     }).execute()
     return new_id
 
+def _ids_with_newer_stored_copy(supabase: Client, user_id: str, chats: list[dict]) -> set[str]:
+    """Conversations whose stored copy has more messages than the uploaded one.
+
+    Exports are snapshots: a chat continued after the export was downloaded has
+    been auto-saved with more messages than the export holds. On a tie the
+    upload wins, since exports keep messages auto-save truncates.
+    """
+    incoming = {c["id"]: int(c.get("num_messages") or 0) for c in chats}
+    ids = list(incoming)
+    newer: set[str] = set()
+    for i in range(0, len(ids), 200):
+        rows = supabase.table("knowledge_nodes")\
+            .select("id, num_messages")\
+            .eq("user_id", user_id)\
+            .in_("id", ids[i:i + 200])\
+            .execute().data or []
+        for row in rows:
+            if int(row.get("num_messages") or 0) > incoming.get(row["id"], 0):
+                newer.add(row["id"])
+    return newer
+
+
 def store_conversations(
     user_id: str,
     chats: list[dict],
     embeddings
 ) -> dict:
-    """Upsert conversations and their embeddings.
+    """Upsert conversations and their embeddings, keeping any stored copy that
+    is newer than the uploaded one (see _ids_with_newer_stored_copy).
 
     Returns per-stage counts. A failed embedding batch used to be swallowed
     silently, which left conversations visible in the UI while search returned
@@ -49,6 +72,16 @@ def store_conversations(
     stored_conversations = 0
     stored_embeddings = 0
     errors: list[str] = []
+
+    try:
+        kept_newer = _ids_with_newer_stored_copy(supabase, user_id, chats)
+    except Exception as e:
+        print(f"[store_conversations] newer-copy check failed, overwriting all: {e}")
+        kept_newer = set()
+    if kept_newer:
+        keep = [i for i, c in enumerate(chats) if c["id"] not in kept_newer]
+        chats = [chats[i] for i in keep]
+        embeddings = [embeddings[i] for i in keep]
 
     # Store conversations in batches of 50
     batch_size = 50
@@ -120,6 +153,7 @@ def store_conversations(
     return {
         "conversations_stored": stored_conversations,
         "embeddings_stored": stored_embeddings,
+        "kept_newer_ids": sorted(kept_newer),
         "errors": errors[:5],
     }
 

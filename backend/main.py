@@ -351,9 +351,13 @@ async def process_files(
         if user_id and storage_report.get("conversations_stored"):
             # Chunking every conversation is the slow part of indexing, so it runs
             # after the map is returned. Copied because full_text is popped below.
+            # Conversations whose newer stored copy was kept must not be re-chunked
+            # from the older uploaded text.
+            kept_newer = set(storage_report.get("kept_newer_ids") or [])
             to_index = [
                 {"id": c["id"], "title": c.get("title"), "full_text": c.get("full_text", "")}
                 for c in chats
+                if c["id"] not in kept_newer
             ]
             background_tasks.add_task(_index_chunks_in_background, user_id, to_index)
 # The following just counts the number of claude and chatgpt conversations and stores it in the sources dictionary
@@ -383,6 +387,8 @@ async def process_files(
             # Import is only useful if the embeddings landed — without them the
             # conversations show on the map but nothing is ever retrievable.
             "indexed": storage_report.get("embeddings_stored", 0),
+            # Already stored with more messages (auto-saved after the export), so kept.
+            "kept_newer": len(storage_report.get("kept_newer_ids") or []),
             "storage_errors": storage_report.get("errors", []),
         }
 
