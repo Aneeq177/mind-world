@@ -31,7 +31,16 @@ def _parse_json_text(text: str) -> Any:
         cleaned = cleaned[3:]
     if cleaned.endswith("```"):
         cleaned = cleaned[:-3]
-    return json.loads(cleaned.strip())
+    cleaned = cleaned.strip()
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        # Haiku sometimes adds an explanation after the JSON; keep the first value.
+        starts = [i for i in (cleaned.find("{"), cleaned.find("[")) if i != -1]
+        if not starts:
+            raise
+        value, _ = json.JSONDecoder().raw_decode(cleaned[min(starts):])
+        return value
 
 
 def _haiku(api_key: str, system: str, user: str, max_tokens: int = 600) -> str:
@@ -332,11 +341,13 @@ def rerank_conversations_llm(
     if not key or not candidates:
         return candidates[:limit]
 
+    # Chunk retrieval supplies `snippet`: the part of the conversation that
+    # actually matched, which may be far from its opening `preview`.
     compact = [
         {
             "id": c.get("id"),
             "title": c.get("title", ""),
-            "preview": (c.get("preview") or "")[:180],
+            "preview": (c.get("snippet") or "")[:600] or (c.get("preview") or "")[:180],
             "similarity": c.get("similarity"),
         }
         for c in candidates[:15]

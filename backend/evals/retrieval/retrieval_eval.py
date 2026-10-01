@@ -91,8 +91,48 @@ def retrieve_baseline(draft: str, index: np.ndarray, corpus: list[dict], k: int)
     ]
 
 
+def index_chunked(corpus: list[dict]) -> dict:
+    # Mirrors index_conversation_chunks: overlapping spans of full_text, each
+    # embedded with the conversation title in front.
+    from services.chunker import chunk_embed_inputs, chunk_spans
+    owners, spans, inputs = [], [], []
+    for i, conv in enumerate(corpus):
+        text = conv.get("full_text") or conv.get("preview") or ""
+        conv_spans = chunk_spans(text)
+        owners += [i] * len(conv_spans)
+        spans += conv_spans
+        inputs += chunk_embed_inputs(conv.get("title") or "Untitled", text, conv_spans)
+    emb = _model().encode(inputs, normalize_embeddings=True, batch_size=64, show_progress_bar=False)
+    print(f"  {len(inputs)} chunks", flush=True)
+    return {"emb": emb, "owners": owners, "spans": spans}
+
+
+def retrieve_chunked(draft: str, index: dict, corpus: list[dict], k: int) -> list[dict]:
+    # Mirrors retrieve_candidates: top chunks -> group by conversation.
+    from services.retrieval import CHUNK_CANDIDATES, group_chunk_hits
+    q = _model().encode([draft], normalize_embeddings=True)[0]
+    sims = index["emb"] @ q
+    hits = []
+    for j in np.argsort(-sims)[:CHUNK_CANDIDATES]:
+        conv = corpus[index["owners"][j]]
+        s, e = index["spans"][j]
+        text = conv.get("full_text") or conv.get("preview") or ""
+        hits.append({
+            "conversation_id": conv["id"],
+            "title": conv.get("title") or "Untitled",
+            "preview": conv.get("preview") or text[:300],
+            "created_at": conv.get("created_at"),
+            "similarity": float(sims[j]),
+            "start_char": s,
+            "end_char": e,
+            "chunk_text": text[s:e],
+        })
+    return group_chunk_hits(hits)[:k]
+
+
 STRATEGIES = {
     "baseline": (index_baseline, retrieve_baseline),
+    "chunked": (index_chunked, retrieve_chunked),
 }
 
 
@@ -289,7 +329,7 @@ def run_eval(args) -> dict:
             "git_commit": _git_commit(),
             "run_at": datetime.now(timezone.utc).isoformat(),
             "embedding_model": "all-MiniLM-L6-v2",
-            "embed_text": "title + full_text[:500]" if args.strategy == "baseline" else args.strategy,
+            "embed_text": _embed_text_label(args.strategy),
             "top_k": TOP_K,
             "candidate_k": CANDIDATE_K,
             "corpus_size": len(corpus),
@@ -298,6 +338,15 @@ def run_eval(args) -> dict:
         "stages": stages,
         "cases": per_case,
     }
+
+
+def _embed_text_label(strategy: str) -> str:
+    if strategy == "chunked":
+        from services.chunker import CHUNK_OVERLAP, CHUNK_SIZE
+        from services.retrieval import CHUNK_CANDIDATES
+        return (f"title + full_text chunks ({CHUNK_SIZE} chars, {CHUNK_OVERLAP} overlap), "
+                f"top {CHUNK_CANDIDATES} chunks grouped by conversation")
+    return "title + full_text[:500]"
 
 
 def _git_commit() -> str:

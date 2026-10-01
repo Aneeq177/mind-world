@@ -32,7 +32,7 @@ def parse_claude(data: dict | list) -> pd.DataFrame:
             'updated_at': c.get('updated_at', ''),
             'num_messages': len(messages),
             'char_count': len(full_text),
-            'full_text': full_text[:8000],
+            'full_text': full_text,
             'source': 'claude'
         })
     df = pd.DataFrame(rows)
@@ -138,7 +138,7 @@ def parse_chatgpt(zip_bytes: bytes) -> pd.DataFrame:
                     'updated_at': updated_at,
                     'num_messages': len(text_parts),
                     'char_count': len(full_text),
-                    'full_text': full_text[:8000],
+                    'full_text': full_text,
                     'source': 'chatgpt'
                 })
     df = pd.DataFrame(rows)

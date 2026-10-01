@@ -265,8 +265,15 @@ app.add_middleware(IPRateLimitMiddleware)
 def health():
     return {"status": "ok", "version": "1.0.0"}
 
+def _index_chunks_in_background(user_id: str, conversations: list[dict]) -> None:
+    from services.retrieval import index_conversations_chunks
+    report = index_conversations_chunks(user_id, conversations)
+    print(f"[chunks] user={user_id}: {report}")
+
+
 @app.post("/process") # So /process here is the endpoint that handels the file uploads, processes them and them and then creates the 2D mind world
 async def process_files(
+    background_tasks: BackgroundTasks,
     claude_file: UploadFile | None = File(None), 
     chatgpt_file: UploadFile | None = File(None), 
     api_key: str = Form(""), # API key for the user (user is asked to enter their key)
@@ -340,6 +347,15 @@ async def process_files(
         except Exception as db_error:
             print(f"DB storage error: {db_error}") # This prints the error if the conversations are not stored in the database
             user_id = None
+
+        if user_id and storage_report.get("conversations_stored"):
+            # Chunking every conversation is the slow part of indexing, so it runs
+            # after the map is returned. Copied because full_text is popped below.
+            to_index = [
+                {"id": c["id"], "title": c.get("title"), "full_text": c.get("full_text", "")}
+                for c in chats
+            ]
+            background_tasks.add_task(_index_chunks_in_background, user_id, to_index)
 # The following just counts the number of claude and chatgpt conversations and stores it in the sources dictionary
         sources = {
             "claude": sum(
@@ -391,12 +407,9 @@ class SearchRequest(BaseModel):
 @app.post("/search")
 async def search(request: SearchRequest):
     try:
-        from services.database import (
-            search_conversations,
-            search_conversations_candidates,
-            get_personal_profile,
-        )
+        from services.database import get_personal_profile
         from services.embedder import get_embedding_model
+        from services.retrieval import retrieve_candidates
 
         email = request.email.lower().strip()
         user_id = _user_id(email, request.access_token)
@@ -404,7 +417,7 @@ async def search(request: SearchRequest):
 
         profile = get_personal_profile(user_id)
         if profile.get("is_profile_enabled"):
-            candidates = search_conversations_candidates(
+            candidates = retrieve_candidates(
                 user_id,
                 query_embedding,
                 max(15, request.limit * 4),
@@ -415,12 +428,10 @@ async def search(request: SearchRequest):
                 profile.get("profile_data", {}),
             )[:request.limit]
         else:
-            results = search_conversations(
-                user_id,
-                query_embedding,
-                request.limit
-            )
+            results = retrieve_candidates(user_id, query_embedding, request.limit)
 
+        for r in results:
+            r.pop("matched", None)
         return {"results": results, "query": request.query}
 
     except Exception as e:
@@ -507,11 +518,10 @@ async def engineer_prompt(http_req: Request, request: EngineerPromptRequest):
         import anthropic
         from services.embedder import get_embedding_model
         from services.database import (
-            search_conversations,
-            search_conversations_candidates,
             get_personal_profile,
             get_prompt_template_by_name,
         )
+        from services.retrieval import build_excerpt, retrieve_candidates
 
         api_key = request.api_key or os.getenv("ANTHROPIC_API_KEY")
         if not api_key:
@@ -571,8 +581,12 @@ async def engineer_prompt(http_req: Request, request: EngineerPromptRequest):
         if skip_memory:
             selected = []
         elif request.conversation_ids:
-            all_convos = get_user_conversations(user_id)
-            selected = [c for c in all_convos if c["id"] in request.conversation_ids]
+            from services.database import get_supabase
+            selected = get_supabase().table("knowledge_nodes")\
+                .select("id, title, full_text, preview, created_at, num_messages, source_app")\
+                .eq("user_id", user_id)\
+                .in_("id", request.conversation_ids)\
+                .execute().data or []
 
             if not selected:
                 from services.database import get_supabase
@@ -587,22 +601,14 @@ async def engineer_prompt(http_req: Request, request: EngineerPromptRequest):
             profile = get_personal_profile(user_id)
             profile_data = profile.get("profile_data") or {}
             if profile.get("is_profile_enabled"):
-                candidates = search_conversations_candidates(
-                    user_id,
-                    embedding,
-                    limit=20,
-                )
+                candidates = retrieve_candidates(user_id, embedding, 20)
                 candidates = hybrid_score_conversations(
                     candidates,
                     request.message,
                     profile_data,
                 )[:15]
             else:
-                candidates = search_conversations_candidates(
-                    user_id,
-                    embedding,
-                    limit=15,
-                )
+                candidates = retrieve_candidates(user_id, embedding, 15)
             _candidate_count = len(candidates or [])
             # Rerank and profile-fact picking are independent LLM calls —
             # run them concurrently instead of back-to-back.
@@ -670,7 +676,7 @@ async def engineer_prompt(http_req: Request, request: EngineerPromptRequest):
                     f"Conversation: {conv.get('title', 'Untitled')}\n"
                     f"Date: {str(conv.get('created_at', ''))[:10]}\n"
                     f"Messages: {conv.get('num_messages', 0)}\n"
-                    f"Content:\n{full_text[:3000]}"
+                    f"Content:\n{build_excerpt(full_text, conv.get('matched'))}"
                 )
         conv_context = "\n\n---\n\n".join(context_parts) if context_parts else ""
         has_history = bool(conv_context.strip())
@@ -1782,7 +1788,7 @@ async def save_conversation(request: SaveConversationRequest, background_tasks: 
             "num_messages": len(messages),
             "char_count": len(full_text),
             "preview": full_text[:300],
-            "full_text": full_text[:8000],
+            "full_text": full_text,
             "cluster_id": -1,
             "region": "Recent",
             "color": "#888888",
@@ -1803,6 +1809,11 @@ async def save_conversation(request: SaveConversationRequest, background_tasks: 
         from services.database import log_growth_event
         log_growth_event(user_id, "autosave_used", platform=source)
 
+        background_tasks.add_task(
+            _index_chunks_in_background,
+            user_id,
+            [{"id": conv_id, "title": row["title"], "full_text": full_text}],
+        )
         background_tasks.add_task(run_recluster, email)
 
         from services.database import get_personal_profile
@@ -1829,7 +1840,10 @@ async def load_map(request: LoadMapRequest):
         user_id = _user_id(email, request.access_token)
 
         result = supabase.table("knowledge_nodes")\
-            .select("*")\
+            .select(
+                "id, title, source_app, x, y, color, region, num_messages, "
+                "char_count, preview, created_at, updated_at, cluster_id"
+            )\
             .eq("user_id", user_id)\
             .execute()
 
@@ -1892,9 +1906,10 @@ async def run_recluster(email: str):
     email = email.lower().strip()
     user_id = get_or_create_user(email)
 
-    # Get all conversations for this user
+    # Get all conversations for this user. preview (first 300 chars) is enough
+    # for map placement; full_text is large and runs on every auto-save.
     result = supabase.table("knowledge_nodes")\
-        .select("id, title, full_text, x, y")\
+        .select("id, title, preview, x, y")\
         .eq("user_id", user_id)\
         .execute()
 
@@ -1918,7 +1933,7 @@ async def run_recluster(email: str):
     all_texts = []
     for c in all_convos:
         title = c.get('title', 'Untitled')
-        text = (c.get('full_text') or '')[:500]
+        text = c.get('preview') or ''
         all_texts.append(f"{title}. {text}")
 
     # Embed all texts

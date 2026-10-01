@@ -6,6 +6,7 @@ from services.personalization_llm import (
     get_display_summary,
     get_quick_corrections,
     infer_profile_delta_llm,
+    _parse_json_text,
 )
 
 
@@ -49,3 +50,12 @@ def test_get_quick_corrections_uses_llm_options():
 
 def test_synthesis_is_stale_without_timestamp():
     assert synthesis_is_stale({}) is True
+
+
+def test_parse_json_text_ignores_trailing_explanation():
+    raw = '{"ranked_ids": ["a", "b"]}\n\nI ranked "a" first because it matches the draft.'
+    assert _parse_json_text(raw) == {"ranked_ids": ["a", "b"]}
+
+
+def test_parse_json_text_handles_fenced_json():
+    assert _parse_json_text('```json\n{"facts": ["x"]}\n```') == {"facts": ["x"]}

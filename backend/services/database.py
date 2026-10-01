@@ -159,6 +159,76 @@ def search_conversations_candidates(
     ).execute()
     return result.data or []
 
+
+def search_chunks(
+    user_id: str,
+    query_embedding: np.ndarray,
+    limit: int = 60,
+) -> list[dict]:
+    """Best-matching chunks for this user, each with its text and conversation metadata."""
+    supabase = get_supabase()
+    result = supabase.rpc(
+        "match_chunks",
+        {
+            "query_embedding": query_embedding.tolist(),
+            "match_user_id": user_id,
+            "match_count": limit,
+        },
+    ).execute()
+    return result.data or []
+
+
+def get_conversation_text_hash(conversation_id: str) -> str | None:
+    supabase = get_supabase()
+    result = supabase.table("knowledge_nodes")\
+        .select("text_hash")\
+        .eq("id", conversation_id)\
+        .limit(1)\
+        .execute()
+    return result.data[0].get("text_hash") if result.data else None
+
+
+CHUNK_INSERT_BATCH = 100
+
+
+def replace_conversation_chunks(
+    conversation_id: str,
+    user_id: str,
+    spans: list[tuple[int, int]],
+    embeddings,
+    digest: str,
+) -> None:
+    """Swap a conversation's chunks for a freshly computed set and record the
+    full_text hash they were built from."""
+    supabase = get_supabase()
+    supabase.table("conversation_chunks")\
+        .delete()\
+        .eq("conversation_id", conversation_id)\
+        .execute()
+
+    rows = [
+        {
+            "conversation_id": conversation_id,
+            "user_id": user_id,
+            "chunk_index": i,
+            "start_char": s,
+            "end_char": e,
+            "embedding": embeddings[i].tolist(),
+        }
+        for i, (s, e) in enumerate(spans)
+    ]
+    for i in range(0, len(rows), CHUNK_INSERT_BATCH):
+        supabase.table("conversation_chunks")\
+            .insert(rows[i:i + CHUNK_INSERT_BATCH])\
+            .execute()
+
+    # Hash is written last: if an insert above fails, the next save retries.
+    supabase.table("knowledge_nodes")\
+        .update({"text_hash": digest})\
+        .eq("id", conversation_id)\
+        .execute()
+
+
 def get_user_conversations(user_id: str) -> list[dict]:
     supabase = get_supabase()
 
@@ -447,6 +517,15 @@ def get_user_consent_info(user_id: str) -> dict:
     }
 
 
+def _delete_chunks(supabase: Client, column: str, value: str) -> None:
+    # The FK cascades from knowledge_nodes, but delete explicitly so deletion
+    # doesn't depend on the constraint existing in every environment.
+    try:
+        supabase.table("conversation_chunks").delete().eq(column, value).execute()
+    except Exception as exc:
+        print(f"conversation_chunks delete warning: {exc}")
+
+
 def delete_conversation(user_id: str, conversation_id: str) -> dict:
     """Delete a single conversation and its embedding for this user."""
     supabase = get_supabase()
@@ -458,6 +537,7 @@ def delete_conversation(user_id: str, conversation_id: str) -> dict:
     if not conv.data:
         return {"deleted": False, "reason": "not_found"}
 
+    _delete_chunks(supabase, "conversation_id", conversation_id)
     supabase.table("embeddings")\
         .delete()\
         .eq("conversation_id", conversation_id)\
@@ -570,6 +650,7 @@ def delete_user_data(user_id: str) -> dict:
         .execute()
     conversation_count = len(conv_result.data or [])
 
+    _delete_chunks(supabase, "user_id", user_id)
     supabase.table("embeddings").delete().eq("user_id", user_id).execute()
     supabase.table("knowledge_nodes").delete().eq("user_id", user_id).execute()
     supabase.table("prompt_feedback").delete().eq("user_id", user_id).execute()
