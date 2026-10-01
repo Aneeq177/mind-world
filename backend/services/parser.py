@@ -42,6 +42,63 @@ def parse_claude(data: dict | list) -> pd.DataFrame:
 
 MAX_ZIP_EXTRACTED_BYTES = 500 * 1024 * 1024  # 500 MB decompressed safety limit
 
+_CHATGPT_TEXT_CONTENT_TYPES = {"text", "multimodal_text"}
+
+
+def _chatgpt_thread_nodes(convo: dict) -> list[dict]:
+    """Nodes on the branch the user actually sees, oldest first.
+
+    ChatGPT exports store each conversation as a tree in `mapping` (edits and
+    regenerations create sibling branches). Dict order is not message order,
+    so walk parent links back from `current_node` instead.
+    """
+    mapping = convo.get("mapping") or {}
+    path: list[dict] = []
+    seen: set[str] = set()
+    node_id = convo.get("current_node")
+    while node_id and node_id in mapping and node_id not in seen:
+        seen.add(node_id)
+        path.append(mapping[node_id])
+        node_id = mapping[node_id].get("parent")
+    if path:
+        path.reverse()
+        return path
+
+    # Older exports without current_node: follow the newest child from the root.
+    roots = [n for n in mapping.values() if not n.get("parent") or n.get("parent") not in mapping]
+    node = roots[0] if roots else None
+    while node is not None and node.get("id") not in seen:
+        seen.add(node.get("id"))
+        path.append(node)
+        children = [c for c in (node.get("children") or []) if c in mapping]
+        node = mapping[children[-1]] if children else None
+    return path
+
+
+def _chatgpt_messages(convo: dict) -> list[tuple[str, str]]:
+    """(role, text) for visible user/assistant turns, in conversation order."""
+    out = []
+    for node in _chatgpt_thread_nodes(convo):
+        msg = node.get("message") or {}
+        role = (msg.get("author") or {}).get("role", "")
+        if role not in ("user", "assistant"):
+            continue
+        if (msg.get("metadata") or {}).get("is_visually_hidden_from_conversation"):
+            continue
+        # Assistant turns addressed to a tool (web search, python, ...) aren't chat.
+        if msg.get("recipient") not in (None, "all"):
+            continue
+        content = msg.get("content") or {}
+        if content.get("content_type", "text") not in _CHATGPT_TEXT_CONTENT_TYPES:
+            continue
+        text = " ".join(
+            p for p in (content.get("parts") or [])
+            if isinstance(p, str) and p.strip()
+        )
+        if text.strip():
+            out.append((role, text))
+    return out
+
 
 def parse_chatgpt(zip_bytes: bytes) -> pd.DataFrame:
     rows = []
@@ -60,23 +117,7 @@ def parse_chatgpt(zip_bytes: bytes) -> pd.DataFrame:
             with z.open(json_file) as f:
                 convos = json.load(f)
             for c in convos:
-                mapping = c.get('mapping', {})
-                text_parts = []
-                for node_id, node in mapping.items():
-                    msg = node.get('message')
-                    if not msg:
-                        continue
-                    role = msg.get('author', {}).get('role', '')
-                    if role not in ['user', 'assistant']:
-                        continue
-                    content = msg.get('content', {})
-                    parts = content.get('parts', [])
-                    text = ' '.join(
-                        p for p in parts
-                        if isinstance(p, str) and p.strip()
-                    )
-                    if text.strip():
-                        text_parts.append(f'[{role}] {text}')
+                text_parts = [f'[{role}] {text}' for role, text in _chatgpt_messages(c)]
                 full_text = '\n\n'.join(text_parts)
                 if len(full_text.strip()) < 50:
                     continue
@@ -91,7 +132,7 @@ def parse_chatgpt(zip_bytes: bytes) -> pd.DataFrame:
                     created_at = ''
                     updated_at = ''
                 rows.append({
-                    'uuid': c.get('id', ''),
+                    'uuid': c.get('id') or c.get('conversation_id') or '',
                     'name': c.get('title', 'Untitled') or 'Untitled',
                     'created_at': created_at,
                     'updated_at': updated_at,
