@@ -6,13 +6,8 @@ export const useStore = create((set) => ({
 
   // Data from /process
   conversations: [],
-  myConversations: null,
-  teamConversations: null,
-  teamSources: null,
   totalConversations: 0,
   sources: { claude: 0, chatgpt: 0 },
-  
-  worldMode: 'my', // 'my' | 'team'
 
   // Selection
   selectedId: null,
@@ -32,23 +27,10 @@ export const useStore = create((set) => ({
   setConversations: (conversations, sources) => {
     set({
       conversations,
-      myConversations: conversations,
       totalConversations: conversations.length,
       sources
     })
   },
-  setWorldMode: (mode) => set({ worldMode: mode }),
-  setTeamConversations: (conversations, sources) => set({
-    teamConversations: conversations,
-    teamSources: sources,
-    conversations,
-    totalConversations: conversations.length,
-    sources
-  }),
-  restoreMyConversations: () => set(state => ({
-    conversations: state.myConversations || [],
-    totalConversations: (state.myConversations || []).length
-  })),
   setSelected: (id) => set({ selectedId: id }),
   toggleBlend: (id) => set((state) => {
     const exists = state.blendIds.includes(id)
@@ -60,14 +42,9 @@ export const useStore = create((set) => ({
   setFilterSource: (filterSource) => set({ filterSource }),
   setFilterRegion: (filterRegion) => set({ filterRegion }),
   removeConversation: (id) => set((state) => {
-    const filterOut = (list) => (list || []).filter(c => c.id !== id)
-    const conversations = filterOut(state.conversations)
-    const myConversations = filterOut(state.myConversations)
-    const teamConversations = filterOut(state.teamConversations)
+    const conversations = state.conversations.filter(c => c.id !== id)
     return {
       conversations,
-      myConversations,
-      teamConversations,
       totalConversations: conversations.length,
       selectedId: state.selectedId === id ? null : state.selectedId,
       blendIds: state.blendIds.filter(b => b !== id),

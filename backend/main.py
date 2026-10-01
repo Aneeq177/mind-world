@@ -12,7 +12,6 @@ from dotenv import load_dotenv
 from typing import Optional
 
 from pydantic import BaseModel, field_validator
-from models import BlendRequest # Import models from models.py
 from services.parser import parse_claude, parse_chatgpt # Import functions from parser.py
 from services.database import (
     get_or_create_user,
@@ -34,17 +33,21 @@ load_dotenv() # Load environment variables from .env file
 
 import re
 
+# Checks if the email is valid like example@example.com
 _EMAIL_RE = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
+# Checks if the field is longer than 5000 characters (This is to prevent SQL injection and other security issues)
 _MAX_FIELD_LEN = 5000
 
-
+# Takes the email, validates it if its empty or not,
+# strips it to lower case and 
+# checks if length of email is lesser than 254 characters.
 def _validate_email(email: str) -> str:
     email = (email or "").lower().strip()
     if not email or not _EMAIL_RE.match(email) or len(email) > 254:
         raise HTTPException(status_code=400, detail="Valid email required.")
     return email
 
-
+# Authenticates user email through access tokens to make sure that you are logged in as your email and it really is you.
 def _user_id(email: str, access_token: Optional[str] = None, api_key: Optional[str] = None) -> str:
     from services.auth import authenticate_user
     email = _validate_email(email)
@@ -323,11 +326,9 @@ async def process_files(
                 status_code=400,
                 detail="No conversations found" # This is the error message
             )
-# Now we are importing the embedder and blender functions from services/embedder.py and services/blender.py
-# The embedder function is used to embed the conversations into a 384-dimensional vector space and the blender function is used to label the clusters
 # The imports are purposely made inside the function because we only want to load the models when the function is called and not when the file is imported.
         from services.embedder import embed_and_position # Loads AI models from sentence_transformers and umap (Imports from services/embedder.py)
-        from services.blender import label_clusters # Loads AI models from sentence_transformers and hdbscan (Imports from services/blender.py)
+        from services.cluster_labels import label_clusters
 
 
         chats, embeddings = embed_and_position(df) # This embeds the conversations into a 384-dimensional vector space and then labels the clusters
@@ -425,13 +426,6 @@ async def search(request: SearchRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-class SummarizeRequest(BaseModel):
-    conversation_ids: list[str]
-    current_query: str
-    email: str
-    access_token: str
-    api_key: Optional[str] = None
-
 class EngineerPromptRequest(BaseModel):
     email: str
     message: str
@@ -442,13 +436,6 @@ class EngineerPromptRequest(BaseModel):
     skip_memory: Optional[bool] = False
     device_id: Optional[str] = None
     platform: Optional[str] = None
-
-
-class ContextPreviewRequest(BaseModel):
-    email: str
-    access_token: str
-    draft: str
-    limit: int = 5
 
 
 class CompareAnswersRequest(BaseModel):
@@ -506,99 +493,6 @@ class ConfirmPersonalizationSummaryRequest(BaseModel):
         if (v or "").strip().lower() not in allowed:
             raise ValueError("action must be one of confirm, correct, skip, shown")
         return v.strip().lower()
-
-@app.post("/summarize")
-async def summarize(request: SummarizeRequest):
-    try:
-        from services.database import get_or_create_user, get_user_conversations
-        import anthropic
-
-        api_key = request.api_key or os.getenv("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise HTTPException(
-                status_code=400,
-                detail="Anthropic API key required — add one in the extension or configure the server.",
-            )
-
-        email = request.email.lower().strip()
-        user_id = _user_id(email, request.access_token, request.api_key)
-
-        # Get all user conversations from DB
-        all_convos = get_user_conversations(user_id)
-
-        # Filter to requested IDs
-        selected = [
-            c for c in all_convos
-            if c['id'] in request.conversation_ids
-        ]
-
-        if not selected:
-            raise HTTPException(
-                status_code=404,
-                detail="Conversations not found"
-            )
-
-        client = anthropic.Anthropic(api_key=api_key)
-        summaries = []
-
-        for convo in selected:
-            prompt = f"""You are summarizing a past AI conversation to use as context in a new chat.
-
-Current question the user is asking: "{request.current_query}"
-
-Past conversation title: "{convo['title']}"
-Past conversation content:
-{convo.get('full_text', convo.get('preview', ''))[:3000]}
-
-Extract ONLY what is relevant to the current question. Summarize in this format:
-
-CONVERSATION: {convo['title']}
-RELEVANT CONTEXT: (2-3 sentences about what was discussed that relates to the current question)
-KEY POINTS:
-- (bullet point 1)
-- (bullet point 2)
-- (bullet point 3 if needed)
-
-Be concise and specific. Focus on information that will help answer the current question."""
-
-            response = client.messages.create(
-                model="claude-haiku-4-5-20251001",
-                max_tokens=400,
-                messages=[{"role": "user", "content": prompt}]
-            )
-
-            summaries.append({
-                "id": convo['id'],
-                "title": convo['title'],
-                "summary": response.content[0].text.strip(),
-                "source": convo.get('source_app', 'claude'),
-                "created_at": convo.get('created_at', '')
-            })
-
-        # Build the full formatted context block
-        context_block = "=== MIND WORLD MEMORY CONTEXT ===\n"
-        context_block += f"Relevant past conversations for: \"{request.current_query}\"\n\n"
-
-        for i, s in enumerate(summaries, 1):
-            source_label = "Claude" if s['source'] == 'claude' else "ChatGPT"
-            context_block += f"[{i}] {s['summary']}\n"
-            context_block += f"Source: {source_label} · {s['created_at'][:10]}\n"
-            if i < len(summaries):
-                context_block += "\n---\n\n"
-
-        context_block += "\n=== END CONTEXT ===\n\n"
-        context_block += "Using the above context from my past conversations, please help me with:\n"
-
-        return {
-            "summaries": summaries,
-            "context_block": context_block,
-            "conversation_count": len(summaries)
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/engineer_prompt")
 async def engineer_prompt(http_req: Request, request: EngineerPromptRequest):
@@ -1065,57 +959,6 @@ async def compare_answers(http_req: Request, request: CompareAnswersRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/context_preview")
-async def context_preview(request: ContextPreviewRequest):
-    """Return relevant past conversations for a draft without engineering a prompt."""
-    try:
-        from services.embedder import get_embedding_model
-        from services.database import search_conversations
-
-        email = request.email.lower().strip()
-        user_id = _user_id(email, request.access_token)
-        draft = (request.draft or "").strip()
-        if len(draft) < 3:
-            return {"sources": [], "total_conversations": 0}
-
-        embedding = get_embedding_model().encode([draft])[0]
-        results = search_conversations(user_id, embedding, limit=min(request.limit, 8))
-
-        from services.database import get_supabase
-        supabase = get_supabase()
-        detail_map = {}
-        if results:
-            ids = [r["id"] for r in results if r.get("id")]
-            if ids:
-                detail_result = supabase.table("knowledge_nodes")\
-                    .select("id, source_app, preview")\
-                    .in_("id", ids)\
-                    .execute()
-                detail_map = {d["id"]: d for d in (detail_result.data or [])}
-
-        sources = []
-        for conv in (results or []):
-            sim = conv.get("similarity")
-            extra = detail_map.get(conv.get("id"), {})
-            preview = conv.get("preview") or extra.get("preview") or ""
-            sources.append({
-                "id": conv.get("id"),
-                "title": conv.get("title") or "Untitled",
-                "preview": preview[:150],
-                "source": extra.get("source_app") or "unknown",
-                "similarity": round(float(sim) * 100, 1) if sim is not None else None,
-            })
-        count_result = supabase.table("knowledge_nodes")\
-            .select("id", count="exact")\
-            .eq("user_id", user_id)\
-            .execute()
-        total = count_result.count if count_result.count is not None else len(sources)
-
-        return {"sources": sources, "total_conversations": total}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 @app.post("/personalization_summary")
 async def personalization_summary(request: PersonalizationSummaryRequest):
     try:
@@ -1236,32 +1079,6 @@ async def get_templates():
         from services.database import get_prompt_templates
         templates = get_prompt_templates()
         return {"templates": templates}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/templates/search")
-async def search_templates(
-    q: str = "",
-    category: str = "",
-    tag: str = "",
-    tier: str = "",
-    limit: int = 50,
-    offset: int = 0,
-    sort: str = "popular",
-):
-    try:
-        from services.database import search_prompt_templates
-        templates, total = search_prompt_templates(
-            query=q,
-            category=category,
-            tag=tag,
-            tier=tier,
-            limit=min(limit, 100),
-            offset=max(offset, 0),
-            sort=sort,
-        )
-        return {"templates": templates, "total": total, "limit": limit, "offset": offset}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1498,11 +1315,6 @@ class DeleteConversationRequest(BaseModel):
 class ClearInferredProfileRequest(BaseModel):
     email: str
     access_token: str
-
-class RevokeTeamSharingRequest(BaseModel):
-    email: str
-    access_token: str
-
 
 class RegisterRequest(BaseModel):
     email: str
@@ -1773,21 +1585,6 @@ async def clear_inferred_profile_endpoint(request: ClearInferredProfileRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/revoke_team_sharing")
-async def revoke_team_sharing_endpoint(request: RevokeTeamSharingRequest):
-    try:
-        from services.auth import require_authenticated_user
-        from services.database import revoke_team_sharing
-
-        email = request.email.lower().strip()
-        user_id = require_authenticated_user(email, request.access_token)
-        result = revoke_team_sharing(user_id)
-        return {"success": True, **result}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
 @app.post("/delete_account")
 async def delete_account(request: DeleteAccountRequest):
     try:
@@ -1828,10 +1625,8 @@ async def user_stats(request: UserStatsRequest):
         conversations = conv_result.data or []
         sources = set(c.get('source_app', '') for c in conversations)
 
-        # Fetch company info
-        company_info = None
         user_result = supabase.table("users")\
-            .select("company_id, consent_at, consent_version, consent_source")\
+            .select("consent_at, consent_version, consent_source")\
             .eq("id", user_id)\
             .execute()
         consent_info = {
@@ -1853,27 +1648,12 @@ async def user_stats(request: UserStatsRequest):
                 consent_info = get_user_consent_info(user_id)
             except Exception:
                 pass
-        if user_result.data and user_result.data[0].get("company_id"):
-            company_id = user_result.data[0]["company_id"]
-            company_result = supabase.table("companies")\
-                .select("name, domain")\
-                .eq("id", company_id)\
-                .execute()
-            if company_result.data:
-                company_info = company_result.data[0]
-            members_result = supabase.table("users")\
-                .select("id")\
-                .eq("company_id", company_id)\
-                .execute()
-            if company_info:
-                company_info["member_count"] = len(members_result.data or [])
 
         return {
             "conversation_count": len(conversations),
             "platform_count": len(sources),
             "sources": list(sources),
             "user_id": user_id,
-            "company": company_info,
             **consent_info,
         }
     except Exception as e:
@@ -1881,45 +1661,12 @@ async def user_stats(request: UserStatsRequest):
             "conversation_count": 0,
             "platform_count": 0,
             "sources": [],
-            "company": None
         }
-
-@app.post("/blend")
-async def blend(request: BlendRequest):
-    api_key = request.api_key or os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise HTTPException(status_code=400, detail="API key required")
-
-    if not request.conversation_ids:
-        raise HTTPException(status_code=400, detail="No conversations selected")
-
-    from services.database import get_user_conversations, get_or_create_user
-    try:
-        email = request.email.lower().strip()
-        user_id = _user_id(email, request.access_token, request.api_key)
-        all_convos = get_user_conversations(user_id)
-        selected = [c for c in all_convos if c['id'] in request.conversation_ids]
-        
-        if not selected:
-            raise HTTPException(status_code=404, detail="Conversations not found")
-            
-        from services.blender import blend_conversations
-        return blend_conversations(selected, request.question, api_key)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 class SaveConversationRequest(BaseModel):
     email: str
     access_token: str
     conversation: dict
-    visibility: str = 'private'
-
-    @field_validator("visibility")
-    @classmethod
-    def validate_visibility(cls, v: str) -> str:
-        if v not in ('private', 'team'):
-            raise ValueError("visibility must be private or team")
-        return v
 
     @field_validator("conversation")
     @classmethod
@@ -2041,8 +1788,6 @@ async def save_conversation(request: SaveConversationRequest, background_tasks: 
             "color": "#888888",
             "x": 0.0,
             "y": 0.0,
-            "z": 0.0,
-            "visibility": request.visibility if request.visibility in ('private', 'team') else 'private'
         }
 
         supabase.table("knowledge_nodes").upsert(
@@ -2107,7 +1852,6 @@ async def load_map(request: LoadMapRequest):
                 "source": c.get("source_app", "claude"),
                 "x": c.get("x", 0.0),
                 "y": c.get("y", 0.0),
-                "z": c.get("z", 0.0),
                 "color": c.get("color", "#888888"),
                 "region": c.get("region", "Other"),
                 "num_messages": c.get("num_messages", 0),
@@ -2116,7 +1860,6 @@ async def load_map(request: LoadMapRequest):
                 "created_at": c.get("created_at", ""),
                 "updated_at": c.get("updated_at", ""),
                 "cluster_id": c.get("cluster_id", -1),
-                "visibility": c.get("visibility", "private")
             })
 
         sources = {
@@ -2134,194 +1877,6 @@ async def load_map(request: LoadMapRequest):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/load_team_map")
-async def load_team_map(request: LoadMapRequest):
-    try:
-        from services.database import get_supabase
-
-        supabase = get_supabase()
-        email = request.email.lower().strip()
-        user_id = _user_id(email, request.access_token)
-
-        user_result = supabase.table("users").select("company_id").eq("id", user_id).execute()
-        company_id = user_result.data[0].get("company_id") if user_result.data else None
-
-        company_user_emails = {}
-        all_convos = []
-
-        if company_id:
-            company_users = supabase.table("users").select("id, email").eq("company_id", company_id).execute()
-            company_user_ids = [u["id"] for u in (company_users.data or [])]
-            company_user_emails = {u["id"]: u["email"] for u in (company_users.data or [])}
-
-            my_convos = supabase.table("knowledge_nodes").select("*").eq("user_id", user_id).execute().data or []
-            
-            other_team_convos = []
-            other_team_user_ids = [uid for uid in company_user_ids if uid != user_id]
-            if other_team_user_ids:
-                team_res = supabase.table("knowledge_nodes").select("*").in_("user_id", other_team_user_ids).eq("visibility", "team").execute()
-                other_team_convos = team_res.data or []
-                
-            all_convos = my_convos + other_team_convos
-        else:
-            all_convos = supabase.table("knowledge_nodes").select("*").eq("user_id", user_id).execute().data or []
-
-        formatted = []
-        for c in all_convos:
-            owner_email = company_user_emails.get(c.get("user_id"), "")
-            owner_initials = ""
-            if owner_email:
-                owner_initials = ''.join(p[0].upper() for p in owner_email.split('@')[0].split('.')[:2])
-            
-            formatted.append({
-                "id": c.get("id", ""),
-                "title": c.get("title", "Untitled"),
-                "source": c.get("source_app", "claude"),
-                "x": c.get("x", 0.0),
-                "y": c.get("y", 0.0),
-                "z": c.get("z", 0.0),
-                "color": c.get("color", "#888888"),
-                "region": c.get("region", "Other"),
-                "num_messages": c.get("num_messages", 0),
-                "char_count": c.get("char_count", 0),
-                "preview": c.get("preview", ""),
-                "created_at": c.get("created_at", ""),
-                "updated_at": c.get("updated_at", ""),
-                "cluster_id": c.get("cluster_id", -1),
-                "visibility": c.get("visibility", "private"),
-                "is_team": c.get("user_id") != user_id,
-                "owner_initials": owner_initials
-            })
-
-        sources = {
-            "claude": sum(1 for c in formatted if c["source"] == "claude"),
-            "chatgpt": sum(1 for c in formatted if c["source"] == "chatgpt")
-        }
-
-        return {
-            "conversations": formatted,
-            "total": len(formatted),
-            "sources": sources,
-            "user_id": user_id,
-            "has_data": len(formatted) > 0
-        }
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-class CompanySearchRequest(BaseModel):
-    email: str
-    access_token: str
-    query: str
-    limit: int = 5
-
-@app.post("/company_search")
-async def company_search(request: CompanySearchRequest):
-    try:
-        from services.database import get_or_create_user, get_supabase
-        from services.embedder import get_embedding_model
-
-        supabase = get_supabase()
-        email = request.email.lower().strip()
-        user_id = _user_id(email, request.access_token)
-
-        user_result = supabase.table("users")\
-            .select("company_id")\
-            .eq("id", user_id)\
-            .execute()
-
-        if not user_result.data or not user_result.data[0].get("company_id"):
-            return {"results": [], "message": "No company workspace found for this email"}
-
-        company_id = user_result.data[0]["company_id"]
-
-        company_users = supabase.table("users")\
-            .select("id, email")\
-            .eq("company_id", company_id)\
-            .execute()
-
-        company_user_ids = [u["id"] for u in (company_users.data or [])]
-        company_user_emails = {u["id"]: u["email"] for u in (company_users.data or [])}
-
-        if not company_user_ids:
-            return {"results": [], "message": "No company members found"}
-
-        query_embedding = get_embedding_model().encode([request.query])[0]
-
-        print(f"[/company_search] Calling match_company_conversations with exclude_user_id={user_id}, company_user_ids={company_user_ids}")
-
-        search_result = supabase.rpc(
-            'match_company_conversations',
-            {
-                'query_embedding': query_embedding.tolist(),
-                'company_user_ids': company_user_ids,
-                'exclude_user_id': user_id,
-                'match_count': request.limit
-            }
-        ).execute()
-        
-        print(f"[/company_search] match_company_conversations RPC returned {len(search_result.data or [])} results")
-
-        results = []
-        for item in (search_result.data or []):
-            owner_email = company_user_emails.get(item.get('user_id'), 'unknown')
-            owner_initials = ''.join(
-                p[0].upper() for p in owner_email.split('@')[0].split('.')[:2]
-            )
-            results.append({
-                'id': item.get('id'),
-                'title': item.get('title'),
-                'preview': item.get('preview'),
-                'similarity': item.get('similarity'),
-                'owner_email': owner_email,
-                'owner_initials': owner_initials,
-                'created_at': item.get('created_at')
-            })
-
-        return {
-            "results": results,
-            "company_members": len(company_user_ids),
-            "searched_conversations": "company-visible only"
-        }
-
-    except Exception as e:
-        return {
-            "results": [],
-            "error": "Search failed"
-        }
-
-
-class SetVisibilityRequest(BaseModel):
-    email: str
-    access_token: str
-    conversation_id: str
-    visibility: str
-
-@app.post("/set_visibility")
-async def set_visibility(request: SetVisibilityRequest):
-    try:
-        from services.database import get_supabase
-
-        if request.visibility not in ['private', 'team']:
-            return {"success": False, "reason": "Invalid visibility value"}
-
-        supabase = get_supabase()
-        email = request.email.lower().strip()
-        user_id = _user_id(email, request.access_token)
-
-        supabase.table("knowledge_nodes")\
-            .update({"visibility": request.visibility})\
-            .eq("id", request.conversation_id)\
-            .eq("user_id", user_id)\
-            .execute()
-
-        return {"success": True, "visibility": request.visibility}
-
-    except Exception as e:
-        return {"success": False, "reason": str(e)}
 
 
 class ReclusterRequest(BaseModel):
@@ -2419,256 +1974,11 @@ async def recluster(request: ReclusterRequest):
         return {"success": False, "reason": "Recluster failed"}
 
 
-class ShareConversationsRequest(BaseModel):
-    email: str
-    access_token: str
-    visibility: str = 'team'
-    conversation_ids: list = []
-
-@app.post("/share_conversations")
-async def share_conversations(request: ShareConversationsRequest):
-    try:
-        from services.database import get_supabase
-
-        supabase = get_supabase()
-        email = request.email.lower().strip()
-        user_id = _user_id(email, request.access_token)
-
-        if request.visibility not in ['private', 'team', 'company']:
-            return {"success": False, "reason": "Invalid visibility"}
-
-        if request.conversation_ids:
-            for conv_id in request.conversation_ids:
-                supabase.table("knowledge_nodes")\
-                    .update({"visibility": request.visibility})\
-                    .eq("id", conv_id)\
-                    .eq("user_id", user_id)\
-                    .execute()
-            updated = len(request.conversation_ids)
-        else:
-            supabase.table("knowledge_nodes")\
-                .update({"visibility": request.visibility})\
-                .eq("user_id", user_id)\
-                .execute()
-            count_result = supabase.table("knowledge_nodes")\
-                .select("id", count="exact")\
-                .eq("user_id", user_id)\
-                .execute()
-            updated = count_result.count or 0
-
-        return {"success": True, "updated": updated, "visibility": request.visibility}
-
-    except Exception as e:
-        return {"success": False, "reason": str(e)}
-
-
-class CreateWorkspaceRequest(BaseModel):
-    email: str
-    access_token: str
-    workspace_name: str
-
-@app.post("/create_workspace")
-async def create_workspace(request: CreateWorkspaceRequest):
-    try:
-        from services.database import get_supabase
-        import uuid
-        import random
-        import string
-
-        supabase = get_supabase()
-        email = request.email.lower().strip()
-        user_id = _user_id(email, request.access_token)
-
-        user_result = supabase.table("users")\
-            .select("company_id")\
-            .eq("id", user_id)\
-            .execute()
-
-        if user_result.data and user_result.data[0].get("company_id"):
-            return {"success": False, "reason": "You are already in a workspace. Leave it first."}
-
-        def generate_invite_code():
-            chars = string.ascii_uppercase + string.digits
-            part1 = ''.join(random.choices(chars, k=4))
-            part2 = ''.join(random.choices(chars, k=4))
-            return f"MW-{part1}-{part2}"
-
-        invite_code = generate_invite_code()
-        while True:
-            existing = supabase.table("companies").select("id").eq("invite_code", invite_code).execute()
-            if not existing.data:
-                break
-            invite_code = generate_invite_code()
-
-        company_id = str(uuid.uuid4())
-        supabase.table("companies").insert({
-            "id": company_id,
-            "name": request.workspace_name,
-            "domain": company_id,
-            "invite_code": invite_code,
-            "created_by": user_id
-        }).execute()
-
-        supabase.table("users").update({
-            "company_id": company_id,
-            "role": "admin"
-        }).eq("id", user_id).execute()
-
-        return {
-            "success": True,
-            "workspace_name": request.workspace_name,
-            "invite_code": invite_code,
-            "company_id": company_id
-        }
-
-    except Exception as e:
-        return {"success": False, "reason": str(e)}
-
-
-class JoinWorkspaceRequest(BaseModel):
-    email: str
-    access_token: str
-    invite_code: str
-
-@app.post("/join_workspace")
-async def join_workspace(request: JoinWorkspaceRequest):
-    try:
-        from services.database import get_supabase
-
-        supabase = get_supabase()
-        email = request.email.lower().strip()
-        user_id = _user_id(email, request.access_token)
-
-        user_result = supabase.table("users")\
-            .select("company_id")\
-            .eq("id", user_id)\
-            .execute()
-
-        if user_result.data and user_result.data[0].get("company_id"):
-            return {"success": False, "reason": "You are already in a workspace. Leave it first."}
-
-        invite_code = request.invite_code.upper().strip()
-        company_result = supabase.table("companies")\
-            .select("id, name")\
-            .eq("invite_code", invite_code)\
-            .execute()
-
-        if not company_result.data:
-            return {"success": False, "reason": "Invalid invite code. Please check and try again."}
-
-        company = company_result.data[0]
-
-        supabase.table("users").update({
-            "company_id": company["id"],
-            "role": "member"
-        }).eq("id", user_id).execute()
-
-        members = supabase.table("users").select("id").eq("company_id", company["id"]).execute()
-
-        return {
-            "success": True,
-            "workspace_name": company["name"],
-            "company_id": company["id"],
-            "member_count": len(members.data or [])
-        }
-
-    except Exception as e:
-        return {"success": False, "reason": str(e)}
-
-
-class WorkspaceInfoRequest(BaseModel):
-    email: str
-    access_token: str
-
-@app.post("/workspace_info")
-async def workspace_info(request: WorkspaceInfoRequest):
-    try:
-        from services.database import get_supabase
-
-        supabase = get_supabase()
-        email = request.email.lower().strip()
-        user_id = _user_id(email, request.access_token)
-
-        user_result = supabase.table("users")\
-            .select("company_id, role")\
-            .eq("id", user_id)\
-            .execute()
-
-        if not user_result.data or not user_result.data[0].get("company_id"):
-            return {"workspace": None}
-
-        company_id = user_result.data[0]["company_id"]
-        user_role = user_result.data[0]["role"]
-
-        company_result = supabase.table("companies")\
-            .select("name, invite_code, created_by")\
-            .eq("id", company_id)\
-            .execute()
-
-        if not company_result.data:
-            return {"workspace": None}
-
-        company = company_result.data[0]
-
-        members_result = supabase.table("users")\
-            .select("id, email, role")\
-            .eq("company_id", company_id)\
-            .execute()
-
-        members = members_result.data or []
-
-        return {
-            "workspace": {
-                "name": company["name"],
-                "invite_code": company["invite_code"],
-                "member_count": len(members),
-                "members": [{"email": m["email"], "role": m["role"]} for m in members],
-                "user_role": user_role,
-                "is_admin": user_role == "admin"
-            }
-        }
-
-    except Exception as e:
-        return {"workspace": None, "error": str(e)}
-
-
-class LeaveWorkspaceRequest(BaseModel):
-    email: str
-    access_token: str
-
-@app.post("/leave_workspace")
-async def leave_workspace(request: LeaveWorkspaceRequest):
-    try:
-        from services.database import get_supabase
-
-        supabase = get_supabase()
-        email = request.email.lower().strip()
-        user_id = _user_id(email, request.access_token)
-
-        supabase.table("users").update({
-            "company_id": None,
-            "role": "member"
-        }).eq("id", user_id).execute()
-
-        return {"success": True}
-
-    except Exception as e:
-        return {"success": False, "reason": str(e)}
-
-
 @app.get("/")
 def root():
     return {
         "name": "Mind World API",
         "version": "1.0.0",
-        "endpoints": ["/health", "/process", "/blend", "/recluster"]
+        "docs": "/docs",
     }
 
-import uuid
-
-class AuthNotionRequest(BaseModel):
-    code: str
-
-@app.post("/auth/notion")
-async def auth_notion(request: AuthNotionRequest):
-    raise HTTPException(status_code=501, detail="Notion integration not yet available.")

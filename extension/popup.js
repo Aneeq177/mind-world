@@ -31,7 +31,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   const exportDataBtn = document.getElementById('export-data-btn')
   const deleteDataBtn = document.getElementById('delete-data-btn')
   const clearInferredPrivacyBtn = document.getElementById('clear-inferred-privacy-btn')
-  const revokeTeamBtn = document.getElementById('revoke-team-btn')
   const manageConversationsLink = document.getElementById('manage-conversations-link')
   const consentStatusEl = document.getElementById('consent-status')
   const privacyActionStatus = document.getElementById('privacy-action-status')
@@ -267,18 +266,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     })
   }
 
-  // Load saved credentials and visibility
   const stored = await chrome.storage.local.get([
     'mw_email',
     'mw_api_key',
     'mw_access_token',
-    'mw_default_visibility',
     'mw_autosave_enabled',
     'mw_memory_enabled'
   ])
 
-  // Apply saved visibility state on open
-  applyVisibilityState(stored.mw_default_visibility || 'private')
   if (autosaveOptIn) autosaveOptIn.checked = stored.mw_autosave_enabled !== false
   if (memoryOptIn) memoryOptIn.checked = stored.mw_memory_enabled !== false
   if (loginAutosaveOptIn) loginAutosaveOptIn.checked = stored.mw_autosave_enabled !== false
@@ -292,201 +287,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     loginView.style.display = 'block'
     connectedView.style.display = 'none'
   }
-
-  // Visibility toggle (inside has-workspace panel)
-  document.getElementById('vis-private').addEventListener('click', async () => {
-    await chrome.storage.local.set({ mw_default_visibility: 'private' })
-    applyVisibilityState('private')
-  })
-
-  document.getElementById('vis-team').addEventListener('click', async () => {
-    await chrome.storage.local.set({ mw_default_visibility: 'team' })
-    applyVisibilityState('team')
-  })
-
-  function applyVisibilityState(visibility) {
-    const privateBtn = document.getElementById('vis-private')
-    const teamBtn = document.getElementById('vis-team')
-    if (!privateBtn || !teamBtn) return
-    if (visibility === 'team') {
-      teamBtn.style.background = 'rgba(124,58,237,0.3)'
-      teamBtn.style.border = '1px solid rgba(124,58,237,0.5)'
-      teamBtn.style.color = 'white'
-      privateBtn.style.background = 'transparent'
-      privateBtn.style.border = '1px solid rgba(255,255,255,0.1)'
-      privateBtn.style.color = '#888'
-    } else {
-      privateBtn.style.background = 'rgba(124,58,237,0.3)'
-      privateBtn.style.border = '1px solid rgba(124,58,237,0.5)'
-      privateBtn.style.color = 'white'
-      teamBtn.style.background = 'transparent'
-      teamBtn.style.border = '1px solid rgba(255,255,255,0.1)'
-      teamBtn.style.color = '#888'
-    }
-  }
-
-  // Workspace UI helpers
-  function showWorkspaceState(state) {
-    document.getElementById('no-workspace').style.display = state === 'none' ? 'block' : 'none'
-    document.getElementById('create-workspace-form').style.display = state === 'create' ? 'block' : 'none'
-    document.getElementById('join-workspace-form').style.display = state === 'join' ? 'block' : 'none'
-    document.getElementById('has-workspace').style.display = state === 'has' ? 'block' : 'none'
-  }
-
-  function populateWorkspace(ws) {
-    document.getElementById('workspace-name-display').textContent = ws.name
-    document.getElementById('workspace-members-display').textContent = `${ws.member_count} member${ws.member_count !== 1 ? 's' : ''}`
-    document.getElementById('workspace-code-display').textContent = ws.invite_code
-    chrome.storage.local.set({
-      mw_has_workspace: true,
-      mw_workspace_name: ws.name,
-      mw_workspace_code: ws.invite_code
-    })
-  }
-
-  // Workspace button handlers
-  document.getElementById('btn-create-workspace').addEventListener('click', () => {
-    showWorkspaceState('create')
-  })
-
-  document.getElementById('btn-create-cancel').addEventListener('click', () => {
-    showWorkspaceState('none')
-  })
-
-  document.getElementById('btn-join-workspace').addEventListener('click', () => {
-    showWorkspaceState('join')
-  })
-
-  document.getElementById('btn-join-cancel').addEventListener('click', () => {
-    showWorkspaceState('none')
-  })
-
-  document.getElementById('btn-create-confirm').addEventListener('click', async () => {
-    const name = document.getElementById('workspace-name-input').value.trim()
-    const errEl = document.getElementById('create-error')
-    errEl.style.display = 'none'
-    if (!name) { errEl.textContent = 'Please enter a workspace name.'; errEl.style.display = 'block'; return }
-
-    const btn = document.getElementById('btn-create-confirm')
-    btn.disabled = true
-    btn.textContent = 'Creating...'
-
-    try {
-      const accessToken = await getAccessToken()
-      if (!accessToken) throw new Error('Session expired')
-      const res = await fetch(`${API_BASE}/create_workspace`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: currentEmail, access_token: accessToken, workspace_name: name })
-      })
-      const data = await res.json()
-      if (data.success) {
-        populateWorkspace({ name: data.workspace_name, invite_code: data.invite_code, member_count: 1 })
-        showWorkspaceState('has')
-        applyVisibilityState(stored.mw_default_visibility || 'private')
-        await chrome.storage.local.set({ mw_has_company: true })
-      } else {
-        errEl.textContent = data.reason || 'Failed to create workspace.'
-        errEl.style.display = 'block'
-      }
-    } catch (e) {
-      errEl.textContent = 'Network error. Try again.'
-      errEl.style.display = 'block'
-    }
-
-    btn.disabled = false
-    btn.textContent = 'Create'
-  })
-
-  document.getElementById('btn-join-confirm').addEventListener('click', async () => {
-    const code = document.getElementById('invite-code-input').value.trim()
-    const errEl = document.getElementById('join-error')
-    errEl.style.display = 'none'
-    if (!code) { errEl.textContent = 'Please enter an invite code.'; errEl.style.display = 'block'; return }
-
-    const btn = document.getElementById('btn-join-confirm')
-    btn.disabled = true
-    btn.textContent = 'Joining...'
-
-    try {
-      const accessToken = await getAccessToken()
-      if (!accessToken) throw new Error('Session expired')
-      const res = await fetch(`${API_BASE}/join_workspace`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: currentEmail, access_token: accessToken, invite_code: code })
-      })
-      const data = await res.json()
-      if (data.success) {
-        populateWorkspace({ name: data.workspace_name, invite_code: code.toUpperCase(), member_count: data.member_count })
-        showWorkspaceState('has')
-        applyVisibilityState(stored.mw_default_visibility || 'private')
-        await chrome.storage.local.set({ mw_has_company: true })
-      } else {
-        errEl.textContent = data.reason || 'Failed to join workspace.'
-        errEl.style.display = 'block'
-      }
-    } catch (e) {
-      errEl.textContent = 'Network error. Try again.'
-      errEl.style.display = 'block'
-    }
-
-    btn.disabled = false
-    btn.textContent = 'Join'
-  })
-
-  document.getElementById('btn-copy-code').addEventListener('click', () => {
-    const code = document.getElementById('workspace-code-display').textContent
-    navigator.clipboard.writeText(code).catch(() => {})
-    const btn = document.getElementById('btn-copy-code')
-    btn.textContent = 'Copied!'
-    setTimeout(() => { btn.textContent = 'Copy' }, 2000)
-  })
-
-  document.getElementById('btn-leave-workspace').addEventListener('click', async () => {
-    const name = document.getElementById('workspace-name-display').textContent
-    if (!confirm(`Leave workspace "${name}"? You will lose access to team conversations.`)) return
-
-    try {
-      const accessToken = await getAccessToken()
-      if (!accessToken) return
-      await fetch(`${API_BASE}/leave_workspace`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: currentEmail, access_token: accessToken })
-      })
-    } catch (e) {}
-
-    await chrome.storage.local.set({ mw_has_workspace: false, mw_has_company: false, mw_workspace_name: '', mw_workspace_code: '' })
-    showWorkspaceState('none')
-  })
-
-  document.getElementById('btn-share-all')?.addEventListener('click', async () => {
-    const confirmed = confirm(
-      'Share all your conversations with your team? ' +
-      'They will be searchable by workspace members.'
-    )
-    if (!confirmed) return
-
-    try {
-      const accessToken = await getAccessToken()
-      if (!accessToken) return
-      const response = await fetch(`${API_BASE}/share_conversations`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: currentEmail, access_token: accessToken, visibility: 'team' })
-      })
-      const data = await response.json()
-      const status = document.getElementById('share-status')
-      if (data.success) {
-        status.textContent = '✓ Conversations shared with team'
-        status.style.display = 'block'
-        setTimeout(() => { status.style.display = 'none' }, 3000)
-      }
-    } catch (err) {
-      // do nothing
-    }
-  })
 
   function triggerImportPicker() {
     if (importFileInput) importFileInput.click()
@@ -988,48 +788,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   if (clearInferredPrivacyBtn) {
     clearInferredPrivacyBtn.addEventListener('click', () => runClearInferredProfile(clearInferredPrivacyBtn))
-  }
-
-  if (revokeTeamBtn) {
-    revokeTeamBtn.addEventListener('click', async () => {
-      if (!currentEmail) return
-      const confirmed = confirm(
-        'Make all team-shared conversations private?\n\n' +
-        'Teammates will no longer be able to search them.'
-      )
-      if (!confirmed) return
-
-      revokeTeamBtn.disabled = true
-      revokeTeamBtn.textContent = 'Revoking...'
-      try {
-        const accessToken = await getAccessToken()
-        if (!accessToken) throw new Error('Session expired. Reconnect in the extension.')
-        const res = await fetch(`${API_BASE}/revoke_team_sharing`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: currentEmail, access_token: accessToken })
-        })
-        if (res.status === 401) {
-          await chrome.storage.local.remove(['mw_access_token'])
-          throw new Error('Session expired. Add your API key in Advanced Settings and try again.')
-        }
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}))
-          throw new Error(err.detail || 'Revoke failed')
-        }
-        const data = await res.json()
-        const n = data.revoked || 0
-        showPrivacyStatus(
-          n ? `Revoked team sharing on ${n} conversation${n === 1 ? '' : 's'}` : 'No team-shared conversations found',
-          false
-        )
-      } catch (err) {
-        showPrivacyStatus(String(err.message || 'Revoke failed'), true)
-      } finally {
-        revokeTeamBtn.disabled = false
-        revokeTeamBtn.textContent = 'Revoke team sharing'
-      }
-    })
   }
 
   if (deleteDataBtn) {

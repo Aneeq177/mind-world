@@ -96,14 +96,12 @@ async function getCredentials() {
   const stored = await chrome.storage.local.get([
     'mw_email',
     'mw_api_key',
-    'mw_access_token',
-    'mw_default_visibility'
+    'mw_access_token'
   ])
   return {
     email: stored.mw_email || null,
     apiKey: stored.mw_api_key || null,
-    accessToken: stored.mw_access_token || null,
-    defaultVisibility: stored.mw_default_visibility || 'private'
+    accessToken: stored.mw_access_token || null
   }
 }
 
@@ -224,14 +222,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true // Keep channel open for async
   }
 
-  if (message.type === 'SUMMARIZE') {
-    replyAsync(sendResponse, handleSummarize(
-      message.conversationIds,
-      message.currentQuery
-    ))
-    return true
-  }
-
   if (message.type === 'ENGINEER_PROMPT') {
     replyAsync(sendResponse, handleEngineerPrompt(
       message.message,
@@ -263,11 +253,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true
   }
 
-  if (message.type === 'SEARCH_TEMPLATES') {
-    replyAsync(sendResponse, handleSearchTemplates(message))
-    return true
-  }
-
   if (message.type === 'GET_TEMPLATE_CATEGORIES') {
     replyAsync(sendResponse, handleGetTemplateCategories())
     return true
@@ -288,11 +273,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true
   }
 
-  if (message.type === 'CONTEXT_PREVIEW') {
-    replyAsync(sendResponse, handleContextPreview(message.draft, message.limit))
-    return true
-  }
-
   if (message.type === 'GET_MEMORY_STATS') {
     replyAsync(sendResponse, handleMemoryStats())
     return true
@@ -304,30 +284,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true
   }
 
-  if (message.type === 'PROMPT_FEEDBACK') {
-    replyAsync(sendResponse, handlePromptFeedback(message))
-    return true
-  }
-
   if (message.type === 'PROMPT_EDIT_FEEDBACK') {
     replyAsync(sendResponse, handlePromptFeedback(message))
-    return true
-  }
-
-  if (message.type === 'COMPANY_SEARCH') {
-    replyAsync(sendResponse, handleCompanySearch(message.query, message.limit))
-    return true
-  }
-
-  if (message.type === 'GET_STATUS') {
-    getCredentials().then(creds => {
-      sendResponse({
-        email: creds.email,
-        apiKey: creds.apiKey,
-        api: API_BASE,
-        loggedIn: !!creds.email
-      })
-    })
     return true
   }
 })
@@ -400,59 +358,6 @@ function expandQuery(query) {
 
   // Otherwise wrap in a generic phrase
   return `conversations about ${query}`
-}
-
-async function handleCompanySearch(query, limit = 5) {
-  try {
-    if (!query || query.trim().length < 2) return { results: [] }
-    const auth = await getAuthContext()
-    if (auth.error) return { results: [], error: auth.error }
-    const response = await fetch(`${API_BASE}/company_search`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email: auth.email,
-        access_token: auth.accessToken,
-        query: query.trim(),
-        limit
-      })
-    })
-    if (!response.ok) return { results: [] }
-    const data = await response.json()
-    return { results: data.results || [], company_members: data.company_members }
-  } catch (error) {
-    return { results: [] }
-  }
-}
-
-async function handleSummarize(conversationIds, currentQuery) {
-  try {
-    const auth = await getAuthContext()
-    if (auth.error) return { error: auth.error }
-
-    const response = await fetch(`${API_BASE}/summarize`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        conversation_ids: conversationIds,
-        current_query: currentQuery,
-        email: auth.email,
-        access_token: auth.accessToken,
-        api_key: auth.apiKey || null
-      })
-    })
-
-    if (!response.ok) return { error: 'Summarization failed' }
-
-    const data = await response.json()
-    return {
-      contextBlock: data.context_block,
-      summaries: data.summaries,
-      count: data.conversation_count
-    }
-  } catch (error) {
-    return { error: error.message }
-  }
 }
 
 async function handleEngineerPrompt(userMessage, templateStr, conversationIds, skipMemory, platform) {
@@ -643,31 +548,6 @@ async function handleGetTemplates(forceRefresh = false) {
   }
 }
 
-async function handleSearchTemplates(message) {
-  try {
-    const params = new URLSearchParams()
-    if (message.q) params.set('q', message.q)
-    if (message.category) params.set('category', message.category)
-    if (message.tag) params.set('tag', message.tag)
-    if (message.tier) params.set('tier', message.tier)
-    if (message.sort) params.set('sort', message.sort)
-    params.set('limit', String(message.limit || 50))
-    params.set('offset', String(message.offset || 0))
-
-    const response = await fetch(`${API_BASE}/templates/search?${params}`)
-    if (!response.ok) {
-      return { templates: [], total: 0, error: 'search_failed' }
-    }
-    const data = await response.json()
-    return {
-      templates: data.templates || [],
-      total: data.total || 0
-    }
-  } catch (error) {
-    return { templates: [], total: 0, error: error.message }
-  }
-}
-
 async function handleGetTemplateCategories() {
   try {
     const cacheKey = 'mw_template_categories'
@@ -758,37 +638,6 @@ async function handleTrackTemplateUse(name) {
   }
 }
 
-async function handleContextPreview(draft, limit) {
-  try {
-    const auth = await getAuthContext()
-    if (auth.error) return { sources: [], totalConversations: 0, error: auth.error }
-    if (!(await isMemoryEnabled())) {
-      return { sources: [], totalConversations: 0 }
-    }
-
-    const response = await fetch(`${API_BASE}/context_preview`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email: auth.email,
-        access_token: auth.accessToken,
-        draft: draft || '',
-        limit: limit || 5
-      })
-    })
-    if (!response.ok) {
-      return { sources: [], totalConversations: 0, error: 'preview_failed' }
-    }
-    const data = await response.json()
-    return {
-      sources: data.sources || [],
-      totalConversations: data.total_conversations || 0
-    }
-  } catch (error) {
-    return { sources: [], totalConversations: 0, error: error.message }
-  }
-}
-
 async function handleMemoryStats() {
   try {
     const auth = await getAuthContext()
@@ -866,7 +715,7 @@ async function processSaveQueue() {
     // Clear queue immediately to prevent double processing
     await chrome.storage.local.set({ mw_save_queue: [] })
 
-    const { email, defaultVisibility } = await getCredentials()
+    const { email } = await getCredentials()
     const accessToken = await getAccessToken()
 
     if (!email || !accessToken) return
@@ -880,8 +729,7 @@ async function processSaveQueue() {
           body: JSON.stringify({
             email,
             access_token: accessToken,
-            conversation,
-            visibility: defaultVisibility || 'private'
+            conversation
           })
         })
         if (res.ok) anySuccess = true

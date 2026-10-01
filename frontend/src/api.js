@@ -113,19 +113,6 @@ export async function deleteConversation({ email, accessToken, conversationId })
   return response.json()
 }
 
-export async function revokeTeamSharing({ email, accessToken }) {
-  const response = await fetch(`${BASE_URL}/revoke_team_sharing`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, access_token: accessToken })
-  })
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}))
-    throw new Error(error.detail || 'Revoke failed')
-  }
-  return response.json()
-}
-
 export async function recordConsent({ email, accessToken, consentVersion, source = 'web_app' }) {
   const response = await fetch(`${BASE_URL}/record_consent`, {
     method: 'POST',
@@ -185,26 +172,6 @@ export async function loadExistingMap({ email, accessToken }) {
     throw new Error(error.detail || 'Failed to load map')
   }
 
-  return response.json()
-}
-
-export async function loadTeamMap({ email, accessToken }) {
-  const response = await fetch(`${BASE_URL}/load_team_map`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, access_token: accessToken })
-  })
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({}))
-    throw new Error(error.detail || 'Failed to load team map')
-  }
-
-  return response.json()
-}
-
-export async function healthCheck() {
-  const response = await fetch(`${BASE_URL}/health`)
   return response.json()
 }
 

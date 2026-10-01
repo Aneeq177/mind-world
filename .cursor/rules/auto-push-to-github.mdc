@@ -1,11 +1,13 @@
 ---
-description: Commit and push to GitHub after implementing requested code changes
-alwaysApply: true
+description: (DISABLED) Commit and push to GitHub after implementing requested code changes
+alwaysApply: false
 ---
 
 # Auto-push after code changes
 
-When the user asks you to **implement, fix, build, refactor, or update** code in this repo, finish by committing and pushing to GitHub unless they explicitly say not to.
+> **DISABLED.** Do not commit or push unless the user explicitly asks in that message. To re-enable, set `alwaysApply: true` and remove this note.
+
+When the user asks you to **implement, fix, build, refactor, or update** code in this repo, finish by committing and pushing to GitHub unless they explicitly say not to. DONOT PUSH IF THE USER ASKS A QUESTION.
 
 ## When this applies
 

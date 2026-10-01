@@ -17,7 +17,7 @@ This document is the **single source of truth** for what Mind World is, what v1 
 
 If yes, the product works. Everything else follows.
 
-**What we are not building now:** company brain, 3D orchestration, multi-source ingestion (Notion/Slack), MCP/IDE integration. See [v2 and Later](#v2-and-later-explicitly-after-v100) and `CLAUDE.md` long-term notes.
+**What we are not building now:** company brain, 3D orchestration, multi-source ingestion (Notion/Slack), MCP/IDE integration. See [v2 and Later](#v2-and-later-explicitly-after-v100).
 
 ---
 
@@ -126,27 +126,13 @@ Users do not search, stage, or manually pick conversations for normal use.
 |------|--------|
 | Sidebar search / stage / inject as hero flow | Remove or hide behind Advanced |
 | Unified map tabs (AI + Notion + Slack) | Park until real ingestion exists |
-| Mock document nodes on the map | Remove |
-| 3D universe (`Universe.jsx`, `Controls.jsx`) | Delete dead code |
 | Company brain / team workspaces in extension | Freeze — hide or mark “Coming soon” |
-| Notion/Google integrations modal | Hide until one connector works end-to-end |
-| Streamlit app (`public_app.py`) | Freeze — no new work; React app is canonical |
+| Notion/Google integrations | Removed until one connector works end-to-end |
 | Grammarly-style ghost text | v2 |
 | 3D agent orchestration map | Post-PMF vision |
-| Multi-source knowledge architecture (Slack, email, Linear) | v2+ per IMPLEMENTATION_PLAN.md |
+| Multi-source knowledge (Slack, email, Linear) | v2+ |
 
 **Rule:** If it is not in the v1 user loop above, it does not ship in v1 UI.
-
----
-
-## Cleanup Before v1 (required)
-
-These are not new features — they make the repo honest and learnable:
-
-1. **Extension:** Input dock + Improve is the only default UI. Demote or remove legacy sidebar hero flow.
-2. **Web:** Remove mock documents from `store.js`. Hide Static Knowledge / Unified View tabs.
-3. **Repo:** Delete unused 3D components. Stop maintaining Streamlit as a second product surface.
-4. **Company brain:** Hide workspace UI in extension until company search is fixed and tested.
 
 ---
 
@@ -179,67 +165,22 @@ Tag **`v1.0.0`** and **freeze features** when all of these pass:
 
 ### Documentation
 
-- [x] `ARCHITECTURE.md` exists: extension → backend → Supabase diagram
+- [x] README has the extension → backend → Supabase diagram
 - [x] README points to extension as product, web as import/visualization
 
 **After v1.0.0:** Bug fixes and platform DOM updates only. No new features until real users have been watched using the product.
 
 ---
 
-## Path to v1 (stop sequence)
+## Ship gate (remaining)
 
-Execute in order. Do not start v2 work until the checklist above is green.
-
-### Phase 1 — Extension is the product
-
-1. Make input dock + Improve the only default UI.
-2. Demote or remove sidebar search/stage/inject hero flow.
-3. Popup onboarding when `conversation_count === 0`.
-4. Verify auto-save + recluster on production.
-
-### Phase 2 — Web app honest and minimal
-
-1. Remove mock documents from `store.js`.
-2. Hide Unified / Static Knowledge tabs.
-3. Popup → “Open map” and inline import work.
-4. Delete dead 3D files (`Universe.jsx`, `Controls.jsx`).
-
-### Phase 3 — Ship gate
+Do not start v2 work until the checklist above is green.
 
 1. Run the acceptance checklist with a fresh email.
 2. Fix blockers only.
-3. Write `ARCHITECTURE.md`.
-4. Tag **`v1.0.0`** — feature freeze.
+3. Tag **`v1.0.0`** — feature freeze.
 
-### Phase 4 — Learn mode (after freeze)
-
-Study the codebase by concept (extension → ML → backend → web), not by file tree. Practice explaining:
-
-- **30s:** “Chrome extension that improves your prompts using your past AI chats, automatically.”
-- **2min:** “MV3 extension captures chats; sentence-transformers + pgvector for semantic search; Haiku engineers structured prompts on Improve; web app is bulk import and visualization.”
-
----
-
-## Architecture (v1)
-
-```
-User types in host chat input
-        ↓
-[Template chips]  or  [Improve button]  (Alt+Shift+M)
-        ↓
-Extension background → FastAPI
-        ├── /templates          (chip library)
-        ├── /search             (silent semantic retrieval)
-        ├── /engineer_prompt    (Haiku structures prompt + weaves context)
-        ├── /save_conversation  (auto-save from DOM)
-        └── /process, /load_map (bulk import + map load)
-        ↓
-Supabase (users, conversations, embeddings, prompt_templates, profiles)
-        ↓
-Preview popover → Replace in input → User sends
-```
-
-**Web app (secondary):** Upload or load map → UMAP/HDBSCAN visualization → optional manual blend for power users.
+System architecture: see the diagram in [README.md](README.md).
 
 ---
 

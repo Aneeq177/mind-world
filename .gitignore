@@ -1,4 +1,4 @@
-# Your personal data — never push this
+# Personal conversation exports — never push
 chats_parsed.csv
 chats_positioned.json
 conversations.json
@@ -6,24 +6,14 @@ conversations.json
 # Environment and secrets
 .env
 .env.local
+
+# Python
 venv/
-venv_public/
+.venv/
 __pycache__/
 *.pyc
+.pytest_cache/
 
-# Cache
-cache/
-
-# Old Hugging Face direct-push repo — now handled by sync_to_hf.yml
-mind-world/
-
-# Local dev artifacts and one-off scripts
+# Local artifacts
 *.zip
 nul
-vibe-status.log
-backend/debug.py
-backend/fix.py
-backend/fix_stats.py
-backend/replace.py
-refactor.js
-update.js

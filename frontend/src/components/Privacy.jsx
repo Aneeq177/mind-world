@@ -29,7 +29,7 @@ export default function Privacy() {
         <a href="/" style={S.back}>← Back to Mind World</a>
 
         <h1 style={S.h1}>Privacy Policy</h1>
-        <p style={S.updated}>Last updated: June 2026</p>
+        <p style={S.updated}>Last updated: September 2026</p>
 
         <p style={S.p}>
           Mind World helps you remember and reuse your AI conversations. Your data is yours —
@@ -86,11 +86,6 @@ export default function Privacy() {
             when you use AI features (prompt engineering, summarization) and is{' '}
             <em>not</em> stored in our database.
           </li>
-          <li>
-            <strong style={{ color: 'white' }}>Optional team workspace data</strong> — if you
-            create or join a workspace, we store workspace name, invite code, membership, and
-            conversations you explicitly mark as shared with your team.
-          </li>
         </ul>
 
         <h2 style={S.h2}>How we use your data</h2>
@@ -99,7 +94,6 @@ export default function Privacy() {
           <li>Surface relevant history while you type or use Improve in the extension.</li>
           <li>Generate improved prompts using Claude (Anthropic) with your draft and, when enabled, relevant past context.</li>
           <li>Display your conversation map, filters, and timeline in the web app.</li>
-          <li>Let workspace members search conversations you have marked as team-visible.</li>
         </ul>
         <p style={S.p}>
           We <strong style={{ color: 'white' }}>never sell your data</strong>.
@@ -129,7 +123,7 @@ export default function Privacy() {
           Where GDPR applies, we process personal data on these bases:
         </p>
         <ul style={S.ul}>
-          <li><strong style={{ color: 'white' }}>Consent</strong> — uploading chats, enabling auto-save, profile inference, and team sharing.</li>
+          <li><strong style={{ color: 'white' }}>Consent</strong> — uploading chats, enabling auto-save, and profile inference.</li>
           <li><strong style={{ color: 'white' }}>Contract</strong> — providing Improve, search, and map features you signed up for.</li>
           <li><strong style={{ color: 'white' }}>Legitimate interests</strong> — securing the service, preventing abuse, and improving reliability (balanced against your rights).</li>
         </ul>
@@ -181,11 +175,8 @@ export default function Privacy() {
           as required by applicable law, typically within 72 hours of becoming aware where GDPR applies.
         </p>
 
-        <h2 style={S.h2}>Teams and subprocessors</h2>
+        <h2 style={S.h2}>Subprocessors</h2>
         <p style={S.p}>
-          Team workspaces (when enabled) may require a Data Processing Agreement for organizational
-          customers — contact{' '}
-          <a href="mailto:support@mind-world.app" style={S.a}>support@mind-world.app</a>.
           Subprocessors: Supabase (database), Anthropic (LLM), DigitalOcean (API hosting), Vercel (website).
         </p>
 
@@ -197,17 +188,12 @@ export default function Privacy() {
           <li><strong style={{ color: 'white' }}>Export data</strong> — download JSON from the extension (conversations, manual profile, inferred domains/projects/anchors, consent record). Embedding vectors and auth tokens are excluded.</li>
           <li><strong style={{ color: 'white' }}>Delete one conversation</strong> — open your map at mind-world.app, select a conversation, and use Delete.</li>
           <li><strong style={{ color: 'white' }}>Clear inferred profile</strong> — extension Data &amp; Privacy (keeps manually entered profile text).</li>
-          <li><strong style={{ color: 'white' }}>Revoke team sharing</strong> — extension Data &amp; Privacy; sets all team-visible conversations back to private.</li>
           <li><strong style={{ color: 'white' }}>Delete account</strong> — permanently remove all stored data from the extension or by emailing support.</li>
         </ul>
 
         <h2 style={S.h2}>Who can see your data</h2>
         <ul style={S.ul}>
-          <li><strong style={{ color: 'white' }}>You</strong> — always. Your conversations are private by default.</li>
-          <li>
-            <strong style={{ color: 'white' }}>Your team</strong> — only conversations you mark as
-            team-visible, and only for members of the same workspace.
-          </li>
+          <li><strong style={{ color: 'white' }}>You</strong> — always. Your conversations are private.</li>
           <li>
             <strong style={{ color: 'white' }}>Service providers</strong> — listed below, solely
             to operate Mind World.
@@ -269,7 +255,7 @@ export default function Privacy() {
           embedding vectors, session tokens, API key hashes, or raw <code>prompt_feedback</code> rows.
           You can <strong style={{ color: 'white' }}>delete individual conversations</strong> from
           your map at mind-world.app, <strong style={{ color: 'white' }}>clear inferred profile</strong>{' '}
-          or <strong style={{ color: 'white' }}>revoke team sharing</strong> in the extension, or{' '}
+          in the extension, or{' '}
           <strong style={{ color: 'white' }}>delete all data</strong> with one click. You can also email{' '}
           <a href="mailto:support@mind-world.app" style={S.a}>support@mind-world.app</a>{' '}
           to request deletion. Uninstalling the extension removes locally stored credentials from

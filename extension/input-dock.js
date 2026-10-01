@@ -1070,7 +1070,7 @@
     }
     popoverShadow.getElementById('mw-pop-replace').onclick = async () => {
       const editedPrompt = ta ? ta.value : ''
-      if (typeof injectIntoChat === 'function') injectIntoChat(editedPrompt, false)
+      if (typeof injectIntoChat === 'function') injectIntoChat(editedPrompt)
       const engineered = (lastImproveTelemetry && lastImproveTelemetry.engineeredPrompt) || ''
       const distance = levenshteinDistance(engineered, editedPrompt)
       const maxLen = Math.max(engineered.length, editedPrompt.length, 1)
@@ -1367,7 +1367,7 @@
     const body = template.template || template
     let text = typeof body === 'string' ? body : ''
     text = formatEngineeredPrompt(text)
-    if (typeof injectIntoChat === 'function') injectIntoChat(text, false)
+    if (typeof injectIntoChat === 'function') injectIntoChat(text)
     const tName = template.name || (typeof template === 'object' ? '' : '')
     if (tName) {
       chrome.runtime.sendMessage({ type: 'TRACK_TEMPLATE_USE', name: tName }).catch(() => {})
@@ -1412,7 +1412,7 @@
         return
       }
       const woven = formatEngineeredPrompt(res.engineeredPrompt || '')
-      if (woven && typeof injectIntoChat === 'function') injectIntoChat(woven, false)
+      if (woven && typeof injectIntoChat === 'function') injectIntoChat(woven)
       if (tName) {
         chrome.runtime.sendMessage({ type: 'TRACK_TEMPLATE_USE', name: tName }).catch(() => {})
       }

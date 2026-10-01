@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useRef } from 'react'
 import Plotly from 'plotly.js-dist-min'
 import createPlotlyComponent from 'react-plotly.js/factory'
 
@@ -6,7 +6,6 @@ const Plot = createPlotlyComponent(Plotly)
 
 export default function MapPlot({ conversations, newIds = new Set(), selectedId, blendIds, searchMatchIds = new Set(), onSelect }) {
   const plotRef = useRef(null)
-  const [agentTraces, setAgentTraces] = useState([])
   const isTimeFiltered = newIds.size > 0
   const isSearchActive = searchMatchIds.size > 0
 
@@ -27,23 +26,16 @@ export default function MapPlot({ conversations, newIds = new Set(), selectedId,
       const isBlend = blendIds.includes(c.id)
       const isFocused = c.id === selectedId
       const isNew = newIds.has(c.id)
-      const isDocument = c.type === 'document'
-      const msgSize = isDocument ? 16 : Math.max(8, Math.min(25, Math.floor((c.num_messages || 4) / 4) + 6))
+      const msgSize = Math.max(8, Math.min(25, Math.floor((c.num_messages || 4) / 4) + 6))
 
       regionMap[r].x.push(c.x)
       regionMap[r].y.push(1000 - c.y)
       regionMap[r].size.push(msgSize + (isBlend ? 6 : 0) + (isFocused ? 4 : 0) + (isNew ? 2 : 0))
-      
-      let nodeColor = c.color || '#666666'
-      if (isBlend) nodeColor = 'white'
-      else if (isDocument) nodeColor = '#c084fc'
-      else if (c.is_team) nodeColor = '#14b8a6'
-      regionMap[r].color.push(nodeColor)
-      
+
+      regionMap[r].color.push(isBlend ? 'white' : (c.color || '#666666'))
+
       let nodeSymbol = 'circle'
       if (isBlend) nodeSymbol = 'star'
-      else if (isDocument) nodeSymbol = 'square'
-      else if (c.is_team) nodeSymbol = 'triangle-up'
       else if (c.source === 'chatgpt') nodeSymbol = 'diamond'
       regionMap[r].symbol.push(nodeSymbol)
       
@@ -59,19 +51,10 @@ export default function MapPlot({ conversations, newIds = new Set(), selectedId,
       regionMap[r].customdata.push(c.id)
 
       const truncated = c.title.length > 35 ? c.title.slice(0, 35) + '...' : c.title
-      const teamLabel = c.is_team && c.owner_initials ? ` · Team (${c.owner_initials})` : ''
-      
-      if (isDocument) {
-        regionMap[r].text.push(
-          `<b>${truncated}</b><br>` +
-          `${c.region || 'Other'} · Document (${c.source_app || 'Unknown'})${teamLabel}`
-        )
-      } else {
-        regionMap[r].text.push(
-          `<b>${truncated}</b><br>` +
-          `${c.region || 'Other'} · ${c.num_messages || 0} msgs${teamLabel}`
-        )
-      }
+      regionMap[r].text.push(
+        `<b>${truncated}</b><br>` +
+        `${c.region || 'Other'} · ${c.num_messages || 0} msgs`
+      )
     }
 
     const traces = Object.entries(regionMap).map(([region, d]) => ({
@@ -168,7 +151,7 @@ export default function MapPlot({ conversations, newIds = new Set(), selectedId,
     <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%' }}>
       <Plot
         ref={plotRef}
-        data={[...traces, ...agentTraces]}
+        data={traces}
         layout={layout}
         style={{ width: '100%', height: '100%' }}
         useResizeHandler={true}

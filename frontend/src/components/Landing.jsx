@@ -28,7 +28,6 @@ const UPLOAD_CONSENT_LABEL = (
         (edit distance, hashes, and goal text up to 500 characters) when I use the extension
       </li>
       <li>Optional personal profile and inference from my conversations when profile is enabled</li>
-      <li>Team workspace sharing only when I explicitly mark conversations as team-visible</li>
     </ul>
   </>
 )

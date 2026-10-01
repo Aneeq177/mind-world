@@ -2,32 +2,24 @@ export default function DetailPanel({ conversation: c, isBlended, onClose, onTog
   if (!c) return null
 
   const isClaude = c.source === 'claude' || c.source_app === 'claude'
-  const isDocument = c.type === 'document'
-  const isTeamVisible = c.visibility === 'team'
 
   const badgeStyle = {
     fontSize: '0.68rem',
     padding: '3px 10px',
-    background: isDocument ? 'rgba(192,132,252,0.18)' : (isClaude ? 'rgba(124,58,237,0.18)' : 'rgba(16,185,129,0.18)'),
-    border: `1px solid ${isDocument ? 'rgba(192,132,252,0.4)' : (isClaude ? 'rgba(124,58,237,0.4)' : 'rgba(16,185,129,0.4)')}`,
+    background: isClaude ? 'rgba(124,58,237,0.18)' : 'rgba(16,185,129,0.18)',
+    border: `1px solid ${isClaude ? 'rgba(124,58,237,0.4)' : 'rgba(16,185,129,0.4)'}`,
     borderRadius: '10px',
-    color: isDocument ? '#c084fc' : (isClaude ? '#a78bfa' : '#34d399'),
+    color: isClaude ? '#a78bfa' : '#34d399',
     fontWeight: '600',
   }
 
-  const badgeText = isDocument ? `📄 Document (${c.source_app || 'Unknown'})` : (isClaude ? '🟣 Claude' : '🟢 ChatGPT')
+  const badgeText = isClaude ? '🟣 Claude' : '🟢 ChatGPT'
 
-  const metaItems = isDocument 
-    ? [
-        { label: 'Source App', value: c.source_app || 'Unknown' },
-        { label: 'Topic', value: (c.region || 'Other').slice(0, 14) },
-        { label: 'Date', value: (c.created_at || '').slice(0, 10) },
-      ]
-    : [
-        { label: 'Messages', value: c.num_messages || 0 },
-        { label: 'Topic', value: (c.region || 'Other').slice(0, 14) },
-        { label: 'Date', value: (c.created_at || '').slice(0, 10) },
-      ]
+  const metaItems = [
+    { label: 'Messages', value: c.num_messages || 0 },
+    { label: 'Topic', value: (c.region || 'Other').slice(0, 14) },
+    { label: 'Date', value: (c.created_at || '').slice(0, 10) },
+  ]
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '12px' }}>
@@ -73,7 +65,7 @@ export default function DetailPanel({ conversation: c, isBlended, onClose, onTog
         borderRadius: '7px',
         whiteSpace: 'pre-wrap',
       }}>
-        {isDocument ? c.preview : `${(c.preview || '').slice(0, 400)}${(c.preview || '').length > 400 ? '…' : ''}`}
+        {`${(c.preview || '').slice(0, 400)}${(c.preview || '').length > 400 ? '…' : ''}`}
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flexShrink: 0 }}>
@@ -97,19 +89,6 @@ export default function DetailPanel({ conversation: c, isBlended, onClose, onTog
           >
             🟣 Open in Claude ↗
           </a>
-        )}
-
-        {isTeamVisible && (
-          <div style={{
-            fontSize: '0.68rem',
-            color: '#a78bfa',
-            padding: '6px 8px',
-            background: 'rgba(124,58,237,0.1)',
-            border: '1px solid rgba(124,58,237,0.25)',
-            borderRadius: '6px',
-          }}>
-            Team-visible — teammates can search this conversation
-          </div>
         )}
 
         {onDelete && (

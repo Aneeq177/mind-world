@@ -27,7 +27,7 @@ def embed_and_position(df: pd.DataFrame) -> tuple[list[dict], np.ndarray]:
 
     n_neighbors = min(10, len(df) - 1)
     reducer = umap.UMAP(
-        n_components=3,
+        n_components=2,
         n_neighbors=n_neighbors,
         min_dist=0.3,
         metric='cosine',
@@ -43,13 +43,12 @@ def embed_and_position(df: pd.DataFrame) -> tuple[list[dict], np.ndarray]:
     )
     cluster_labels = clusterer.fit_predict(coords)
 
-    def normalize(arr, lo=-500, hi=500):
+    def normalize(arr, lo=50, hi=950):
         mn, mx = arr.min(), arr.max()
         return (arr - mn) / (mx - mn + 1e-8) * (hi - lo) + lo
 
     x = normalize(coords[:, 0])
     y = normalize(coords[:, 1])
-    z = normalize(coords[:, 2])
 
     result = []
     for i, (_, row) in enumerate(df.iterrows()):
@@ -62,7 +61,6 @@ def embed_and_position(df: pd.DataFrame) -> tuple[list[dict], np.ndarray]:
             'char_count': int(row['char_count']),
             'x': float(x[i]),
             'y': float(y[i]),
-            'z': float(z[i]),
             'preview': str(row['full_text'])[:300],
             'full_text': str(row['full_text']),
             'source': str(row.get('source', 'claude')),

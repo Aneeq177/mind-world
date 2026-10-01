@@ -49,7 +49,6 @@
             <li>Sending chat draft text to our servers and Anthropic for Improve and search (processed per request, not stored per keystroke)</li>
             <li>Storing Improve feedback metrics in <code>prompt_feedback</code> (edit distance, hashes, and goal text up to 500 characters)</li>
             <li>Optional personal profile and inference from my conversations when profile is enabled</li>
-            <li>Team workspace sharing only when I explicitly mark conversations as team-visible</li>
             <li>Optional Universal Mode that runs Improve and templates on additional AI chat sites I choose to enable</li>
             <li>Optional Anthropic API key stored locally in my browser if I provide one</li>
           </ul>
@@ -145,7 +144,6 @@
         <div id="privacy-data-actions" style="display:flex; flex-wrap:wrap; gap:6px; margin-top:10px;">
           <button type="button" id="export-data-btn" class="privacy-action-btn">Export my data</button>
           <button type="button" id="clear-inferred-privacy-btn" class="privacy-action-btn">Clear inferred profile</button>
-          <button type="button" id="revoke-team-btn" class="privacy-action-btn">Revoke team sharing</button>
           <button type="button" id="delete-data-btn" class="privacy-action-btn danger">Delete all data</button>
         </div>
         <a
@@ -248,62 +246,6 @@
           <button type="button" id="clear-inferred-btn" class="privacy-action-btn" style="margin-top:4px;">Clear inferred profile</button>
         </div>
         <div id="profile-status" style="font-size:0.72rem; color:#00FF88; margin-top:6px; display:none;"></div>
-      </div>
-
-      <!-- Workspace section (hidden — deprioritized) -->
-      <div id="workspace-section" style="display:none; margin-top:12px;">
-
-        <!-- No workspace state -->
-        <div id="no-workspace" style="padding:12px;background:rgba(255,255,255,0.03);border-radius:8px;border:1px solid rgba(255,255,255,0.06);">
-          <div style="font-size:0.75rem;color:#888;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.05em;">Team Workspace</div>
-          <div style="display:flex;gap:6px;">
-            <button id="btn-create-workspace" style="flex:1;padding:8px 4px;border-radius:6px;border:1px solid rgba(124,58,237,0.4);background:rgba(124,58,237,0.15);color:#a78bfa;font-size:0.78rem;cursor:pointer;">+ Create</button>
-            <button id="btn-join-workspace" style="flex:1;padding:8px 4px;border-radius:6px;border:1px solid rgba(255,255,255,0.08);background:transparent;color:#888;font-size:0.78rem;cursor:pointer;">Join</button>
-          </div>
-        </div>
-
-        <!-- Create workspace form -->
-        <div id="create-workspace-form" style="display:none;padding:12px;background:rgba(255,255,255,0.03);border-radius:8px;border:1px solid rgba(255,255,255,0.06);">
-          <div style="font-size:0.8rem;color:white;margin-bottom:8px;">Create Workspace</div>
-          <input id="workspace-name-input" type="text" placeholder="e.g. Antigravity Team" style="width:100%;padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:white;font-size:0.82rem;margin-bottom:8px;box-sizing:border-box;" />
-          <div style="display:flex;gap:6px;">
-            <button id="btn-create-confirm" style="flex:1;padding:8px;border-radius:6px;border:none;background:#7c3aed;color:white;font-size:0.82rem;cursor:pointer;">Create</button>
-            <button id="btn-create-cancel" style="flex:1;padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:transparent;color:#888;font-size:0.82rem;cursor:pointer;">Cancel</button>
-          </div>
-          <div id="create-error" style="color:#ff4444;font-size:0.75rem;margin-top:6px;display:none;"></div>
-        </div>
-
-        <!-- Join workspace form -->
-        <div id="join-workspace-form" style="display:none;padding:12px;background:rgba(255,255,255,0.03);border-radius:8px;border:1px solid rgba(255,255,255,0.06);">
-          <div style="font-size:0.8rem;color:white;margin-bottom:8px;">Join Workspace</div>
-          <input id="invite-code-input" type="text" placeholder="MW-XXXX-XXXX" style="width:100%;padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.05);color:white;font-size:0.82rem;margin-bottom:8px;box-sizing:border-box;text-transform:uppercase;" />
-          <div style="display:flex;gap:6px;">
-            <button id="btn-join-confirm" style="flex:1;padding:8px;border-radius:6px;border:none;background:#7c3aed;color:white;font-size:0.82rem;cursor:pointer;">Join</button>
-            <button id="btn-join-cancel" style="flex:1;padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:transparent;color:#888;font-size:0.82rem;cursor:pointer;">Cancel</button>
-          </div>
-          <div id="join-error" style="color:#ff4444;font-size:0.75rem;margin-top:6px;display:none;"></div>
-        </div>
-
-        <!-- Has workspace state -->
-        <div id="has-workspace" style="display:none;padding:12px;background:rgba(124,58,237,0.08);border-radius:8px;border:1px solid rgba(124,58,237,0.2);">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-            <div style="font-size:0.85rem;color:white;font-weight:600;" id="workspace-name-display"></div>
-            <div style="font-size:0.75rem;color:#888;" id="workspace-members-display"></div>
-          </div>
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;">
-            <div style="font-size:0.75rem;color:#888;font-family:monospace;" id="workspace-code-display"></div>
-            <button id="btn-copy-code" style="padding:3px 8px;border-radius:4px;border:1px solid rgba(255,255,255,0.1);background:transparent;color:#888;font-size:0.72rem;cursor:pointer;">Copy</button>
-          </div>
-          <div style="font-size:0.72rem;color:#666;margin-bottom:6px;">Save conversations as:</div>
-          <div style="display:flex;gap:6px;margin-bottom:10px;">
-            <button id="vis-private" style="flex:1;padding:6px;border-radius:5px;border:1px solid rgba(124,58,237,0.5);background:rgba(124,58,237,0.3);color:white;font-size:0.76rem;cursor:pointer;">🔒 Private</button>
-            <button id="vis-team" style="flex:1;padding:6px;border-radius:5px;border:1px solid rgba(255,255,255,0.1);background:transparent;color:#888;font-size:0.76rem;cursor:pointer;">🏢 Team</button>
-          </div>
-          <button id="btn-share-all" style="width:100%;padding:7px;border-radius:5px;border:1px solid rgba(124,58,237,0.3);background:rgba(124,58,237,0.1);color:#a78bfa;font-size:0.76rem;cursor:pointer;margin-bottom:6px;">📤 Share my conversations with team</button>
-          <div id="share-status" style="font-size:0.72rem;color:#00FF88;text-align:center;margin-bottom:6px;display:none;"></div>
-          <button id="btn-leave-workspace" style="width:100%;padding:6px;border-radius:5px;border:1px solid rgba(255,68,68,0.3);background:transparent;color:#ff6666;font-size:0.75rem;cursor:pointer;">Leave Workspace</button>
-        </div>
-
       </div>
 
       <!-- Add more history: shown when 1-49 conversations -->

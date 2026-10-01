@@ -73,7 +73,6 @@ def store_conversations(
                 "color": chat["color"],
                 "x": chat["x"],
                 "y": chat["y"],
-                "z": chat["z"]
             })
         try:
             supabase.table("knowledge_nodes")\
@@ -170,28 +169,6 @@ def get_user_conversations(user_id: str) -> list[dict]:
 
     return result.data
 
-def save_user_integration(user_id: str, provider: str, token: str, metadata: dict = None) -> dict:
-    supabase = get_supabase()
-    row = {
-        "user_id": user_id,
-        "provider": provider,
-        "access_token": token,
-        "workspace_id": metadata.get("workspace_id") if metadata else None,
-        "workspace_name": metadata.get("workspace_name") if metadata else None,
-        "updated_at": "now()"
-    }
-    result = supabase.table("user_integrations").upsert(row, on_conflict="user_id,provider").execute()
-    return result.data[0] if result.data else {}
-
-def get_user_integration(user_id: str, provider: str) -> dict:
-    supabase = get_supabase()
-    result = supabase.table("user_integrations")\
-        .select("*")\
-        .eq("user_id", user_id)\
-        .eq("provider", provider)\
-        .execute()
-    return result.data[0] if result.data else None
-
 def get_personal_profile(user_id: str) -> dict:
     from services.personalization import normalize_profile_data
 
@@ -263,44 +240,6 @@ def get_prompt_templates() -> list[dict]:
         .execute()
     templates = result.data if result.data else []
     return _sort_templates(templates, "category")
-
-
-def search_prompt_templates(
-    query: str = "",
-    category: str = "",
-    tag: str = "",
-    tier: str = "",
-    limit: int = 50,
-    offset: int = 0,
-    sort: str = "popular",
-) -> tuple[list[dict], int]:
-    supabase = get_supabase()
-    q = supabase.table("prompt_templates").select("*", count="exact")
-
-    if category:
-        q = q.eq("category", category)
-    if tier:
-        q = q.eq("tier", tier)
-    if tag:
-        q = q.contains("tags", [tag.lower()])
-
-    result = q.execute()
-    templates = result.data if result.data else []
-
-    if query:
-        needle = query.lower().strip()
-        templates = [
-            t for t in templates
-            if needle in (t.get("search_text") or "").lower()
-            or needle in (t.get("name") or "").lower()
-            or needle in (t.get("description") or "").lower()
-            or any(needle in (tg or "").lower() for tg in (t.get("tags") or []))
-        ]
-
-    templates = _sort_templates(templates, sort)
-    total = len(templates)
-    page = templates[offset:offset + limit]
-    return page, total
 
 
 def get_template_categories() -> list[dict]:
@@ -508,26 +447,6 @@ def get_user_consent_info(user_id: str) -> dict:
     }
 
 
-def revoke_team_sharing(user_id: str) -> dict:
-    """Set all team-visible conversations back to private for this user."""
-    supabase = get_supabase()
-    team = supabase.table("knowledge_nodes")\
-        .select("id")\
-        .eq("user_id", user_id)\
-        .eq("visibility", "team")\
-        .execute()
-    ids = [row["id"] for row in (team.data or [])]
-    if not ids:
-        return {"revoked": 0}
-
-    supabase.table("knowledge_nodes")\
-        .update({"visibility": "private"})\
-        .eq("user_id", user_id)\
-        .eq("visibility", "team")\
-        .execute()
-    return {"revoked": len(ids)}
-
-
 def delete_conversation(user_id: str, conversation_id: str) -> dict:
     """Delete a single conversation and its embedding for this user."""
     supabase = get_supabase()
@@ -594,7 +513,6 @@ def export_user_data(user_id: str, email: str) -> dict:
             "char_count": conv.get("char_count"),
             "preview": conv.get("preview"),
             "full_text": conv.get("full_text"),
-            "visibility": conv.get("visibility", "private"),
         })
 
     profile_data = profile.get("profile_data") or {}
@@ -659,7 +577,6 @@ def delete_user_data(user_id: str) -> dict:
     supabase.table("personal_profiles").delete().eq("user_id", user_id).execute()
     supabase.table("user_integrations").delete().eq("user_id", user_id).execute()
 
-    supabase.table("users").update({"company_id": None}).eq("id", user_id).execute()
     supabase.table("users").delete().eq("id", user_id).execute()
 
     return {"deleted": True, "conversation_count": conversation_count}
