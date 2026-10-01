@@ -8,7 +8,7 @@ def parse_claude(data: dict | list) -> pd.DataFrame:
     convos = data if isinstance(data, list) else data.get('conversations', [])
     rows = []
     for c in convos:
-        messages = c.get('chat_messages', [])
+        messages = c.get('chat_messages') or []
         text_parts = []
         for msg in messages:
             sender = msg.get('sender', 'unknown')
@@ -100,8 +100,41 @@ def _chatgpt_messages(convo: dict) -> list[tuple[str, str]]:
     return out
 
 
-def parse_chatgpt(zip_bytes: bytes) -> pd.DataFrame:
+def parse_chatgpt_conversations(convos: list) -> pd.DataFrame:
     rows = []
+    for c in convos:
+        text_parts = [f'[{role}] {text}' for role, text in _chatgpt_messages(c)]
+        full_text = '\n\n'.join(text_parts)
+        if len(full_text.strip()) < 50:
+            continue
+        create_time = c.get('create_time', 0)
+        update_time = c.get('update_time', 0)
+        try:
+            created_at = datetime.fromtimestamp(
+                float(create_time)).isoformat()
+            updated_at = datetime.fromtimestamp(
+                float(update_time)).isoformat()
+        except Exception:
+            created_at = ''
+            updated_at = ''
+        rows.append({
+            'uuid': c.get('id') or c.get('conversation_id') or '',
+            'name': c.get('title', 'Untitled') or 'Untitled',
+            'created_at': created_at,
+            'updated_at': updated_at,
+            'num_messages': len(text_parts),
+            'char_count': len(full_text),
+            'full_text': full_text,
+            'source': 'chatgpt'
+        })
+    df = pd.DataFrame(rows)
+    if not df.empty:
+        df = df.sort_values('created_at').reset_index(drop=True)
+    return df
+
+
+def parse_chatgpt(zip_bytes: bytes) -> pd.DataFrame:
+    convos = []
     with zipfile.ZipFile(io.BytesIO(zip_bytes)) as z:
         total_uncompressed = sum(info.file_size for info in z.infolist())
         if total_uncompressed > MAX_ZIP_EXTRACTED_BYTES:
@@ -115,33 +148,114 @@ def parse_chatgpt(zip_bytes: bytes) -> pd.DataFrame:
         ])
         for json_file in json_files:
             with z.open(json_file) as f:
-                convos = json.load(f)
-            for c in convos:
-                text_parts = [f'[{role}] {text}' for role, text in _chatgpt_messages(c)]
-                full_text = '\n\n'.join(text_parts)
-                if len(full_text.strip()) < 50:
-                    continue
-                create_time = c.get('create_time', 0)
-                update_time = c.get('update_time', 0)
+                convos.extend(json.load(f))
+    return parse_chatgpt_conversations(convos)
+
+
+# ---------------------------------------------------------------------------
+# Upload entry point: works out what was uploaded from its contents, so users
+# can drop in whatever Claude or ChatGPT gave them — zip, nested zip, or JSON.
+# ---------------------------------------------------------------------------
+
+class ExportFormatError(ValueError):
+    """The upload isn't a usable export. The message is shown to the user as-is."""
+
+
+MANIFEST_MESSAGE = (
+    "This is Claude's download list, not your chats. Open the links in Claude's "
+    "export email, download the file named conversations-000.zip, and upload "
+    "that zip here (no need to unzip it)."
+)
+NOT_FOUND_MESSAGE = (
+    "We couldn't find any conversations in that file. Upload the .zip you "
+    "downloaded from Claude or ChatGPT (or the conversations.json inside it)."
+)
+TOO_LARGE_MESSAGE = "That export is too large to import (over 500 MB once unzipped)."
+MAX_ZIP_DEPTH = 3
+_READABLE_IN_ZIP = (".json", ".jsonl", ".zip")
+
+
+def parse_export_file(filename: str, content: bytes) -> pd.DataFrame:
+    """Parse any Claude or ChatGPT export file into conversation rows.
+
+    Raises ExportFormatError with a user-facing message when the file holds no
+    conversations (including Claude's download manifest, which only lists links).
+    """
+    claude_convos: list[dict] = []
+    chatgpt_convos: list[dict] = []
+    saw_manifest = False
+
+    for payload in _json_payloads(filename or "", content, [MAX_ZIP_EXTRACTED_BYTES], 0):
+        if _is_claude_manifest(payload):
+            saw_manifest = True
+            continue
+        for convo in _conversation_dicts(payload):
+            if "chat_messages" in convo:
+                claude_convos.append(convo)
+            elif "mapping" in convo:
+                chatgpt_convos.append(convo)
+
+    frames = [df for df in (parse_claude(claude_convos), parse_chatgpt_conversations(chatgpt_convos))
+              if not df.empty]
+    if not frames:
+        raise ExportFormatError(MANIFEST_MESSAGE if saw_manifest else NOT_FOUND_MESSAGE)
+
+    df = pd.concat(frames, ignore_index=True)
+    # The same conversation can appear in several files of one export.
+    has_id = df["uuid"].astype(str) != ""
+    df = pd.concat([df[has_id].drop_duplicates(subset="uuid", keep="last"), df[~has_id]])
+    return df.sort_values("created_at").reset_index(drop=True)
+
+
+def _json_payloads(name: str, data: bytes, budget: list[int], depth: int):
+    """Yield every JSON value in a file, opening zips (and zips inside zips).
+    `budget` is the remaining decompressed-byte allowance, shared across nesting."""
+    if zipfile.is_zipfile(io.BytesIO(data)):
+        if depth >= MAX_ZIP_DEPTH:
+            return
+        with zipfile.ZipFile(io.BytesIO(data)) as z:
+            entries = [
+                info for info in z.infolist()
+                if not info.is_dir()
+                and info.filename.lower().endswith(_READABLE_IN_ZIP)
+                and not info.filename.startswith("__MACOSX/")
+            ]
+            needed = sum(info.file_size for info in entries)
+            if needed > budget[0]:
+                raise ExportFormatError(TOO_LARGE_MESSAGE)
+            budget[0] -= needed
+            for info in sorted(entries, key=lambda i: i.filename):
+                yield from _json_payloads(info.filename, z.read(info), budget, depth + 1)
+        return
+
+    text = data.decode("utf-8-sig", errors="replace")
+    if name.lower().endswith(".jsonl"):
+        for line in text.splitlines():
+            if line.strip():
                 try:
-                    created_at = datetime.fromtimestamp(
-                        float(create_time)).isoformat()
-                    updated_at = datetime.fromtimestamp(
-                        float(update_time)).isoformat()
-                except Exception:
-                    created_at = ''
-                    updated_at = ''
-                rows.append({
-                    'uuid': c.get('id') or c.get('conversation_id') or '',
-                    'name': c.get('title', 'Untitled') or 'Untitled',
-                    'created_at': created_at,
-                    'updated_at': updated_at,
-                    'num_messages': len(text_parts),
-                    'char_count': len(full_text),
-                    'full_text': full_text,
-                    'source': 'chatgpt'
-                })
-    df = pd.DataFrame(rows)
-    if not df.empty:
-        df = df.sort_values('created_at').reset_index(drop=True)
-    return df
+                    yield json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+        return
+    try:
+        yield json.loads(text)
+    except json.JSONDecodeError:
+        return
+
+
+def _is_claude_manifest(payload) -> bool:
+    files = payload.get("data_files") if isinstance(payload, dict) else None
+    return isinstance(files, list) and any(isinstance(f, dict) and "export_url" in f for f in files)
+
+
+def _conversation_dicts(payload) -> list[dict]:
+    """Conversation-shaped dicts in a JSON value: a list of them, a
+    {"conversations": [...]} wrapper, or a single conversation."""
+    if isinstance(payload, dict):
+        if isinstance(payload.get("conversations"), list):
+            payload = payload["conversations"]
+        else:
+            payload = [payload]
+    if not isinstance(payload, list):
+        return []
+    return [c for c in payload if isinstance(c, dict)]

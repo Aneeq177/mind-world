@@ -267,16 +267,17 @@ export default function Landing() {
       return
     }
     const name = file.name.toLowerCase()
-    if (name.endsWith('.json')) {
+    if (!['.zip', '.json', '.jsonl'].some(ext => name.endsWith(ext))) {
+      setError('Please upload the .zip file you downloaded from Claude or ChatGPT.')
+      return
+    }
+    // The server detects Claude vs ChatGPT from the file contents, so the field is just a label.
+    if (selectedPlatform === 'claude') {
       setClaudeFile(file)
       setChatgptFile(null)
-      setSelectedPlatform('claude')
-    } else if (name.endsWith('.zip')) {
+    } else {
       setChatgptFile(file)
       setClaudeFile(null)
-      setSelectedPlatform('chatgpt')
-    } else {
-      setError('Please upload the .zip file from ChatGPT or conversations.json from Claude.')
     }
   }
 
@@ -385,8 +386,8 @@ export default function Landing() {
     claude: [
       'Open claude.ai and click your initials (bottom-left)',
       'Go to Settings → Privacy → Export data',
-      'Download conversations.json when it\'s ready',
-      'Upload that file below'
+      'Claude emails you download links — download the file named conversations (a .zip)',
+      'Upload that .zip below — no need to unzip it'
     ]
   }
 
@@ -577,13 +578,13 @@ export default function Landing() {
                     Click here to upload
                   </div>
                   <div style={{ fontSize: '0.78rem', color: '#555', marginTop: '4px' }}>
-                    {selectedPlatform === 'chatgpt' ? '.zip file from your email' : 'conversations.json'}
+                    {selectedPlatform === 'chatgpt' ? '.zip file from your email' : 'conversations .zip from your email'}
                   </div>
                 </>
               )}
               <input
                 type="file"
-                accept=".json,.zip"
+                accept=".zip,.json,.jsonl"
                 disabled={!uploadConsent}
                 style={{ display: 'none' }}
                 onChange={e => {

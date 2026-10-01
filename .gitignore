@@ -2,6 +2,9 @@
 chats_parsed.csv
 chats_positioned.json
 conversations.json
+backend/evals/retrieval/corpus.json
+backend/evals/retrieval/cases.json
+backend/evals/retrieval/results/
 
 # Environment and secrets
 .env
@@ -17,3 +20,4 @@ __pycache__/
 # Local artifacts
 *.zip
 nul
+TASKS.md

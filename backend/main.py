@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 from typing import Optional
 
 from pydantic import BaseModel, field_validator
-from services.parser import parse_claude, parse_chatgpt # Import functions from parser.py
+from services.parser import ExportFormatError, NOT_FOUND_MESSAGE, parse_export_file
 from services.database import (
     get_or_create_user,
     store_conversations,
@@ -297,42 +297,34 @@ async def process_files(
         )
 
     MAX_UPLOAD_BYTES = 200 * 1024 * 1024  # 200 MB hard limit per file
-    if claude_file and claude_file.size and claude_file.size > MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=413, detail="Claude export file too large (max 200 MB)")
-    if chatgpt_file and chatgpt_file.size and chatgpt_file.size > MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=413, detail="ChatGPT export file too large (max 200 MB)")
+    for upload in (claude_file, chatgpt_file):
+        if upload and upload.size and upload.size > MAX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail="That export file is too large (max 200 MB).")
 
     all_dfs = [] # This is an empty list that is being defined that will later store the parsed conversation tables for all the files that the user uploads
 # The files are stored as DataFrames which is a table like structure from pandas ( rows = conversations and columns = titles, messages, dates etc.)
    
    # Below is the try except block where everything under try is executed and if there is an error then the code under except is executed.
     try: #
-        if claude_file:
-            content = await claude_file.read() # Wait for the file to upload and then read the contents of the file (claude in this case)
-            data = json.loads( # This loads the JSON file that the user uploads for claude and then converts it into a dictionary (conversts text into a dictionary)
-                content.decode('utf-8-sig', errors='replace') # This decodes the file into a string and then replaces any errors with a placeholder
-            )
-            df = parse_claude(data) # Sends the parsed data from the claude JSON file to the parse_claude function in services/parser.py
-            all_dfs.append(df) # Adds the parsed claude dataframe to thet all_dfs list that we defined earlier that contains all the parsed conversation tables for all the files that the user uploads
+        # Which upload field a file arrives in doesn't matter: the parser works out
+        # from the contents whether it's a Claude or ChatGPT export (zip or JSON).
+        format_errors = []
+        for upload in (claude_file, chatgpt_file):
+            if not upload:
+                continue
+            content = await upload.read()
+            try:
+                all_dfs.append(parse_export_file(upload.filename or "", content))
+            except ExportFormatError as e:
+                format_errors.append(str(e))
 
-        if chatgpt_file: 
-            content = await chatgpt_file.read() # Wait for the file to upload then read the chatgpt file
-            df = parse_chatgpt(content) # Here it only reads the raw text and sends it to the parse_chatgpt function in services/parser.py because it is a zip file
-            all_dfs.append(df) # Adds the parsed chatgpt dataframe to thet all_dfs list that we defined earlier that contains all the parsed conversation tables for all the files that the user uploads
-
-        if not all_dfs: # If the all_dfs list is empty, then it raises an error
-            raise HTTPException( #specifically raises a Bad Request error (400)
+        if not all_dfs:
+            raise HTTPException(
                 status_code=400,
-                detail="No conversations found" # This is the error message
+                detail=format_errors[0] if format_errors else NOT_FOUND_MESSAGE,
             )
 
         df = pd.concat(all_dfs, ignore_index=True) # This concatenates all the dataframes in the all_dfs list into a single dataframe and ignores the index
-
-        if len(df) == 0: # If the dataframe is empty, then it raises an error
-            raise HTTPException( #specifically raises a Bad Request error (400)
-                status_code=400,
-                detail="No conversations found" # This is the error message
-            )
 # The imports are purposely made inside the function because we only want to load the models when the function is called and not when the file is imported.
         from services.embedder import embed_and_position # Loads AI models from sentence_transformers and umap (Imports from services/embedder.py)
         from services.cluster_labels import label_clusters
