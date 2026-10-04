@@ -142,3 +142,21 @@ from growth_events
 where event = 'autosave_used'
 group by 1
 order by 1 desc;
+
+-- ============================================================
+-- 10. Degraded memory search: Improve calls that fell back to the
+-- opening-only conversation search (fallback_error = chunk search failed
+-- or timed out; fallback_no_chunks = user not chunk-indexed yet) or ran
+-- without keyword search. Should be near zero next to improve_used.
+-- ============================================================
+select
+  date_trunc('day', created_at) as day,
+  event,
+  count(*) as calls,
+  count(distinct user_id) as users
+from growth_events
+where event in ('improve_used', 'retrieval_fallback_error',
+                'retrieval_fallback_no_chunks', 'retrieval_keyword_failed')
+  and created_at > now() - interval '14 days'
+group by 1, 2
+order by 1 desc, 2;

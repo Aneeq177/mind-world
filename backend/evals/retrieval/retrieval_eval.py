@@ -33,6 +33,10 @@ Run:
   python backend/evals/retrieval/retrieval_eval.py --check          # validate cases only
   python backend/evals/retrieval/retrieval_eval.py --compare results/before.json results/after.json
   python backend/evals/retrieval/retrieval_eval.py --public results/before.json summaries/before.json
+  python backend/evals/retrieval/retrieval_eval.py --strategy live --email you@x.com --allow-problems
+      # the production pipeline against your Supabase data (keyword search runs
+      # in Postgres, so this is the only way to measure it); add --no-keywords
+      # for a vector-only comparison on the same data
 Rerank needs ANTHROPIC_API_KEY (repo-root .env); ~25 Haiku calls per run.
 """
 import argparse
@@ -130,9 +134,99 @@ def retrieve_chunked(draft: str, index: dict, corpus: list[dict], k: int) -> lis
     return group_chunk_hits(hits)[:k]
 
 
+def retrieve_chunked_cutoff(draft: str, index: dict, corpus: list[dict], k: int) -> list[dict]:
+    # Mirrors production retrieve_candidates: chunked + relevance cutoff.
+    from services.retrieval import CHUNK_CANDIDATES, apply_relevance_cutoff
+    # Every grouped conversation goes through the cutoff before slicing, as in production.
+    return apply_relevance_cutoff(retrieve_chunked(draft, index, corpus, CHUNK_CANDIDATES))[:k]
+
+
+def _chunk_hits_for(query_vec: np.ndarray, index: dict, corpus: list[dict]) -> list[dict]:
+    from services.retrieval import CHUNK_CANDIDATES
+    sims = index["emb"] @ query_vec
+    hits = []
+    for j in np.argsort(-sims)[:CHUNK_CANDIDATES]:
+        conv = corpus[index["owners"][j]]
+        s, e = index["spans"][j]
+        text = conv.get("full_text") or conv.get("preview") or ""
+        hits.append({
+            "conversation_id": conv["id"], "chunk_index": int(j), "start_char": s, "end_char": e,
+            "title": conv.get("title") or "Untitled", "created_at": conv.get("created_at"),
+            "preview": conv.get("preview") or text[:300], "similarity": float(sims[j]),
+            "chunk_text": text[s:e],
+        })
+    return hits
+
+
+def retrieve_chunked_routed(draft: str, index: dict, corpus: list[dict], k: int) -> list[dict]:
+    # Mirrors production with no profile: about-me drafts search with rewritten
+    # queries and the looser floor; others are chunked_cutoff. Vector only —
+    # keyword search runs in Postgres, see the "live" strategy.
+    from services.personalization_llm import rewrite_about_me_queries_llm
+    from services.query_intent import is_about_me
+    from services.retrieval import (
+        ABOUT_ME_MIN_SIMILARITY, ABOUT_ME_PER_QUERY, group_chunk_hits, merge_hybrid,
+    )
+    if not is_about_me(draft):
+        return retrieve_chunked_cutoff(draft, index, corpus, k)
+    queries = [draft, *rewrite_about_me_queries_llm(draft)]
+    vecs = _model().encode(queries, normalize_embeddings=True)
+    lists = [group_chunk_hits(_chunk_hits_for(v, index, corpus)) for v in vecs]
+    return merge_hybrid(lists, [], min_similarity=ABOUT_ME_MIN_SIMILARITY,
+                        per_list_cap=ABOUT_ME_PER_QUERY)[:k]
+
+
+def index_live(corpus: list[dict]) -> dict:
+    # Production data for --email; nothing is indexed locally.
+    import os
+    from services.database import get_supabase
+    email = os.environ.get("MW_EVAL_EMAIL", "").strip().lower()
+    if not email:
+        sys.exit("--strategy live needs --email (the account whose data matches the corpus).")
+    os.environ["RETRIEVAL_MODE"] = "chunked"
+    sb = get_supabase()
+    rows = sb.table("users").select("id").eq("email", email).limit(1).execute().data
+    if not rows:
+        sys.exit(f"No user with email {email}.")
+    user_id = rows[0]["id"]
+    ids = [c["id"] for c in corpus]
+    found = set()
+    for i in range(0, len(ids), 200):
+        res = sb.table("knowledge_nodes").select("id").eq("user_id", user_id).in_("id", ids[i:i + 200]).execute()
+        found |= {r["id"] for r in res.data or []}
+    print(f"  live: {len(found)}/{len(ids)} corpus conversations exist in production", flush=True)
+    if os.environ.get("MW_EVAL_NO_KEYWORDS"):
+        import services.database as db
+        db.search_keyword_chunks = lambda *a, **k: []
+        print("  live: keyword search disabled (ablation)", flush=True)
+    return {"user_id": user_id}
+
+
+def retrieve_live(draft: str, index: dict, corpus: list[dict], k: int) -> list[dict]:
+    # The production pipeline (keyword + vector, about-me routing with no profile).
+    from services.retrieval import memory_route, retrieve_about_me, retrieve_candidates
+    emb = _model().encode([draft])[0]
+    stats: dict = {}
+    if memory_route(draft, None) == "rewrite":
+        out = retrieve_about_me(index["user_id"], draft, emb, k, stats=stats)
+    else:
+        out = retrieve_candidates(index["user_id"], emb, k, query_text=draft, stats=stats)
+    index.setdefault("retrieval_stats", []).append(stats)
+    if stats.get("fallback"):
+        print(f"  WARNING fell back to conversation search ({stats['fallback']}): {stats.get('error')}",
+              flush=True)
+    for c in out:
+        c["title"] = c.get("title") or "Untitled"
+        c["similarity"] = c["similarity"] if c.get("similarity") is not None else c.get("keyword_score") or 0.0
+    return out
+
+
 STRATEGIES = {
     "baseline": (index_baseline, retrieve_baseline),
     "chunked": (index_chunked, retrieve_chunked),
+    "chunked_cutoff": (index_chunked, retrieve_chunked_cutoff),
+    "chunked_routed": (index_chunked, retrieve_chunked_routed),
+    "live": (index_live, retrieve_live),
 }
 
 
@@ -323,8 +417,21 @@ def run_eval(args) -> dict:
             "runs": args.rerank_runs,
         }
 
+    meta_extra = {}
+    if isinstance(index, dict) and index.get("retrieval_stats"):
+        rs = index["retrieval_stats"]
+        ms = [s["ms"] for s in rs]
+        meta_extra["retrieval"] = {
+            "fallbacks": sum(1 for s in rs if s.get("fallback")),
+            "keyword_failures": sum(1 for s in rs if s.get("keywords") == "failed"),
+            "p50_ms": round(float(np.percentile(ms, 50))),
+            "p95_ms": round(float(np.percentile(ms, 95))),
+        }
+        print(f"\nretrieval: {meta_extra['retrieval']}", flush=True)
+
     return {
         "meta": {
+            **meta_extra,
             "strategy": args.strategy,
             "git_commit": _git_commit(),
             "run_at": datetime.now(timezone.utc).isoformat(),
@@ -341,11 +448,18 @@ def run_eval(args) -> dict:
 
 
 def _embed_text_label(strategy: str) -> str:
-    if strategy == "chunked":
+    if strategy.startswith("chunked"):
         from services.chunker import CHUNK_OVERLAP, CHUNK_SIZE
-        from services.retrieval import CHUNK_CANDIDATES
-        return (f"title + full_text chunks ({CHUNK_SIZE} chars, {CHUNK_OVERLAP} overlap), "
-                f"top {CHUNK_CANDIDATES} chunks grouped by conversation")
+        from services.retrieval import CHUNK_CANDIDATES, MAX_GAP_FROM_TOP, MIN_SIMILARITY
+        label = (f"title + full_text chunks ({CHUNK_SIZE} chars, {CHUNK_OVERLAP} overlap), "
+                 f"top {CHUNK_CANDIDATES} chunks grouped by conversation")
+        if strategy in ("chunked_cutoff", "chunked_routed"):
+            label += f", cutoff sim>={MIN_SIMILARITY} and within {MAX_GAP_FROM_TOP} of top"
+        if strategy == "chunked_routed":
+            label += ", about-me drafts use rewritten queries (no profile)"
+        return label
+    if strategy == "live":
+        return "production pipeline: chunk vectors + keyword search, about-me rewrites (no profile)"
     return "title + full_text[:500]"
 
 
@@ -433,6 +547,8 @@ def main():
     p.add_argument("--no-rerank", action="store_true")
     p.add_argument("--check", action="store_true")
     p.add_argument("--allow-problems", action="store_true")
+    p.add_argument("--email", default=None, help="account to query for --strategy live")
+    p.add_argument("--no-keywords", action="store_true", help="live: vector search only (ablation)")
     p.add_argument("--compare", nargs=2, type=Path, metavar=("BEFORE", "AFTER"))
     p.add_argument("--public", nargs=2, type=Path, metavar=("RESULTS", "OUT"),
                    help="write a shareable copy of RESULTS with private data stripped")
@@ -454,6 +570,12 @@ def main():
         return
     if args.no_rerank:
         args.rerank_runs = 0
+    if args.email:
+        import os
+        os.environ["MW_EVAL_EMAIL"] = args.email
+    if args.no_keywords:
+        import os
+        os.environ["MW_EVAL_NO_KEYWORDS"] = "1"
 
     results = run_eval(args)
     print("\n" + json.dumps(_headline(results), indent=2))

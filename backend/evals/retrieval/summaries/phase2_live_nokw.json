@@ -1,0 +1,1963 @@
+{
+  "_readme": "Public summary of a retrieval_eval.py run. Private inputs (corpus, drafts, labels) are not included; case handles are hashes of private case ids and stay stable across runs.",
+  "meta": {
+    "strategy": "live",
+    "git_commit": "71645b3",
+    "run_at": "2026-10-04T06:17:44.073184+00:00",
+    "embedding_model": "all-MiniLM-L6-v2",
+    "embed_text": "production pipeline: chunk vectors + keyword search, about-me rewrites (no profile)",
+    "top_k": 5,
+    "candidate_k": 15,
+    "corpus_size": 413,
+    "n_cases": 32
+  },
+  "stages": {
+    "vector_top5": {
+      "overall": {
+        "n_answerable": 28,
+        "n_no_match": 4,
+        "hit_rate": 0.8929,
+        "mrr": 0.7869,
+        "unrelated_rate": 0.5773,
+        "avg_unrelated_per_draft": 1.75,
+        "no_match_fp": 0.0
+      },
+      "by_category": {
+        "deep": {
+          "n_answerable": 11,
+          "n_no_match": 0,
+          "hit_rate": 0.9091,
+          "mrr": 0.6848,
+          "unrelated_rate": 0.6458,
+          "avg_unrelated_per_draft": 2.8182
+        },
+        "deep_titled": {
+          "n_answerable": 3,
+          "n_no_match": 0,
+          "hit_rate": 1.0,
+          "mrr": 1.0,
+          "unrelated_rate": 0.0,
+          "avg_unrelated_per_draft": 0.0
+        },
+        "essay": {
+          "n_answerable": 1,
+          "n_no_match": 0,
+          "hit_rate": 0.0,
+          "mrr": 0.0,
+          "unrelated_rate": 0.4,
+          "avg_unrelated_per_draft": 2.0
+        },
+        "no_match": {
+          "n_answerable": 0,
+          "n_no_match": 4,
+          "hit_rate": null,
+          "mrr": null,
+          "unrelated_rate": null,
+          "avg_unrelated_per_draft": 0.0,
+          "no_match_fp": 0.0
+        },
+        "profile": {
+          "n_answerable": 2,
+          "n_no_match": 0,
+          "hit_rate": 0.5,
+          "mrr": 0.25,
+          "unrelated_rate": 0.8,
+          "avg_unrelated_per_draft": 4.0
+        },
+        "shallow": {
+          "n_answerable": 7,
+          "n_no_match": 0,
+          "hit_rate": 1.0,
+          "mrr": 1.0,
+          "unrelated_rate": 0.4286,
+          "avg_unrelated_per_draft": 0.8571
+        },
+        "vague": {
+          "n_answerable": 4,
+          "n_no_match": 0,
+          "hit_rate": 1.0,
+          "mrr": 1.0,
+          "unrelated_rate": 0.5625,
+          "avg_unrelated_per_draft": 2.25
+        }
+      }
+    },
+    "vector_top15": {
+      "overall": {
+        "n_answerable": 28,
+        "n_no_match": 4,
+        "hit_rate": 0.9286,
+        "mrr": 0.7902,
+        "unrelated_rate": 0.7337,
+        "avg_unrelated_per_draft": 4.5625,
+        "no_match_fp": 0.0
+      },
+      "by_category": {
+        "deep": {
+          "n_answerable": 11,
+          "n_no_match": 0,
+          "hit_rate": 1.0,
+          "mrr": 0.6931,
+          "unrelated_rate": 0.7944,
+          "avg_unrelated_per_draft": 7.7273
+        },
+        "deep_titled": {
+          "n_answerable": 3,
+          "n_no_match": 0,
+          "hit_rate": 1.0,
+          "mrr": 1.0,
+          "unrelated_rate": 0.0,
+          "avg_unrelated_per_draft": 0.0
+        },
+        "essay": {
+          "n_answerable": 1,
+          "n_no_match": 0,
+          "hit_rate": 0.0,
+          "mrr": 0.0,
+          "unrelated_rate": 0.5333,
+          "avg_unrelated_per_draft": 8.0
+        },
+        "no_match": {
+          "n_answerable": 0,
+          "n_no_match": 4,
+          "hit_rate": null,
+          "mrr": null,
+          "unrelated_rate": null,
+          "avg_unrelated_per_draft": 0.0,
+          "no_match_fp": 0.0
+        },
+        "profile": {
+          "n_answerable": 2,
+          "n_no_match": 0,
+          "hit_rate": 0.5,
+          "mrr": 0.25,
+          "unrelated_rate": 0.9,
+          "avg_unrelated_per_draft": 13.5
+        },
+        "shallow": {
+          "n_answerable": 7,
+          "n_no_match": 0,
+          "hit_rate": 1.0,
+          "mrr": 1.0,
+          "unrelated_rate": 0.4286,
+          "avg_unrelated_per_draft": 0.8571
+        },
+        "vague": {
+          "n_answerable": 4,
+          "n_no_match": 0,
+          "hit_rate": 1.0,
+          "mrr": 1.0,
+          "unrelated_rate": 0.6897,
+          "avg_unrelated_per_draft": 5.0
+        }
+      }
+    },
+    "rerank_top5": {
+      "overall": {
+        "n_answerable": 28,
+        "n_no_match": 4,
+        "hit_rate": {
+          "mean": 0.8571,
+          "min": 0.8571,
+          "max": 0.8571
+        },
+        "mrr": {
+          "mean": 0.8512,
+          "min": 0.8393,
+          "max": 0.8571
+        },
+        "unrelated_rate": {
+          "mean": 0.3957,
+          "min": 0.375,
+          "max": 0.4154
+        },
+        "avg_unrelated_per_draft": {
+          "mean": 0.7917,
+          "min": 0.75,
+          "max": 0.8438
+        },
+        "no_match_fp": {
+          "mean": 0.0,
+          "min": 0.0,
+          "max": 0.0
+        }
+      },
+      "by_category": {
+        "deep": {
+          "n_answerable": 11,
+          "n_no_match": 0,
+          "hit_rate": {
+            "mean": 0.9091,
+            "min": 0.9091,
+            "max": 0.9091
+          },
+          "mrr": {
+            "mean": 0.8939,
+            "min": 0.8636,
+            "max": 0.9091
+          },
+          "unrelated_rate": {
+            "mean": 0.4583,
+            "min": 0.4375,
+            "max": 0.5
+          },
+          "avg_unrelated_per_draft": {
+            "mean": 1.3333,
+            "min": 1.2727,
+            "max": 1.4545
+          }
+        },
+        "deep_titled": {
+          "n_answerable": 3,
+          "n_no_match": 0,
+          "hit_rate": {
+            "mean": 1.0,
+            "min": 1.0,
+            "max": 1.0
+          },
+          "mrr": {
+            "mean": 1.0,
+            "min": 1.0,
+            "max": 1.0
+          },
+          "unrelated_rate": {
+            "mean": 0.0,
+            "min": 0.0,
+            "max": 0.0
+          },
+          "avg_unrelated_per_draft": {
+            "mean": 0.0,
+            "min": 0.0,
+            "max": 0.0
+          }
+        },
+        "essay": {
+          "n_answerable": 1,
+          "n_no_match": 0,
+          "hit_rate": {
+            "mean": 0.0,
+            "min": 0.0,
+            "max": 0.0
+          },
+          "mrr": {
+            "mean": 0.0,
+            "min": 0.0,
+            "max": 0.0
+          },
+          "unrelated_rate": {
+            "mean": 0.4,
+            "min": 0.4,
+            "max": 0.4
+          },
+          "avg_unrelated_per_draft": {
+            "mean": 2.0,
+            "min": 2.0,
+            "max": 2.0
+          }
+        },
+        "no_match": {
+          "n_answerable": 0,
+          "n_no_match": 4,
+          "hit_rate": null,
+          "mrr": null,
+          "unrelated_rate": null,
+          "avg_unrelated_per_draft": {
+            "mean": 0.0,
+            "min": 0.0,
+            "max": 0.0
+          },
+          "no_match_fp": {
+            "mean": 0.0,
+            "min": 0.0,
+            "max": 0.0
+          }
+        },
+        "profile": {
+          "n_answerable": 2,
+          "n_no_match": 0,
+          "hit_rate": {
+            "mean": 0.0,
+            "min": 0.0,
+            "max": 0.0
+          },
+          "mrr": {
+            "mean": 0.0,
+            "min": 0.0,
+            "max": 0.0
+          },
+          "unrelated_rate": {
+            "mean": 0.9167,
+            "min": 0.75,
+            "max": 1.0
+          },
+          "avg_unrelated_per_draft": {
+            "mean": 1.8333,
+            "min": 1.5,
+            "max": 2.0
+          }
+        },
+        "shallow": {
+          "n_answerable": 7,
+          "n_no_match": 0,
+          "hit_rate": {
+            "mean": 1.0,
+            "min": 1.0,
+            "max": 1.0
+          },
+          "mrr": {
+            "mean": 1.0,
+            "min": 1.0,
+            "max": 1.0
+          },
+          "unrelated_rate": {
+            "mean": 0.1111,
+            "min": 0.1111,
+            "max": 0.1111
+          },
+          "avg_unrelated_per_draft": {
+            "mean": 0.1429,
+            "min": 0.1429,
+            "max": 0.1429
+          }
+        },
+        "vague": {
+          "n_answerable": 4,
+          "n_no_match": 0,
+          "hit_rate": {
+            "mean": 1.0,
+            "min": 1.0,
+            "max": 1.0
+          },
+          "mrr": {
+            "mean": 1.0,
+            "min": 1.0,
+            "max": 1.0
+          },
+          "unrelated_rate": {
+            "mean": 0.3757,
+            "min": 0.3636,
+            "max": 0.4
+          },
+          "avg_unrelated_per_draft": {
+            "mean": 1.0,
+            "min": 1.0,
+            "max": 1.0
+          }
+        }
+      },
+      "runs": 3
+    }
+  },
+  "cases": [
+    {
+      "case": "deep_094c34b1",
+      "category": "deep",
+      "n_relevant": 1,
+      "n_acceptable": 4,
+      "evidence_offsets": [
+        5388
+      ],
+      "vector_top5": {
+        "hit": true,
+        "rank": 1,
+        "relevant_found": 1,
+        "returned": 5,
+        "unrelated": 4
+      },
+      "vector_top15": {
+        "hit": true,
+        "rank": 1,
+        "relevant_found": 1,
+        "returned": 5,
+        "unrelated": 4
+      },
+      "vector_top5_similarities": [
+        0.6903,
+        0.5788,
+        0.502,
+        0.4525,
+        0.4496
+      ],
+      "rerank_top5_runs": [
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 2,
+          "unrelated": 1
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 2,
+          "unrelated": 1
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 2,
+          "unrelated": 1
+        }
+      ]
+    },
+    {
+      "case": "deep_438f40db",
+      "category": "deep",
+      "n_relevant": 1,
+      "n_acceptable": 1,
+      "evidence_offsets": [
+        4103
+      ],
+      "vector_top5": {
+        "hit": true,
+        "rank": 1,
+        "relevant_found": 1,
+        "returned": 5,
+        "unrelated": 4
+      },
+      "vector_top15": {
+        "hit": true,
+        "rank": 1,
+        "relevant_found": 1,
+        "returned": 6,
+        "unrelated": 5
+      },
+      "vector_top5_similarities": [
+        0.6295,
+        0.417,
+        0.414,
+        0.3818,
+        0.3958
+      ],
+      "rerank_top5_runs": [
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 1,
+          "unrelated": 0
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 1,
+          "unrelated": 0
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 1,
+          "unrelated": 0
+        }
+      ]
+    },
+    {
+      "case": "deep_631fe934",
+      "category": "deep",
+      "n_relevant": 1,
+      "n_acceptable": 7,
+      "evidence_offsets": [
+        6858
+      ],
+      "vector_top5": {
+        "hit": true,
+        "rank": 1,
+        "relevant_found": 1,
+        "returned": 5,
+        "unrelated": 4
+      },
+      "vector_top15": {
+        "hit": true,
+        "rank": 1,
+        "relevant_found": 1,
+        "returned": 15,
+        "unrelated": 14
+      },
+      "vector_top5_similarities": [
+        0.6502,
+        0.5963,
+        0.581,
+        0.5403,
+        0.5259
+      ],
+      "rerank_top5_runs": [
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 3,
+          "unrelated": 2
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 3,
+          "unrelated": 2
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 3,
+          "unrelated": 2
+        }
+      ]
+    },
+    {
+      "case": "deep_6e1d54f7",
+      "category": "deep",
+      "n_relevant": 1,
+      "n_acceptable": 6,
+      "evidence_offsets": [
+        6822
+      ],
+      "vector_top5": {
+        "hit": true,
+        "rank": 5,
+        "relevant_found": 1,
+        "returned": 5,
+        "unrelated": 4
+      },
+      "vector_top15": {
+        "hit": true,
+        "rank": 5,
+        "relevant_found": 1,
+        "returned": 15,
+        "unrelated": 13
+      },
+      "vector_top5_similarities": [
+        0.5797,
+        0.5751,
+        0.5587,
+        0.556,
+        0.5537
+      ],
+      "rerank_top5_runs": [
+        {
+          "hit": true,
+          "rank": 2,
+          "relevant_found": 1,
+          "returned": 5,
+          "unrelated": 4
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 5,
+          "unrelated": 4
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 5,
+          "unrelated": 4
+        }
+      ]
+    },
+    {
+      "case": "deep_72478dcc",
+      "category": "deep",
+      "n_relevant": 1,
+      "n_acceptable": 4,
+      "evidence_offsets": [
+        4172
+      ],
+      "vector_top5": {
+        "hit": true,
+        "rank": 2,
+        "relevant_found": 1,
+        "returned": 5,
+        "unrelated": 3
+      },
+      "vector_top15": {
+        "hit": true,
+        "rank": 2,
+        "relevant_found": 1,
+        "returned": 14,
+        "unrelated": 11
+      },
+      "vector_top5_similarities": [
+        0.7131,
+        0.6857,
+        0.5552,
+        0.5599,
+        0.5299
+      ],
+      "rerank_top5_runs": [
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 4,
+          "unrelated": 1
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 4,
+          "unrelated": 1
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 4,
+          "unrelated": 2
+        }
+      ]
+    },
+    {
+      "case": "deep_8c0461fc",
+      "category": "deep",
+      "n_relevant": 1,
+      "n_acceptable": 5,
+      "evidence_offsets": [
+        6172
+      ],
+      "vector_top5": {
+        "hit": true,
+        "rank": 3,
+        "relevant_found": 1,
+        "returned": 5,
+        "unrelated": 2
+      },
+      "vector_top15": {
+        "hit": true,
+        "rank": 3,
+        "relevant_found": 1,
+        "returned": 6,
+        "unrelated": 3
+      },
+      "vector_top5_similarities": [
+        0.5201,
+        0.4871,
+        0.4467,
+        0.4066,
+        0.3866
+      ],
+      "rerank_top5_runs": [
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 3,
+          "unrelated": 0
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 3,
+          "unrelated": 0
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 3,
+          "unrelated": 0
+        }
+      ]
+    },
+    {
+      "case": "deep_97d9d7f3",
+      "category": "deep",
+      "n_relevant": 1,
+      "n_acceptable": 5,
+      "evidence_offsets": [
+        6327
+      ],
+      "vector_top5": {
+        "hit": true,
+        "rank": 1,
+        "relevant_found": 1,
+        "returned": 5,
+        "unrelated": 4
+      },
+      "vector_top15": {
+        "hit": true,
+        "rank": 1,
+        "relevant_found": 1,
+        "returned": 15,
+        "unrelated": 12
+      },
+      "vector_top5_similarities": [
+        0.6433,
+        0.6115,
+        0.6265,
+        0.5988,
+        0.5971
+      ],
+      "rerank_top5_runs": [
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 4,
+          "unrelated": 3
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 4,
+          "unrelated": 3
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 4,
+          "unrelated": 3
+        }
+      ]
+    },
+    {
+      "case": "deep_b9814ee9",
+      "category": "deep",
+      "n_relevant": 1,
+      "n_acceptable": 4,
+      "evidence_offsets": [
+        4184
+      ],
+      "vector_top5": {
+        "hit": true,
+        "rank": 1,
+        "relevant_found": 1,
+        "returned": 5,
+        "unrelated": 2
+      },
+      "vector_top15": {
+        "hit": true,
+        "rank": 1,
+        "relevant_found": 1,
+        "returned": 13,
+        "unrelated": 10
+      },
+      "vector_top5_similarities": [
+        0.6317,
+        0.555,
+        0.5207,
+        0.5044,
+        0.4357
+      ],
+      "rerank_top5_runs": [
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 3,
+          "unrelated": 0
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 3,
+          "unrelated": 0
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 3,
+          "unrelated": 0
+        }
+      ]
+    },
+    {
+      "case": "deep_c1709eb0",
+      "category": "deep",
+      "n_relevant": 1,
+      "n_acceptable": 7,
+      "evidence_offsets": [
+        7115
+      ],
+      "vector_top5": {
+        "hit": false,
+        "rank": null,
+        "relevant_found": 0,
+        "returned": 5,
+        "unrelated": 3
+      },
+      "vector_top15": {
+        "hit": true,
+        "rank": 11,
+        "relevant_found": 1,
+        "returned": 15,
+        "unrelated": 12
+      },
+      "vector_top5_similarities": [
+        0.5757,
+        0.5385,
+        0.5314,
+        0.5184,
+        0.5258
+      ],
+      "rerank_top5_runs": [
+        {
+          "hit": false,
+          "rank": null,
+          "relevant_found": 0,
+          "returned": 5,
+          "unrelated": 3
+        },
+        {
+          "hit": false,
+          "rank": null,
+          "relevant_found": 0,
+          "returned": 5,
+          "unrelated": 3
+        },
+        {
+          "hit": false,
+          "rank": null,
+          "relevant_found": 0,
+          "returned": 5,
+          "unrelated": 4
+        }
+      ]
+    },
+    {
+      "case": "deep_eb271fc4",
+      "category": "deep",
+      "n_relevant": 1,
+      "n_acceptable": 0,
+      "evidence_offsets": [
+        3390
+      ],
+      "vector_top5": {
+        "hit": true,
+        "rank": 2,
+        "relevant_found": 1,
+        "returned": 2,
+        "unrelated": 1
+      },
+      "vector_top15": {
+        "hit": true,
+        "rank": 2,
+        "relevant_found": 1,
+        "returned": 2,
+        "unrelated": 1
+      },
+      "vector_top5_similarities": [
+        0.4039,
+        0.3907
+      ],
+      "rerank_top5_runs": [
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 1,
+          "unrelated": 0
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 1,
+          "unrelated": 0
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 1,
+          "unrelated": 0
+        }
+      ]
+    },
+    {
+      "case": "deep_fd431064",
+      "category": "deep",
+      "n_relevant": 1,
+      "n_acceptable": 2,
+      "evidence_offsets": [
+        2281
+      ],
+      "vector_top5": {
+        "hit": true,
+        "rank": 1,
+        "relevant_found": 1,
+        "returned": 1,
+        "unrelated": 0
+      },
+      "vector_top15": {
+        "hit": true,
+        "rank": 1,
+        "relevant_found": 1,
+        "returned": 1,
+        "unrelated": 0
+      },
+      "vector_top5_similarities": [
+        0.7933
+      ],
+      "rerank_top5_runs": [
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 1,
+          "unrelated": 0
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 1,
+          "unrelated": 0
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 1,
+          "unrelated": 0
+        }
+      ]
+    },
+    {
+      "case": "deep_titled_29e60eab",
+      "category": "deep_titled",
+      "n_relevant": 1,
+      "n_acceptable": 0,
+      "evidence_offsets": [
+        1303
+      ],
+      "vector_top5": {
+        "hit": true,
+        "rank": 1,
+        "relevant_found": 1,
+        "returned": 1,
+        "unrelated": 0
+      },
+      "vector_top15": {
+        "hit": true,
+        "rank": 1,
+        "relevant_found": 1,
+        "returned": 1,
+        "unrelated": 0
+      },
+      "vector_top5_similarities": [
+        0.7075
+      ],
+      "rerank_top5_runs": [
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 1,
+          "unrelated": 0
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 1,
+          "unrelated": 0
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 1,
+          "unrelated": 0
+        }
+      ]
+    },
+    {
+      "case": "deep_titled_70afc4dd",
+      "category": "deep_titled",
+      "n_relevant": 1,
+      "n_acceptable": 0,
+      "evidence_offsets": [
+        1400
+      ],
+      "vector_top5": {
+        "hit": true,
+        "rank": 1,
+        "relevant_found": 1,
+        "returned": 1,
+        "unrelated": 0
+      },
+      "vector_top15": {
+        "hit": true,
+        "rank": 1,
+        "relevant_found": 1,
+        "returned": 1,
+        "unrelated": 0
+      },
+      "vector_top5_similarities": [
+        0.5712
+      ],
+      "rerank_top5_runs": [
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 1,
+          "unrelated": 0
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 1,
+          "unrelated": 0
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 1,
+          "unrelated": 0
+        }
+      ]
+    },
+    {
+      "case": "deep_titled_9c805cbb",
+      "category": "deep_titled",
+      "n_relevant": 1,
+      "n_acceptable": 8,
+      "evidence_offsets": [
+        4457
+      ],
+      "vector_top5": {
+        "hit": true,
+        "rank": 1,
+        "relevant_found": 1,
+        "returned": 2,
+        "unrelated": 0
+      },
+      "vector_top15": {
+        "hit": true,
+        "rank": 1,
+        "relevant_found": 1,
+        "returned": 2,
+        "unrelated": 0
+      },
+      "vector_top5_similarities": [
+        0.8179,
+        0.636
+      ],
+      "rerank_top5_runs": [
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 1,
+          "unrelated": 0
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 1,
+          "unrelated": 0
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 2,
+          "unrelated": 0
+        }
+      ]
+    },
+    {
+      "case": "essay_d0bf08eb",
+      "category": "essay",
+      "n_relevant": 3,
+      "n_acceptable": 37,
+      "evidence_offsets": [],
+      "vector_top5": {
+        "hit": false,
+        "rank": null,
+        "relevant_found": 0,
+        "returned": 5,
+        "unrelated": 2
+      },
+      "vector_top15": {
+        "hit": false,
+        "rank": null,
+        "relevant_found": 0,
+        "returned": 15,
+        "unrelated": 8
+      },
+      "vector_top5_similarities": [
+        0.7615,
+        0.6913,
+        0.6103,
+        0.6106,
+        0.5756
+      ],
+      "rerank_top5_runs": [
+        {
+          "hit": false,
+          "rank": null,
+          "relevant_found": 0,
+          "returned": 5,
+          "unrelated": 2
+        },
+        {
+          "hit": false,
+          "rank": null,
+          "relevant_found": 0,
+          "returned": 5,
+          "unrelated": 2
+        },
+        {
+          "hit": false,
+          "rank": null,
+          "relevant_found": 0,
+          "returned": 5,
+          "unrelated": 2
+        }
+      ]
+    },
+    {
+      "case": "no_match_0ed3967b",
+      "category": "no_match",
+      "n_relevant": 0,
+      "n_acceptable": 0,
+      "evidence_offsets": [],
+      "vector_top5": {
+        "hit": false,
+        "rank": null,
+        "relevant_found": 0,
+        "returned": 0,
+        "unrelated": 0
+      },
+      "vector_top15": {
+        "hit": false,
+        "rank": null,
+        "relevant_found": 0,
+        "returned": 0,
+        "unrelated": 0
+      },
+      "vector_top5_similarities": [],
+      "rerank_top5_runs": [
+        {
+          "hit": false,
+          "rank": null,
+          "relevant_found": 0,
+          "returned": 0,
+          "unrelated": 0
+        },
+        {
+          "hit": false,
+          "rank": null,
+          "relevant_found": 0,
+          "returned": 0,
+          "unrelated": 0
+        },
+        {
+          "hit": false,
+          "rank": null,
+          "relevant_found": 0,
+          "returned": 0,
+          "unrelated": 0
+        }
+      ]
+    },
+    {
+      "case": "no_match_2a50e00f",
+      "category": "no_match",
+      "n_relevant": 0,
+      "n_acceptable": 0,
+      "evidence_offsets": [],
+      "vector_top5": {
+        "hit": false,
+        "rank": null,
+        "relevant_found": 0,
+        "returned": 0,
+        "unrelated": 0
+      },
+      "vector_top15": {
+        "hit": false,
+        "rank": null,
+        "relevant_found": 0,
+        "returned": 0,
+        "unrelated": 0
+      },
+      "vector_top5_similarities": [],
+      "rerank_top5_runs": [
+        {
+          "hit": false,
+          "rank": null,
+          "relevant_found": 0,
+          "returned": 0,
+          "unrelated": 0
+        },
+        {
+          "hit": false,
+          "rank": null,
+          "relevant_found": 0,
+          "returned": 0,
+          "unrelated": 0
+        },
+        {
+          "hit": false,
+          "rank": null,
+          "relevant_found": 0,
+          "returned": 0,
+          "unrelated": 0
+        }
+      ]
+    },
+    {
+      "case": "no_match_34bd9064",
+      "category": "no_match",
+      "n_relevant": 0,
+      "n_acceptable": 0,
+      "evidence_offsets": [],
+      "vector_top5": {
+        "hit": false,
+        "rank": null,
+        "relevant_found": 0,
+        "returned": 0,
+        "unrelated": 0
+      },
+      "vector_top15": {
+        "hit": false,
+        "rank": null,
+        "relevant_found": 0,
+        "returned": 0,
+        "unrelated": 0
+      },
+      "vector_top5_similarities": [],
+      "rerank_top5_runs": [
+        {
+          "hit": false,
+          "rank": null,
+          "relevant_found": 0,
+          "returned": 0,
+          "unrelated": 0
+        },
+        {
+          "hit": false,
+          "rank": null,
+          "relevant_found": 0,
+          "returned": 0,
+          "unrelated": 0
+        },
+        {
+          "hit": false,
+          "rank": null,
+          "relevant_found": 0,
+          "returned": 0,
+          "unrelated": 0
+        }
+      ]
+    },
+    {
+      "case": "no_match_841630e3",
+      "category": "no_match",
+      "n_relevant": 0,
+      "n_acceptable": 0,
+      "evidence_offsets": [],
+      "vector_top5": {
+        "hit": false,
+        "rank": null,
+        "relevant_found": 0,
+        "returned": 0,
+        "unrelated": 0
+      },
+      "vector_top15": {
+        "hit": false,
+        "rank": null,
+        "relevant_found": 0,
+        "returned": 0,
+        "unrelated": 0
+      },
+      "vector_top5_similarities": [],
+      "rerank_top5_runs": [
+        {
+          "hit": false,
+          "rank": null,
+          "relevant_found": 0,
+          "returned": 0,
+          "unrelated": 0
+        },
+        {
+          "hit": false,
+          "rank": null,
+          "relevant_found": 0,
+          "returned": 0,
+          "unrelated": 0
+        },
+        {
+          "hit": false,
+          "rank": null,
+          "relevant_found": 0,
+          "returned": 0,
+          "unrelated": 0
+        }
+      ]
+    },
+    {
+      "case": "profile_2155a53b",
+      "category": "profile",
+      "n_relevant": 3,
+      "n_acceptable": 19,
+      "evidence_offsets": [],
+      "vector_top5": {
+        "hit": true,
+        "rank": 2,
+        "relevant_found": 1,
+        "returned": 5,
+        "unrelated": 4
+      },
+      "vector_top15": {
+        "hit": true,
+        "rank": 2,
+        "relevant_found": 1,
+        "returned": 15,
+        "unrelated": 14
+      },
+      "vector_top5_similarities": [
+        0.5406,
+        0.5123,
+        0.521,
+        0.5718,
+        0.5711
+      ],
+      "rerank_top5_runs": [
+        {
+          "hit": false,
+          "rank": null,
+          "relevant_found": 0,
+          "returned": 0,
+          "unrelated": 0
+        },
+        {
+          "hit": false,
+          "rank": null,
+          "relevant_found": 0,
+          "returned": 0,
+          "unrelated": 0
+        },
+        {
+          "hit": false,
+          "rank": null,
+          "relevant_found": 0,
+          "returned": 0,
+          "unrelated": 0
+        }
+      ]
+    },
+    {
+      "case": "profile_a1693479",
+      "category": "profile",
+      "n_relevant": 3,
+      "n_acceptable": 27,
+      "evidence_offsets": [],
+      "vector_top5": {
+        "hit": false,
+        "rank": null,
+        "relevant_found": 0,
+        "returned": 5,
+        "unrelated": 4
+      },
+      "vector_top15": {
+        "hit": false,
+        "rank": null,
+        "relevant_found": 0,
+        "returned": 15,
+        "unrelated": 13
+      },
+      "vector_top5_similarities": [
+        0.5644,
+        0.5379,
+        0.5646,
+        0.5407,
+        0.5471
+      ],
+      "rerank_top5_runs": [
+        {
+          "hit": false,
+          "rank": null,
+          "relevant_found": 0,
+          "returned": 4,
+          "unrelated": 4
+        },
+        {
+          "hit": false,
+          "rank": null,
+          "relevant_found": 0,
+          "returned": 4,
+          "unrelated": 3
+        },
+        {
+          "hit": false,
+          "rank": null,
+          "relevant_found": 0,
+          "returned": 4,
+          "unrelated": 4
+        }
+      ]
+    },
+    {
+      "case": "shallow_1937ae9d",
+      "category": "shallow",
+      "n_relevant": 2,
+      "n_acceptable": 0,
+      "evidence_offsets": [
+        71,
+        256
+      ],
+      "vector_top5": {
+        "hit": true,
+        "rank": 1,
+        "relevant_found": 2,
+        "returned": 2,
+        "unrelated": 0
+      },
+      "vector_top15": {
+        "hit": true,
+        "rank": 1,
+        "relevant_found": 2,
+        "returned": 2,
+        "unrelated": 0
+      },
+      "vector_top5_similarities": [
+        0.744,
+        0.6601
+      ],
+      "rerank_top5_runs": [
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 2,
+          "returned": 2,
+          "unrelated": 0
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 2,
+          "returned": 2,
+          "unrelated": 0
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 2,
+          "returned": 2,
+          "unrelated": 0
+        }
+      ]
+    },
+    {
+      "case": "shallow_1cd5e549",
+      "category": "shallow",
+      "n_relevant": 1,
+      "n_acceptable": 0,
+      "evidence_offsets": [
+        44
+      ],
+      "vector_top5": {
+        "hit": true,
+        "rank": 1,
+        "relevant_found": 1,
+        "returned": 2,
+        "unrelated": 1
+      },
+      "vector_top15": {
+        "hit": true,
+        "rank": 1,
+        "relevant_found": 1,
+        "returned": 2,
+        "unrelated": 1
+      },
+      "vector_top5_similarities": [
+        0.6764,
+        0.4954
+      ],
+      "rerank_top5_runs": [
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 1,
+          "unrelated": 0
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 1,
+          "unrelated": 0
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 1,
+          "unrelated": 0
+        }
+      ]
+    },
+    {
+      "case": "shallow_6e031d04",
+      "category": "shallow",
+      "n_relevant": 1,
+      "n_acceptable": 0,
+      "evidence_offsets": [
+        32
+      ],
+      "vector_top5": {
+        "hit": true,
+        "rank": 1,
+        "relevant_found": 1,
+        "returned": 2,
+        "unrelated": 1
+      },
+      "vector_top15": {
+        "hit": true,
+        "rank": 1,
+        "relevant_found": 1,
+        "returned": 2,
+        "unrelated": 1
+      },
+      "vector_top5_similarities": [
+        0.5932,
+        0.5069
+      ],
+      "rerank_top5_runs": [
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 1,
+          "unrelated": 0
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 1,
+          "unrelated": 0
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 1,
+          "unrelated": 0
+        }
+      ]
+    },
+    {
+      "case": "shallow_7e414087",
+      "category": "shallow",
+      "n_relevant": 1,
+      "n_acceptable": 1,
+      "evidence_offsets": [
+        173
+      ],
+      "vector_top5": {
+        "hit": true,
+        "rank": 1,
+        "relevant_found": 1,
+        "returned": 1,
+        "unrelated": 0
+      },
+      "vector_top15": {
+        "hit": true,
+        "rank": 1,
+        "relevant_found": 1,
+        "returned": 1,
+        "unrelated": 0
+      },
+      "vector_top5_similarities": [
+        0.6769
+      ],
+      "rerank_top5_runs": [
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 1,
+          "unrelated": 0
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 1,
+          "unrelated": 0
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 1,
+          "unrelated": 0
+        }
+      ]
+    },
+    {
+      "case": "shallow_b76d8c7c",
+      "category": "shallow",
+      "n_relevant": 1,
+      "n_acceptable": 0,
+      "evidence_offsets": [
+        13
+      ],
+      "vector_top5": {
+        "hit": true,
+        "rank": 1,
+        "relevant_found": 1,
+        "returned": 5,
+        "unrelated": 4
+      },
+      "vector_top15": {
+        "hit": true,
+        "rank": 1,
+        "relevant_found": 1,
+        "returned": 5,
+        "unrelated": 4
+      },
+      "vector_top5_similarities": [
+        0.7453,
+        0.5816,
+        0.5514,
+        0.5188,
+        0.4959
+      ],
+      "rerank_top5_runs": [
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 2,
+          "unrelated": 1
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 2,
+          "unrelated": 1
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 2,
+          "unrelated": 1
+        }
+      ]
+    },
+    {
+      "case": "shallow_eb5337a2",
+      "category": "shallow",
+      "n_relevant": 1,
+      "n_acceptable": 2,
+      "evidence_offsets": [
+        216
+      ],
+      "vector_top5": {
+        "hit": true,
+        "rank": 1,
+        "relevant_found": 1,
+        "returned": 1,
+        "unrelated": 0
+      },
+      "vector_top15": {
+        "hit": true,
+        "rank": 1,
+        "relevant_found": 1,
+        "returned": 1,
+        "unrelated": 0
+      },
+      "vector_top5_similarities": [
+        0.728
+      ],
+      "rerank_top5_runs": [
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 1,
+          "unrelated": 0
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 1,
+          "unrelated": 0
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 1,
+          "unrelated": 0
+        }
+      ]
+    },
+    {
+      "case": "shallow_f70e76cb",
+      "category": "shallow",
+      "n_relevant": 1,
+      "n_acceptable": 0,
+      "evidence_offsets": [
+        7
+      ],
+      "vector_top5": {
+        "hit": true,
+        "rank": 1,
+        "relevant_found": 1,
+        "returned": 1,
+        "unrelated": 0
+      },
+      "vector_top15": {
+        "hit": true,
+        "rank": 1,
+        "relevant_found": 1,
+        "returned": 1,
+        "unrelated": 0
+      },
+      "vector_top5_similarities": [
+        0.7823
+      ],
+      "rerank_top5_runs": [
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 1,
+          "unrelated": 0
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 1,
+          "unrelated": 0
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 1,
+          "unrelated": 0
+        }
+      ]
+    },
+    {
+      "case": "vague_0ee570b6",
+      "category": "vague",
+      "n_relevant": 1,
+      "n_acceptable": 0,
+      "evidence_offsets": [
+        32
+      ],
+      "vector_top5": {
+        "hit": true,
+        "rank": 1,
+        "relevant_found": 1,
+        "returned": 3,
+        "unrelated": 2
+      },
+      "vector_top15": {
+        "hit": true,
+        "rank": 1,
+        "relevant_found": 1,
+        "returned": 3,
+        "unrelated": 2
+      },
+      "vector_top5_similarities": [
+        0.6012,
+        0.3693,
+        0.3632
+      ],
+      "rerank_top5_runs": [
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 1,
+          "unrelated": 0
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 1,
+          "unrelated": 0
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 1,
+          "unrelated": 0
+        }
+      ]
+    },
+    {
+      "case": "vague_7d63ec76",
+      "category": "vague",
+      "n_relevant": 4,
+      "n_acceptable": 7,
+      "evidence_offsets": [],
+      "vector_top5": {
+        "hit": true,
+        "rank": 1,
+        "relevant_found": 1,
+        "returned": 5,
+        "unrelated": 4
+      },
+      "vector_top15": {
+        "hit": true,
+        "rank": 1,
+        "relevant_found": 1,
+        "returned": 15,
+        "unrelated": 12
+      },
+      "vector_top5_similarities": [
+        0.6533,
+        0.6118,
+        0.6018,
+        0.6025,
+        0.5882
+      ],
+      "rerank_top5_runs": [
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 4,
+          "unrelated": 3
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 4,
+          "unrelated": 3
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 1,
+          "returned": 4,
+          "unrelated": 3
+        }
+      ]
+    },
+    {
+      "case": "vague_da70de99",
+      "category": "vague",
+      "n_relevant": 3,
+      "n_acceptable": 10,
+      "evidence_offsets": [],
+      "vector_top5": {
+        "hit": true,
+        "rank": 1,
+        "relevant_found": 2,
+        "returned": 3,
+        "unrelated": 1
+      },
+      "vector_top15": {
+        "hit": true,
+        "rank": 1,
+        "relevant_found": 2,
+        "returned": 3,
+        "unrelated": 1
+      },
+      "vector_top5_similarities": [
+        0.7115,
+        0.5395,
+        0.4692
+      ],
+      "rerank_top5_runs": [
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 2,
+          "returned": 2,
+          "unrelated": 0
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 2,
+          "returned": 2,
+          "unrelated": 0
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 2,
+          "returned": 2,
+          "unrelated": 0
+        }
+      ]
+    },
+    {
+      "case": "vague_e53173a3",
+      "category": "vague",
+      "n_relevant": 2,
+      "n_acceptable": 5,
+      "evidence_offsets": [],
+      "vector_top5": {
+        "hit": true,
+        "rank": 1,
+        "relevant_found": 2,
+        "returned": 5,
+        "unrelated": 2
+      },
+      "vector_top15": {
+        "hit": true,
+        "rank": 1,
+        "relevant_found": 2,
+        "returned": 8,
+        "unrelated": 5
+      },
+      "vector_top5_similarities": [
+        0.7975,
+        0.6743,
+        0.6739,
+        0.6724,
+        0.6683
+      ],
+      "rerank_top5_runs": [
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 2,
+          "returned": 3,
+          "unrelated": 1
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 2,
+          "returned": 4,
+          "unrelated": 1
+        },
+        {
+          "hit": true,
+          "rank": 1,
+          "relevant_found": 2,
+          "returned": 4,
+          "unrelated": 1
+        }
+      ]
+    }
+  ]
+}

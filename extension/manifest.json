@@ -1,11 +1,13 @@
 {
   "manifest_version": 3,
   "name": "Mind World",
-  "version": "1.5.0",
-  "description": "Improve your AI prompts as you type. Works on Claude, ChatGPT, Gemini, Perplexity, and any AI chat site with Universal Mode.",
+  "version": "1.6.0",
+  "description": "Improve your AI prompts as you type. Your chat memory stays on your device. Works on Claude, ChatGPT, Gemini, Perplexity, and any AI chat site with Universal Mode.",
   "permissions": [
     "storage",
-    "scripting"
+    "unlimitedStorage",
+    "scripting",
+    "offscreen"
   ],
   "host_permissions": [
     "https://claude.ai/*",
@@ -13,7 +15,8 @@
     "https://gemini.google.com/*",
     "https://perplexity.ai/*",
     "https://mind-world.app/*",
-    "https://mind-world-app-mv4yv.ondigitalocean.app/*"
+    "https://mind-world-app-mv4yv.ondigitalocean.app/*",
+    "https://api.anthropic.com/*"
   ],
   "optional_host_permissions": [
     "https://*/*",
@@ -56,6 +59,6 @@
     }
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://mind-world-app-mv4yv.ondigitalocean.app https://mind-world.app;"
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https://mind-world-app-mv4yv.ondigitalocean.app https://mind-world.app https://api.anthropic.com;"
   }
 }

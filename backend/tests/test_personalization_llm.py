@@ -59,3 +59,41 @@ def test_parse_json_text_ignores_trailing_explanation():
 
 def test_parse_json_text_handles_fenced_json():
     assert _parse_json_text('```json\n{"facts": ["x"]}\n```') == {"facts": ["x"]}
+
+
+_CANDIDATES = [{"id": i, "title": i} for i in ("a", "b", "c", "d", "e", "f")]
+
+
+def _rerank_with_reply(monkeypatch, reply):
+    from services import personalization_llm
+    monkeypatch.setattr(personalization_llm, "_haiku", lambda *a, **k: reply)
+    return [c["id"] for c in personalization_llm.rerank_conversations_llm("draft", _CANDIDATES, "key", 5)]
+
+
+def test_rerank_does_not_pad_with_unchosen_candidates(monkeypatch):
+    assert _rerank_with_reply(monkeypatch, '{"ranked_ids": ["c"]}') == ["c"]
+
+
+def test_rerank_can_return_nothing(monkeypatch):
+    assert _rerank_with_reply(monkeypatch, '{"ranked_ids": []}') == []
+
+
+def test_rewrite_about_me_queries(monkeypatch):
+    from services import personalization_llm
+    monkeypatch.setattr(personalization_llm, "_haiku",
+                        lambda *a, **k: '{"queries": ["my gpa and grades", "my career goals", "", "x"]}')
+    out = personalization_llm.rewrite_about_me_queries_llm("Should I pursue a masters?", "key", max_queries=3)
+    assert out == ["my gpa and grades", "my career goals", "x"]
+
+
+def test_rewrite_about_me_queries_without_key_or_on_failure(monkeypatch):
+    from services import personalization_llm
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    assert personalization_llm.rewrite_about_me_queries_llm("Should I pursue a masters?", None) == []
+    monkeypatch.setattr(personalization_llm, "_haiku", lambda *a, **k: "not json")
+    assert personalization_llm.rewrite_about_me_queries_llm("Should I pursue a masters?", "key") == []
+
+
+def test_rerank_falls_back_when_reply_is_unusable(monkeypatch):
+    assert _rerank_with_reply(monkeypatch, "sorry, I can't") == ["a", "b", "c", "d", "e"]
+    assert _rerank_with_reply(monkeypatch, '{"ranked_ids": ["zzz"]}') == ["a", "b", "c", "d", "e"]

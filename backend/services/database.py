@@ -1,16 +1,21 @@
-from supabase import create_client, Client
+from supabase import create_client, Client, ClientOptions
 import os
 import numpy as np
 from datetime import datetime, timezone
 from typing import Any
 
 CONSENT_VERSION = "2026-06-2"
+# Memory searches normally take under a second. Past this, Improve is better
+# off with the fallback search than waiting for the database statement timeout.
+SEARCH_TIMEOUT_SECONDS = 4
 
-def get_supabase() -> Client:
+def get_supabase(timeout: float | None = None) -> Client:
     url = os.getenv("SUPABASE_URL")
     key = os.getenv("SUPABASE_SERVICE_KEY")
     if not url or not key:
         raise ValueError("Supabase credentials not configured")
+    if timeout is not None:
+        return create_client(url, key, options=ClientOptions(postgrest_client_timeout=timeout))
     return create_client(url, key)
 
 def get_or_create_user(email: str) -> str:
@@ -200,10 +205,31 @@ def search_chunks(
     limit: int = 60,
 ) -> list[dict]:
     """Best-matching chunks for this user, each with its text and conversation metadata."""
-    supabase = get_supabase()
+    supabase = get_supabase(timeout=SEARCH_TIMEOUT_SECONDS)
     result = supabase.rpc(
         "match_chunks",
         {
+            "query_embedding": query_embedding.tolist(),
+            "match_user_id": user_id,
+            "match_count": limit,
+        },
+    ).execute()
+    return result.data or []
+
+
+def search_keyword_chunks(
+    user_id: str,
+    query_text: str,
+    query_embedding: np.ndarray,
+    limit: int = 30,
+) -> list[dict]:
+    """Chunks containing the query's distinctive words, scored 0..1 by
+    keyword_score, each with its vector similarity to the query."""
+    supabase = get_supabase(timeout=SEARCH_TIMEOUT_SECONDS)
+    result = supabase.rpc(
+        "match_keyword_chunks",
+        {
+            "query_text": query_text,
             "query_embedding": query_embedding.tolist(),
             "match_user_id": user_id,
             "match_count": limit,
@@ -228,12 +254,14 @@ CHUNK_INSERT_BATCH = 100
 def replace_conversation_chunks(
     conversation_id: str,
     user_id: str,
+    full_text: str,
     spans: list[tuple[int, int]],
     embeddings,
     digest: str,
 ) -> None:
     """Swap a conversation's chunks for a freshly computed set and record the
-    full_text hash they were built from."""
+    full_text hash they were built from. Each row stores its own slice of
+    full_text so searches never read the whole conversation."""
     supabase = get_supabase()
     supabase.table("conversation_chunks")\
         .delete()\
@@ -247,6 +275,7 @@ def replace_conversation_chunks(
             "chunk_index": i,
             "start_char": s,
             "end_char": e,
+            "chunk_text": full_text[s:e],
             "embedding": embeddings[i].tolist(),
         }
         for i, (s, e) in enumerate(spans)

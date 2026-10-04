@@ -313,9 +313,9 @@ def pick_relevant_profile_facts_llm(
     if not key or not query.strip():
         return []
 
-    system = """Pick personalization facts relevant to the user's current draft.
-Return ONLY JSON: {"facts": ["fact 1", "fact 2"]}
-Max 6 facts. Use only information from the profile. Never invent details.
+    system = f"""Pick personalization facts relevant to the user's current draft.
+Return ONLY JSON: {{"facts": ["fact 1", "fact 2"]}}
+Max {max_facts} facts. Use only information from the profile. Never invent details.
 Prefer user-verified anchors, active projects, constraints, entities, and preferences."""
 
     user = f"USER DRAFT:\n{query[:1500]}\n\nPROFILE:\n{json.dumps(profile, ensure_ascii=False)[:4000]}"
@@ -328,6 +328,37 @@ Prefer user-verified anchors, active projects, constraints, entities, and prefer
             return [str(f).strip() for f in facts if str(f).strip()][:max_facts]
     except Exception as exc:
         print(f"[personalization_llm] pick_relevant_profile_facts_llm failed: {exc}")
+    return []
+
+
+def rewrite_about_me_queries_llm(
+    draft: str,
+    api_key: str | None = None,
+    max_queries: int = 4,
+) -> list[str]:
+    """Search queries for the personal facts an "about me" draft depends on.
+    "Should I pursue a masters?" shares no words with the chats that hold the
+    user's GPA, field, or career plans; these queries are phrased to find them.
+    Returns [] without a key or on failure (callers still search the draft)."""
+    key = _resolve_api_key(api_key)
+    if not key or not (draft or "").strip():
+        return []
+
+    system = f"""The user is drafting a prompt about themselves. Their past AI chats hold the
+personal facts needed to answer it well. Write up to {max_queries} short search queries
+(3-8 words each) that would find those chats, e.g. their studies, grades, work
+experience, projects, skills, goals, finances, or location — whichever matter for
+this draft. Phrase them the way the user would have written about it.
+Return ONLY JSON: {{"queries": ["...", "..."]}}"""
+
+    try:
+        raw = _haiku(key, system, f"DRAFT:\n{draft[:1500]}", max_tokens=200)
+        payload = _parse_json_text(raw)
+        queries = payload.get("queries") if isinstance(payload, dict) else payload
+        if isinstance(queries, list):
+            return [str(q).strip()[:200] for q in queries if str(q).strip()][:max_queries]
+    except Exception as exc:
+        print(f"[personalization_llm] rewrite_about_me_queries_llm failed: {exc}")
     return []
 
 
@@ -356,26 +387,28 @@ def rerank_conversations_llm(
     if not compact:
         return candidates[:limit]
 
-    system = f"""Rank past conversations by relevance to the user's current draft.
+    system = f"""Pick the past conversations that would genuinely help with the user's current draft.
 Return ONLY JSON: {{"ranked_ids": ["id1", "id2", ...]}}
-Include at most {limit} ids, best first. Use only ids from the list."""
+Include at most {limit} ids, best first. Use only ids from the list.
+Leave out conversations that merely share a word or broad topic. Returning fewer
+ids, or an empty list, is correct when few or none are relevant."""
 
     user = f"DRAFT:\n{query[:1500]}\n\nCANDIDATES:\n{json.dumps(compact, ensure_ascii=False)}"
 
     try:
         raw = _haiku(key, system, user, max_tokens=200)
         payload = _parse_json_text(raw)
-        ranked_ids = payload.get("ranked_ids") if isinstance(payload, dict) else []
+        ranked_ids = payload.get("ranked_ids") if isinstance(payload, dict) else None
         if not isinstance(ranked_ids, list):
             return candidates[:limit]
+        # No padding: the model leaving candidates out is how irrelevant ones get dropped.
         by_id = {c.get("id"): c for c in candidates}
-        reranked = [by_id[i] for i in ranked_ids if i in by_id]
-        seen = {c.get("id") for c in reranked}
-        for c in candidates:
-            if c.get("id") not in seen:
-                reranked.append(c)
-            if len(reranked) >= limit:
-                break
+        reranked = []
+        for i in ranked_ids:
+            if i in by_id and by_id[i] not in reranked:
+                reranked.append(by_id[i])
+        if ranked_ids and not reranked:
+            return candidates[:limit]
         return reranked[:limit]
     except Exception as exc:
         print(f"[personalization_llm] rerank_conversations_llm failed: {exc}")

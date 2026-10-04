@@ -157,6 +157,7 @@ def _warm_embedding_model():
 # ---------------------------------------------------------------------------
 FREE_TIER_LIMIT = 25  # Improve calls included for free (server-key users)
 COMPARE_FREE_LIMIT = 5  # "See the difference" demo calls included for free
+PROFILE_ROUTE_FACTS = 10  # profile facts for "about me" drafts (vs 6 normally)
 
 # Secret header sent by the extension — rejects old/unauthorised clients
 MW_CLIENT_SECRET = "mwext-f8c3a91d-v3"
@@ -414,11 +415,14 @@ async def search(request: SearchRequest):
         query_embedding = get_embedding_model().encode([request.query])[0]
 
         profile = get_personal_profile(user_id)
+        retrieval_stats: dict = {}
         if profile.get("is_profile_enabled"):
             candidates = retrieve_candidates(
                 user_id,
                 query_embedding,
                 max(15, request.limit * 4),
+                query_text=request.query,
+                stats=retrieval_stats,
             )
             results = hybrid_score_conversations(
                 candidates,
@@ -426,11 +430,14 @@ async def search(request: SearchRequest):
                 profile.get("profile_data", {}),
             )[:request.limit]
         else:
-            results = retrieve_candidates(user_id, query_embedding, request.limit)
+            results = retrieve_candidates(
+                user_id, query_embedding, request.limit, query_text=request.query, stats=retrieval_stats,
+            )
 
         for r in results:
             r.pop("matched", None)
-        return {"results": results, "query": request.query}
+        retrieval = {k: retrieval_stats.get(k) for k in ("search", "fallback", "keywords", "ms")}
+        return {"results": results, "query": request.query, "retrieval": retrieval}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -519,7 +526,7 @@ async def engineer_prompt(http_req: Request, request: EngineerPromptRequest):
             get_personal_profile,
             get_prompt_template_by_name,
         )
-        from services.retrieval import build_excerpt, retrieve_candidates
+        from services.retrieval import build_excerpt, memory_route, retrieve_about_me, retrieve_candidates
 
         api_key = request.api_key or os.getenv("ANTHROPIC_API_KEY")
         if not api_key:
@@ -575,6 +582,8 @@ async def engineer_prompt(http_req: Request, request: EngineerPromptRequest):
         _prefetched_profile = None
         _prefetched_facts = None
         _candidate_count = 0
+        _memory_route = "standard"
+        _retrieval_stats: dict = {}
 
         if skip_memory:
             selected = []
@@ -585,28 +594,32 @@ async def engineer_prompt(http_req: Request, request: EngineerPromptRequest):
                 .eq("user_id", user_id)\
                 .in_("id", request.conversation_ids)\
                 .execute().data or []
-
-            if not selected:
-                from services.database import get_supabase
-                supabase = get_supabase()
-                result = supabase.table("knowledge_nodes")\
-                    .select("id, title, full_text, preview, created_at, num_messages, source_app")\
-                    .in_("id", request.conversation_ids)\
-                    .execute()
-                selected = result.data or []
         else:
             embedding = get_embedding_model().encode([request.message])[0]
             profile = get_personal_profile(user_id)
             profile_data = profile.get("profile_data") or {}
+            _memory_route = memory_route(request.message, profile)
+            pool_size = 20 if profile.get("is_profile_enabled") else 15
+            if _memory_route == "rewrite":
+                candidates = retrieve_about_me(
+                    user_id, request.message, embedding, pool_size, api_key, stats=_retrieval_stats,
+                )
+            else:
+                candidates = retrieve_candidates(
+                    user_id, embedding, pool_size, query_text=request.message, stats=_retrieval_stats,
+                )
+            from services.database import log_growth_event
+            if _retrieval_stats.get("fallback") in ("error", "no_chunks"):
+                log_growth_event(user_id, f"retrieval_fallback_{_retrieval_stats['fallback']}",
+                                 platform=request.platform)
+            if _retrieval_stats.get("keywords") == "failed":
+                log_growth_event(user_id, "retrieval_keyword_failed", platform=request.platform)
             if profile.get("is_profile_enabled"):
-                candidates = retrieve_candidates(user_id, embedding, 20)
                 candidates = hybrid_score_conversations(
                     candidates,
                     request.message,
                     profile_data,
                 )[:15]
-            else:
-                candidates = retrieve_candidates(user_id, embedding, 15)
             _candidate_count = len(candidates or [])
             # Rerank and profile-fact picking are independent LLM calls —
             # run them concurrently instead of back-to-back.
@@ -630,7 +643,7 @@ async def engineer_prompt(http_req: Request, request: EngineerPromptRequest):
                         profile_data,
                         request.message,
                         api_key,
-                        6,
+                        PROFILE_ROUTE_FACTS if _memory_route == "profile" else 6,
                     )
                 selected = _rerank_future.result()
                 if _facts_future is not None:
@@ -644,6 +657,7 @@ async def engineer_prompt(http_req: Request, request: EngineerPromptRequest):
             if ids:
                 detail_result = supabase.table("knowledge_nodes")\
                     .select("id, full_text, preview, num_messages, source_app")\
+                    .eq("user_id", user_id)\
                     .in_("id", ids)\
                     .execute()
                 detail_map = {d["id"]: d for d in (detail_result.data or [])}
@@ -839,6 +853,10 @@ Output rules:
                 memory["status"] = "not_indexed"
             else:
                 memory["status"] = "no_match"
+        if _retrieval_stats:
+            memory["retrieval"] = {
+                k: _retrieval_stats.get(k) for k in ("search", "fallback", "keywords", "ms")
+            }
 
         return {
             "engineered_prompt": formatted,

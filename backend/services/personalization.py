@@ -293,6 +293,20 @@ def build_inferred_summary(profile_data: dict[str, Any] | None) -> str:
     return f"{labels[0]}, {labels[1]}, and {labels[2]}"
 
 
+def profile_has_personal_facts(profile_data: dict[str, Any] | None) -> bool:
+    """Whether the profile says anything concrete about the person — what an
+    "about me" draft needs. Topic-frequency domains alone don't count."""
+    data = normalize_profile_data(profile_data)
+    if any(isinstance(data.get(k), str) and data[k].strip() for k in ("background", "situation", "goals")):
+        return True
+    if str(data["confirmed_anchors"].get("summary") or "").strip():
+        return True
+    if str(data.get("llm_synthesized_summary") or "").strip():
+        return True
+    entities = _as_mapping(data.get("entities"))
+    return bool(data["active_projects"] or any(_as_list(v) for v in entities.values()))
+
+
 def has_enough_history(conversation_count: int, profile_data: dict[str, Any] | None) -> bool:
     return (
         int(conversation_count or 0) >= MIN_HISTORY_CONVERSATIONS
@@ -570,7 +584,8 @@ def hybrid_score_conversations(
     domain_boost = max(0.8, min(1.2, float(adaptive_weights.get("retrieval_domain_boost", 1.0) or 1.0)))
 
     for conv in conversations:
-        sim = float(conv.get("similarity", 0.0) or 0.0)
+        # Keyword-only matches have no vector similarity; their keyword score is on the same 0..1 scale.
+        sim = float(conv.get("similarity") or conv.get("keyword_score") or 0.0)
         created_at = _parse_ts(conv.get("created_at"))
         age_days = (now - created_at).total_seconds() / 86400.0 if created_at else 365.0
         recency = math.exp(-age_days / 45.0)
