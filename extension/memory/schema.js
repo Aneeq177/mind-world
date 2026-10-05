@@ -70,8 +70,45 @@ function mwConversationFromQueueItem(item) {
   }
 }
 
+/* full_text back into the "[role] content" messages it was built from;
+ * joining them again with "\n\n" reproduces full_text. */
+function mwMessagesFromFullText(fullText) {
+  const text = String(fullText || '')
+  if (!text) return []
+  return text.split(/\n\n(?=\[[^\]\n]{1,40}\] )/).map((part) => {
+    const m = /^\[([^\]\n]{1,40})\] ([\s\S]*)$/.exec(part)
+    return m ? { role: m[1], content: m[2] } : { role: 'unknown', content: part }
+  })
+}
+
+/* A stored Conversation as an auto-save queue item (for /save_conversation). */
+function mwQueueItemFromConversation(conv) {
+  return {
+    id: conv.id,
+    title: conv.title || 'Untitled',
+    platform: conv.source_app || '',
+    source: conv.source_app || '',
+    saved_at: conv.updated_at || conv.created_at || new Date().toISOString(),
+    messages: mwMessagesFromFullText(conv.full_text)
+  }
+}
+
+/* Conversations as a Claude-format export, which /process accepts. */
+function mwClaudeExportFromConversations(conversations) {
+  return conversations.map((conv) => ({
+    uuid: conv.id,
+    name: conv.title || 'Untitled',
+    created_at: conv.created_at || '',
+    updated_at: conv.updated_at || conv.created_at || '',
+    chat_messages: mwMessagesFromFullText(conv.full_text).map((m) => ({ sender: m.role, text: m.content }))
+  }))
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    mwMessagesFromFullText,
+    mwQueueItemFromConversation,
+    mwClaudeExportFromConversations,
     MW_STORAGE_MODE_KEY,
     MW_STORAGE_MODES,
     MW_DB_NAME,

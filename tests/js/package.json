@@ -1,0 +1,18 @@
+{
+  "name": "mind-world-extension-tests",
+  "private": true,
+  "type": "module",
+  "description": "Node tests for the extension's on-device memory code. Not shipped with the extension.",
+  "scripts": {
+    "test": "node --test",
+    "parity:embed": "node embed_parity.mjs",
+    "parity:retrieval": "node retrieval_parity.mjs",
+    "parity:improve": "node improve_parity.mjs",
+    "check:utf8": "node check_utf8.mjs"
+  },
+  "devDependencies": {
+    "@huggingface/transformers": "3.8.1",
+    "fake-indexeddb": "^6.2.5",
+    "jszip": "^3.10.1"
+  }
+}

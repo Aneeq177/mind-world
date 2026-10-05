@@ -4,7 +4,7 @@ import numpy as np
 from datetime import datetime, timezone
 from typing import Any
 
-CONSENT_VERSION = "2026-06-2"
+CONSENT_VERSION = "2026-10-1"
 # Memory searches normally take under a second. Past this, Improve is better
 # off with the fallback search than waiting for the database statement timeout.
 SEARCH_TIMEOUT_SECONDS = 4
@@ -292,15 +292,25 @@ def replace_conversation_chunks(
         .execute()
 
 
+CONVERSATION_PAGE_SIZE = 1000  # PostgREST's default max rows per response
+
+
 def get_user_conversations(user_id: str) -> list[dict]:
     supabase = get_supabase()
-
-    result = supabase.table("knowledge_nodes")\
-        .select("*")\
-        .eq("user_id", user_id)\
-        .execute()
-
-    return result.data
+    rows: list[dict] = []
+    start = 0
+    while True:
+        result = supabase.table("knowledge_nodes")\
+            .select("*")\
+            .eq("user_id", user_id)\
+            .order("id")\
+            .range(start, start + CONVERSATION_PAGE_SIZE - 1)\
+            .execute()
+        page = result.data or []
+        rows.extend(page)
+        if len(page) < CONVERSATION_PAGE_SIZE:
+            return rows
+        start += CONVERSATION_PAGE_SIZE
 
 def get_personal_profile(user_id: str) -> dict:
     from services.personalization import normalize_profile_data
@@ -701,6 +711,20 @@ def export_user_data(user_id: str, email: str) -> dict:
             "auth tokens, or raw prompt_feedback database rows."
         ),
     }
+
+
+def clear_user_memory(user_id: str) -> dict:
+    """Delete stored conversations, vectors, profile, and feedback; keep the account."""
+    supabase = get_supabase()
+    conv_result = supabase.table("knowledge_nodes").select("id").eq("user_id", user_id).execute()
+    conversation_count = len(conv_result.data or [])
+
+    _delete_chunks(supabase, "user_id", user_id)
+    supabase.table("embeddings").delete().eq("user_id", user_id).execute()
+    supabase.table("knowledge_nodes").delete().eq("user_id", user_id).execute()
+    supabase.table("prompt_feedback").delete().eq("user_id", user_id).execute()
+    supabase.table("personal_profiles").delete().eq("user_id", user_id).execute()
+    return {"cleared": True, "conversation_count": conversation_count}
 
 
 def delete_user_data(user_id: str) -> dict:

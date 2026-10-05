@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Mind World on-device perf</title>
+  <style>
+    body { font: 14px/1.5 system-ui, sans-serif; background: #0a0a0f; color: #ddd; padding: 24px; }
+    pre { background: #15151d; padding: 12px; border-radius: 8px; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h1>On-device memory perf</h1>
+  <p>Serve the repo root (<code>python -m http.server 8765</code>) and open
+    <code>/tests/js/perf.html</code>. Add <code>?device=webgpu</code> to try WebGPU.
+    Throttle the CPU in DevTools for the low-end profile.</p>
+  <pre id="out">running…</pre>
+  <script src="../../extension/memory/schema.js"></script>
+  <script src="../../extension/memory/chunker.js"></script>
+  <script src="../../extension/memory/retrieval.js"></script>
+  <script src="../../extension/memory/vector-index.js"></script>
+  <script type="module" src="perf.mjs"></script>
+</body>
+</html>

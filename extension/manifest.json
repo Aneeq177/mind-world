@@ -58,6 +58,12 @@
       "description": "Improve current prompt with Mind World"
     }
   },
+  "cross_origin_embedder_policy": {
+    "value": "require-corp"
+  },
+  "cross_origin_opener_policy": {
+    "value": "same-origin"
+  },
   "content_security_policy": {
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https://mind-world-app-mv4yv.ondigitalocean.app https://mind-world.app https://api.anthropic.com;"
   }

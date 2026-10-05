@@ -35,22 +35,38 @@
       </div>
       <button type="button" id="toggle-auth-mode" class="link-btn">New here? Create an account</button>
       <div id="login-error"></div>
+      <div id="login-storage-choice" class="storage-choice">
+        <div class="storage-choice-title">Where should your memory live?</div>
+        <label class="storage-option">
+          <input type="radio" name="login-storage-mode" value="local" checked>
+          <span>
+            <span class="storage-option-name">On this device <span class="storage-recommended">Recommended</span></span>
+            <span class="storage-option-hint">Your saved chats and profile never leave this browser. Improve sends only the excerpts that match each draft, and nothing is kept.</span>
+          </span>
+        </label>
+        <label class="storage-option">
+          <input type="radio" name="login-storage-mode" value="cloud">
+          <span>
+            <span class="storage-option-name">Sync across devices</span>
+            <span class="storage-option-hint">Stored on Mind World servers so your memory follows you to other browsers and the memory map.</span>
+          </span>
+        </label>
+      </div>
       <label id="login-consent" class="login-consent">
         <input type="checkbox" id="consent-checkbox" />
         <span>
-          I agree to Mind World processing my data as described in the{' '}
+          I agree to Mind World processing my data as described in the
           <a href="https://mind-world.app/privacy" target="_blank">Privacy Policy</a>
-          {' '}and{' '}
+          and
           <a href="https://mind-world.app/terms" target="_blank">Terms of Service</a>, including:
           <ul class="consent-list">
             <li>Using my email to identify my account</li>
-            <li>Saving AI conversations (via upload or auto-save when enabled)</li>
-            <li>Creating semantic embeddings for search and memory</li>
-            <li>Sending chat draft text to our servers and Anthropic for Improve and search (processed per request, not stored per keystroke)</li>
-            <li>Storing Improve feedback metrics in <code>prompt_feedback</code> (edit distance, hashes, and goal text up to 500 characters)</li>
+            <li><strong>On this device</strong> (default): saved conversations, their search index, my profile, and Improve feedback stay in this browser. For each Improve, my draft and the few excerpts that match it are sent to Mind World and Anthropic to write the prompt, and are not stored</li>
+            <li><strong>Sync across devices</strong> (if I choose it): conversations, embeddings, my profile, and Improve feedback metrics (edit distance, hashes, and goal text up to 500 characters) are stored on Mind World servers</li>
+            <li>Usage counts for my Improve quota, kept on Mind World servers in both modes</li>
             <li>Optional personal profile and inference from my conversations when profile is enabled</li>
             <li>Optional Universal Mode that runs Improve and templates on additional AI chat sites I choose to enable</li>
-            <li>Optional Anthropic API key stored locally in my browser if I provide one</li>
+            <li>Optional Anthropic API key stored in my browser if I provide one; with on-device memory, Improve then calls Anthropic directly</li>
           </ul>
         </span>
       </label>
@@ -112,6 +128,29 @@
         <div id="user-email"></div>
       </div>
 
+      <!-- Existing cloud users: one-time offer to move memory on-device -->
+      <div id="local-offer-banner" class="storage-offer" style="display:none">
+        <div class="storage-offer-title">Keep your memory on this device</div>
+        <div id="local-offer-text" class="storage-offer-text">Move your saved chats into this browser. Improve keeps working the same way, and Mind World stops storing your conversations.</div>
+        <label class="storage-clear-cloud"><input type="checkbox" id="offer-clear-cloud" checked> Delete the cloud copy after moving</label>
+        <div class="storage-offer-actions">
+          <button type="button" id="local-offer-accept" class="storage-offer-primary">Move to this device</button>
+          <button type="button" id="local-offer-dismiss" class="storage-offer-secondary">Not now</button>
+        </div>
+      </div>
+
+      <!-- Memory storage: on-device or synced -->
+      <div id="storage-section" class="storage-section">
+        <div class="storage-section-head">
+          <div style="font-size:0.8rem; color:white; font-weight:600;">Memory storage</div>
+          <span id="storage-mode-label" class="storage-mode-label"></span>
+        </div>
+        <div id="storage-mode-hint" class="privacy-toggle-hint"></div>
+        <label id="clear-cloud-row" class="storage-clear-cloud" style="display:none;"><input type="checkbox" id="clear-cloud-checkbox" checked> Delete the cloud copy after moving</label>
+        <button type="button" id="switch-storage-btn" class="privacy-action-btn" style="margin-top:8px;"></button>
+        <div id="migration-status" class="migration-status" style="display:none;"></div>
+      </div>
+
       <!-- Data & Privacy — pinned near top so new users see controls during onboarding -->
       <div id="privacy-section" style="margin-top:12px; padding:12px; background:rgba(255,255,255,0.03); border-radius:8px; border:1px solid rgba(255,255,255,0.06);">
         <div style="font-size:0.8rem; color:white; font-weight:600; margin-bottom:4px;">Data &amp; Privacy</div>
@@ -144,6 +183,7 @@
         <div id="privacy-data-actions" style="display:flex; flex-wrap:wrap; gap:6px; margin-top:10px;">
           <button type="button" id="export-data-btn" class="privacy-action-btn">Export my data</button>
           <button type="button" id="clear-inferred-privacy-btn" class="privacy-action-btn">Clear inferred profile</button>
+          <button type="button" id="delete-local-btn" class="privacy-action-btn danger" style="display:none;">Delete memory on this device</button>
           <button type="button" id="delete-data-btn" class="privacy-action-btn danger">Delete all data</button>
         </div>
         <a
@@ -179,21 +219,33 @@
         <button id="advanced-toggle">⚙️ API Settings</button>
         <div id="advanced-content" style="display:none">
           <div class="input-group">
-            <label>Anthropic API Key</label>
+            <label>Anthropic API key (optional)</label>
+            <div id="byok-hint" class="privacy-toggle-hint" style="margin-bottom:6px;"></div>
             <input
               type="password"
               id="apikey-input-connected"
-              placeholder="sk-ant-... (for Engineer Prompt)"
+              placeholder="sk-ant-..."
             />
             <a
               href="https://console.anthropic.com"
               target="_blank"
               id="get-key-link"
             >
-              Get a free key →
+              Get a key →
             </a>
           </div>
+          <div id="byok-direct-row" class="privacy-toggle-row" style="display:none;">
+            <div>
+              <div class="privacy-toggle-label">Call Anthropic directly</div>
+              <div class="privacy-toggle-hint">Improve goes from your browser to Anthropic with your key, not through Mind World</div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="byok-direct-toggle" checked>
+              <span class="slider round"></span>
+            </label>
+          </div>
           <button id="save-apikey-btn">Save API Key</button>
+          <button type="button" id="remove-apikey-btn" class="link-btn" style="display:none;">Remove key</button>
           <div id="apikey-status"></div>
         </div>
       </div>

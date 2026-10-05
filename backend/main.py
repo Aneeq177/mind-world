@@ -19,8 +19,6 @@ from services.database import (
     get_user_conversations
 ) # Import functions from database.py
 from services.personalization import (
-    extract_relevant_profile_facts,
-    extract_confirmed_anchor_facts,
     hybrid_score_conversations,
     apply_edit_feedback_adaptation,
     compute_summary_confidence,
@@ -157,10 +155,58 @@ def _warm_embedding_model():
 # ---------------------------------------------------------------------------
 FREE_TIER_LIMIT = 25  # Improve calls included for free (server-key users)
 COMPARE_FREE_LIMIT = 5  # "See the difference" demo calls included for free
-PROFILE_ROUTE_FACTS = 10  # profile facts for "about me" drafts (vs 6 normally)
-
 # Secret header sent by the extension — rejects old/unauthorised clients
 MW_CLIENT_SECRET = "mwext-f8c3a91d-v3"
+
+
+def _check_improve_quota(user_id: str, device_id: Optional[str]) -> dict:
+    """Free-tier and multi-account checks for calls on the shared server key.
+    Returns the user's quota row; raises 402/429 when the user is out of calls."""
+    from services.database import get_supabase
+
+    sb = get_supabase()
+    # Fetch quota counters first — pro users are exempt from every check below
+    # (device fingerprint included). Checking is_pro only *after* the device
+    # check let a shared dev/test machine with old throwaway accounts
+    # permanently block paid accounts.
+    urow = sb.table("users").select("improve_calls_used, is_pro").eq("id", user_id).execute()
+    quota_row = urow.data[0] if urow.data else {}
+    if quota_row.get("is_pro"):
+        return quota_row
+
+    if device_id:
+        # Bind device_id to account on first seen (fraud signal)
+        sb.table("users").update({"device_id": device_id})\
+            .eq("id", user_id).is_("device_id", "null").execute()
+        # If this device_id is linked to 3+ OTHER accounts that have actually
+        # used the free tier *recently* → likely multi-account abuse. Scoped to
+        # recent + active accounts only, so a dev/QA machine that has
+        # accumulated old throwaway test accounts doesn't permanently brick
+        # every account that touches it.
+        abuse_cutoff = (datetime.utcnow() - timedelta(days=3)).isoformat()
+        others = sb.table("users").select("id")\
+            .eq("device_id", device_id)\
+            .neq("id", user_id)\
+            .gt("improve_calls_used", 0)\
+            .gte("created_at", abuse_cutoff)\
+            .execute()
+        if len(others.data or []) >= 3:
+            raise HTTPException(status_code=429, detail="quota_exceeded")
+
+    if (quota_row.get("improve_calls_used") or 0) >= FREE_TIER_LIMIT:
+        raise HTTPException(status_code=402, detail="quota_exceeded")
+    return quota_row
+
+
+def _charge_improve_quota(user_id: str, quota_row: dict) -> None:
+    from services.database import get_supabase
+
+    try:
+        get_supabase().table("users").update({
+            "improve_calls_used": (quota_row.get("improve_calls_used") or 0) + 1
+        }).eq("id", user_id).execute()
+    except Exception:
+        pass  # non-fatal — don't fail the response over a counter write
 
 # ---------------------------------------------------------------------------
 # IP-based rate limiter — 30 Improve calls per minute per IP
@@ -169,6 +215,10 @@ _ip_call_log: dict[tuple[str, str], list[float]] = defaultdict(list)
 _IP_WINDOW_SECS = 60
 _RATE_LIMITED_PATHS = {
     "/engineer_prompt": 30,
+    "/engineer_prompt_stateless": 30,
+    "/rewrite_queries_stateless": 30,
+    "/profile/infer_stateless": 30,
+    "/clear_cloud_memory": 5,
     "/compare_answers": 10,
     "/templates/suggest": 30,
     "/templates/track_use": 60,
@@ -218,19 +268,9 @@ _MODEL_DISPLAY_NAMES = {
 
 
 def _engineer_system_prompt(adaptation_hint: str) -> str:
-    """The v3 prompt-engineering system prompt. Validated in backend/evals/
-    (beat the prior prompt 6-0-2 in blind pairwise judging). Shared by
-    /engineer_prompt (no-memory path) and the /compare_answers demo."""
-    return f"""You are a prompt engineer. Rewrite the user's rough draft into the message they should have sent — nothing else.
-
-Rules, in priority order:
-1. Your entire output is the rewritten prompt itself. It must read as a message from the user to an AI assistant. No commentary, no preamble, no "Here's the prompt", no notes about what you changed or don't know.
-2. Never invent facts the user didn't give — no made-up names, dates, numbers, projects, reasons, or personal details. Where a needed detail is missing, have the prompt tell the assistant to use a clearly marked placeholder or offer options.
-3. Match depth to the ask. A simple question stays a short prompt with at most a line about audience, depth, or format. Only requests for documents or complex work earn structure. Never demand exhaustive coverage the user didn't ask for — the goal is the right answer at the right length, not the longest one.
-4. Add only what sharpens the answer: the user's goal or situation, the deliverable's form, the audience. If the draft is already clear, change little.
-5. Use past conversations and profile context only when directly relevant; weave details in naturally.
-6. Plain text only (no markdown bold or code fences; simple lists are fine). Never ask the user clarifying questions.
-Adaptive preference hint: {adaptation_hint}"""
+    """Shared by /engineer_prompt and the /compare_answers demo."""
+    from services.engineer_core import engineer_system_prompt
+    return engineer_system_prompt(adaptation_hint)
 
 
 class IPRateLimitMiddleware(BaseHTTPMiddleware):
@@ -520,13 +560,19 @@ async def engineer_prompt(http_req: Request, request: EngineerPromptRequest):
                 detail="Unauthorised client. Please update the Mind World extension."
             )
 
-        import anthropic
         from services.embedder import get_embedding_model
         from services.database import (
             get_personal_profile,
             get_prompt_template_by_name,
         )
-        from services.retrieval import build_excerpt, memory_route, retrieve_about_me, retrieve_candidates
+        from services.engineer_core import (
+            build_conversation_context,
+            build_engineer_messages,
+            build_profile_context,
+            run_engineer,
+            select_memory,
+        )
+        from services.retrieval import memory_route, retrieve_about_me, retrieve_candidates
 
         api_key = request.api_key or os.getenv("ANTHROPIC_API_KEY")
         if not api_key:
@@ -543,41 +589,7 @@ async def engineer_prompt(http_req: Request, request: EngineerPromptRequest):
         _using_server_key = not bool(request.api_key)
         _quota_row: dict = {}
         if _using_server_key:
-            from services.database import get_supabase as _get_sb
-            _sb = _get_sb()
-
-            # Fetch quota counters first — pro users are exempt from every
-            # check below (device fingerprint included). Checking is_pro
-            # only *after* the device check let a shared dev/test machine
-            # with old throwaway accounts permanently block paid accounts.
-            _urow = _sb.table("users")\
-                .select("improve_calls_used, is_pro")\
-                .eq("id", user_id).execute()
-            _quota_row = _urow.data[0] if _urow.data else {}
-
-            if not _quota_row.get("is_pro"):
-                # Bind device_id to account on first seen (fraud signal)
-                if request.device_id:
-                    _sb.table("users").update({"device_id": request.device_id})\
-                        .eq("id", user_id).is_("device_id", "null").execute()
-
-                    # If this device_id is linked to 3+ OTHER accounts that have
-                    # actually used the free tier *recently* → likely multi-account
-                    # abuse. Scoped to recent + active accounts only, so a dev/QA
-                    # machine that has accumulated old throwaway test accounts over
-                    # weeks doesn't permanently brick every account that touches it.
-                    _abuse_cutoff = (datetime.utcnow() - timedelta(days=3)).isoformat()
-                    _others = _sb.table("users").select("id")\
-                        .eq("device_id", request.device_id)\
-                        .neq("id", user_id)\
-                        .gt("improve_calls_used", 0)\
-                        .gte("created_at", _abuse_cutoff)\
-                        .execute()
-                    if len(_others.data or []) >= 3:
-                        raise HTTPException(status_code=429, detail="quota_exceeded")
-
-                if (_quota_row.get("improve_calls_used") or 0) >= FREE_TIER_LIMIT:
-                    raise HTTPException(status_code=402, detail="quota_exceeded")
+            _quota_row = _check_improve_quota(user_id, request.device_id)
 
         _prefetched_profile = None
         _prefetched_facts = None
@@ -621,33 +633,9 @@ async def engineer_prompt(http_req: Request, request: EngineerPromptRequest):
                     profile_data,
                 )[:15]
             _candidate_count = len(candidates or [])
-            # Rerank and profile-fact picking are independent LLM calls —
-            # run them concurrently instead of back-to-back.
-            from concurrent.futures import ThreadPoolExecutor
-            from services.personalization_llm import (
-                rerank_conversations_llm,
-                pick_relevant_profile_facts_llm,
+            selected, _prefetched_facts = select_memory(
+                request.message, candidates, profile, api_key, _memory_route,
             )
-            with ThreadPoolExecutor(max_workers=2) as _pool:
-                _rerank_future = _pool.submit(
-                    rerank_conversations_llm,
-                    request.message,
-                    candidates,
-                    api_key,
-                    5,
-                )
-                _facts_future = None
-                if profile.get("is_profile_enabled"):
-                    _facts_future = _pool.submit(
-                        pick_relevant_profile_facts_llm,
-                        profile_data,
-                        request.message,
-                        api_key,
-                        PROFILE_ROUTE_FACTS if _memory_route == "profile" else 6,
-                    )
-                selected = _rerank_future.result()
-                if _facts_future is not None:
-                    _prefetched_facts = _facts_future.result()
             _prefetched_profile = profile
 
         if selected:
@@ -670,64 +658,15 @@ async def engineer_prompt(http_req: Request, request: EngineerPromptRequest):
                     conv["source_app"] = conv.get("source_app") or extra.get("source_app")
                     conv["num_messages"] = conv.get("num_messages") or extra.get("num_messages")
 
-        sources_used = []
-        context_parts = []
-        for conv in selected:
-            full_text = conv.get('full_text') or conv.get('preview') or ''
-            sim = conv.get('similarity')
-            sources_used.append({
-                "id": conv.get("id"),
-                "title": conv.get("title") or "Untitled",
-                "preview": (conv.get("preview") or full_text[:120] or "")[:120],
-                "source": conv.get("source_app") or conv.get("source") or "unknown",
-                "created_at": str(conv.get("created_at") or "")[:10],
-                "similarity": round(float(sim) * 100, 1) if sim is not None else None,
-            })
-            if full_text:
-                context_parts.append(
-                    f"Conversation: {conv.get('title', 'Untitled')}\n"
-                    f"Date: {str(conv.get('created_at', ''))[:10]}\n"
-                    f"Messages: {conv.get('num_messages', 0)}\n"
-                    f"Content:\n{build_excerpt(full_text, conv.get('matched'))}"
-                )
-        conv_context = "\n\n---\n\n".join(context_parts) if context_parts else ""
-        has_history = bool(conv_context.strip())
+        sources_used, context_parts = build_conversation_context(selected)
 
         profile_context = ""
         adaptive = {}
         if not skip_memory:
             profile = _prefetched_profile or get_personal_profile(user_id)
-            profile_data = (profile.get("profile_data") or {}) if profile else {}
-            confirmed_facts = extract_confirmed_anchor_facts(profile_data)
-            if confirmed_facts:
-                profile_context = "\n[USER-VERIFIED PERSONALIZATION ANCHORS]\n"
-                for fact in confirmed_facts:
-                    profile_context += f"- {fact}\n"
-                profile_context += "\n"
-            if profile and profile.get("is_profile_enabled"):
-                adaptive = profile_data.get("adaptive_weights") or {}
-                if _prefetched_facts is not None:
-                    relevant_profile_facts = _prefetched_facts
-                else:
-                    from services.personalization_llm import pick_relevant_profile_facts_llm
-                    relevant_profile_facts = pick_relevant_profile_facts_llm(
-                        profile_data,
-                        request.message,
-                        api_key,
-                        max_facts=6,
-                    )
-                if not relevant_profile_facts:
-                    relevant_profile_facts = extract_relevant_profile_facts(
-                        profile_data,
-                        request.message,
-                        min_confidence=0.62,
-                        max_facts=6,
-                    )
-                if relevant_profile_facts:
-                    profile_context += "[INFERRED PERSONAL PROFILE (background context)]\n"
-                    for fact in relevant_profile_facts:
-                        profile_context += f"- {fact}\n"
-                    profile_context += "\n"
+            profile_context, adaptive = build_profile_context(
+                profile, request.message, api_key, _prefetched_facts,
+            )
 
         template_body = ""
         template_name = ""
@@ -737,94 +676,19 @@ async def engineer_prompt(http_req: Request, request: EngineerPromptRequest):
             if tmpl:
                 template_body = tmpl.get("template", "")
 
-        concise_bias = float(adaptive.get("concise_bias", 0.5) or 0.5)
-        detail_level = float(adaptive.get("detail_level", 0.5) or 0.5)
-        if concise_bias >= 0.62:
-            adaptation_hint = "Prefer concise wording."
-        elif detail_level >= 0.65:
-            adaptation_hint = "Allow a little extra detail when ambiguity exists."
-        else:
-            adaptation_hint = "Balance clarity with enough detail for the task."
-
-        _ENGINEER_CORE_ROLE = """You are a prompt engineer. Your ONLY job is to output a single prompt the user will paste into an AI chat so THAT assistant does the work — not you.
-
-You are NOT the assistant. Never fulfill the user's request yourself.
-- Do NOT answer questions, solve problems, debug code, brainstorm ideas, write essays, or produce any other deliverable.
-- Do NOT copy assistant replies from past conversations into your output.
-- Your output must be instructions directed at a future AI ("You are...", "Help me...", "Analyze..."), not the AI's response."""
-
-        if skip_memory and template_name:
-            system_prompt = f"""{_ENGINEER_CORE_ROLE}
-
-The user message below has two parts: (1) a rough draft and (2) a template scaffold. Merge them into ONE unified prompt — never two stacked blocks, never draft-then-template.
-
-How to merge:
-- Draft = source of truth for concrete content (names, numbers, topics, constraints, tone).
-- Template = source of truth for persona and structure. Templates often describe OUTPUT another AI should produce (summaries, lists, letters, reviews). Reinterpret those as instructions to that AI — do not produce that output yourself.
-- Remove every placeholder label and bracket (e.g. "[FILL IN]", "[Describe your situation:]", "[PASTE CODE HERE]"). Fold draft content into natural prose.
-- Omit template sections the draft cannot fill. Never invent facts to fill gaps.
-- If draft and template overlap, state it once. Follow the draft's intent if they conflict.
-
-Examples:
-Draft: "I'm a freelance designer pitching a website redesign to a client who wants more whitespace."
-Template section: "[Describe your situation:]"
-Correct (one merged prompt): "You are an expert communication coach. I'm a freelance designer pitching a website redesign to a client who keeps asking for more whitespace. Help me draft a concise message that addresses their whitespace concerns while defending my design choices."
-Wrong: pasting the draft, then the full template below it.
-Wrong: writing the client email itself instead of a prompt asking an AI to help write it.
-
-Output rules:
-- Plain text only: no markdown bold, headers, or code fences. Lists are fine when they structure instructions.
-- Output ONLY the final merged prompt — no preamble, labels, or commentary.
-- Never ask clarifying questions. Make reasonable assumptions and proceed."""
-
-        else:
-            # v3 prompt — validated against the old prompt in backend/evals/
-            # (won 6-0-2 in blind pairwise judging; old prompt fabricated user
-            # facts and inflated simple questions into demand-everything lists).
-            system_prompt = _engineer_system_prompt(adaptation_hint)
-
-        user_content = (
-            f"ROUGH DRAFT (rewrite as a prompt for another AI — do NOT answer this):\n"
-            f"{request.message}\n{profile_context}"
+        system_prompt, user_content, max_tokens = build_engineer_messages(
+            request.message,
+            context_parts,
+            profile_context,
+            adaptive,
+            template_name,
+            template_body,
+            skip_memory,
         )
-        if has_history:
-            user_content += (
-                f"\n\nPAST CONVERSATIONS (user background only — do not copy assistant replies):\n"
-                f"{conv_context}"
-            )
+        formatted = run_engineer(system_prompt, user_content, max_tokens, api_key)
 
-        if template_body:
-            user_content += (
-                f"\n\nTEMPLATE SCAFFOLD (structure/persona only — merge into one prompt, do not paste verbatim):\n"
-                f"Template name: {template_name}\n"
-                f"{template_body}"
-            )
-        elif template_name:
-            user_content += (
-                f"\n\nUse the '{template_name}' template persona as structural inspiration "
-                f"when rewriting the draft into a prompt for another AI."
-            )
-
-        client = anthropic.Anthropic(api_key=api_key)
-        response = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=1000,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_content}]
-        )
-
-        from services.prompt_format import format_engineered_prompt
-        raw_prompt = response.content[0].text
-        formatted = format_engineered_prompt(raw_prompt)
-
-        # ── Increment free-tier usage counter on successful call ──
         if _using_server_key:
-            try:
-                _get_sb().table("users").update({
-                    "improve_calls_used": (_quota_row.get("improve_calls_used") or 0) + 1
-                }).eq("id", user_id).execute()
-            except Exception:
-                pass  # non-fatal — don't fail the response over a counter write
+            _charge_improve_quota(user_id, _quota_row)
 
         from services.database import log_growth_event
         log_growth_event(user_id, "improve_used", platform=request.platform)
@@ -865,6 +729,317 @@ Output rules:
             "memory": memory,
         }
 
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Stateless endpoints for on-device ("local") memory mode.
+#
+# The extension keeps conversations, vectors, and the profile on the user's
+# device and sends only what one call needs. These endpoints never read or
+# write conversation content or profiles in the database and never log request
+# bodies; the only writes are the quota counter and count-only growth events.
+# ---------------------------------------------------------------------------
+
+_STATELESS_MAX_CANDIDATES = 15
+_STATELESS_MAX_PROFILE_CHARS = 20_000
+
+
+@app.get("/engineer_prompts")
+def engineer_prompts():
+    """Prompt templates for local mode with the user's own Anthropic key, so
+    the extension renders the same prompts the server uses."""
+    from services.engineer_core import load_prompts
+    return load_prompts()
+
+
+class StatelessCandidate(BaseModel):
+    id: str
+    title: Optional[str] = "Untitled"
+    snippet: Optional[str] = ""
+    excerpt: Optional[str] = ""
+    preview: Optional[str] = ""
+    created_at: Optional[str] = None
+    source_app: Optional[str] = None
+    num_messages: Optional[int] = 0
+    similarity: Optional[float] = None
+    keyword_score: Optional[float] = None
+
+    @field_validator("snippet")
+    @classmethod
+    def clamp_snippet(cls, v: Optional[str]) -> str:
+        from services.retrieval import SNIPPET_CHARS
+        return (v or "")[:SNIPPET_CHARS]
+
+    @field_validator("excerpt")
+    @classmethod
+    def clamp_excerpt(cls, v: Optional[str]) -> str:
+        from services.retrieval import EXCERPT_CHARS
+        # Excerpts join spans with a short gap marker, so allow a little slack.
+        return (v or "")[:EXCERPT_CHARS + 200]
+
+    @field_validator("preview")
+    @classmethod
+    def clamp_preview(cls, v: Optional[str]) -> str:
+        return (v or "")[:300]
+
+
+def _validate_stateless_profile(v: Optional[dict]) -> Optional[dict]:
+    if v is not None and len(json.dumps(v, default=str)) > _STATELESS_MAX_PROFILE_CHARS:
+        raise ValueError("profile too large")
+    return v
+
+
+class EngineerStatelessRequest(BaseModel):
+    email: str
+    access_token: str
+    message: str
+    template: Optional[str] = None
+    skip_memory: Optional[bool] = False
+    device_id: Optional[str] = None
+    platform: Optional[str] = None
+    memory_route: Optional[str] = "standard"
+    # Why on-device memory produced no candidates: no_data | not_indexed | no_match
+    memory_status: Optional[str] = None
+    candidates: list[StatelessCandidate] = []
+    # Candidates the user picked themselves: used as-is, like conversation_ids
+    # on /engineer_prompt, instead of being reranked.
+    pinned: Optional[bool] = False
+    # {"is_profile_enabled": bool, "profile_data": {...}} from the device
+    profile: Optional[dict] = None
+
+    @field_validator("message")
+    @classmethod
+    def clamp_message(cls, v: str) -> str:
+        return (v or "")[:_MAX_FIELD_LEN]
+
+    @field_validator("candidates")
+    @classmethod
+    def clamp_candidates(cls, v: list) -> list:
+        return (v or [])[:_STATELESS_MAX_CANDIDATES]
+
+    @field_validator("profile")
+    @classmethod
+    def check_profile(cls, v: Optional[dict]) -> Optional[dict]:
+        return _validate_stateless_profile(v)
+
+
+@app.post("/engineer_prompt_stateless")
+async def engineer_prompt_stateless(http_req: Request, request: EngineerStatelessRequest):
+    """Improve for local mode: the extension retrieved candidates on-device;
+    this reranks them, picks profile facts, and rewrites the draft with the
+    same pipeline as /engineer_prompt. Nothing from the request is stored."""
+    try:
+        if http_req.headers.get("X-MW-Client") != MW_CLIENT_SECRET:
+            raise HTTPException(
+                status_code=401,
+                detail="Unauthorised client. Please update the Mind World extension.",
+            )
+
+        from services.database import get_prompt_template_by_name, log_growth_event
+        from services.engineer_core import (
+            build_conversation_context,
+            build_engineer_messages,
+            build_profile_context,
+            run_engineer,
+            select_memory,
+        )
+
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise HTTPException(status_code=503, detail="Improve is temporarily unavailable.")
+
+        user_id = _user_id(request.email.lower().strip(), request.access_token)
+        quota_row = _check_improve_quota(user_id, request.device_id)
+        skip_memory = bool(request.skip_memory)
+        profile = request.profile or {}
+
+        selected: list[dict] = []
+        picked_facts = None
+        candidates = [c.model_dump() for c in request.candidates]
+        if not skip_memory and candidates and request.pinned:
+            selected = candidates
+        elif not skip_memory and candidates:
+            selected, picked_facts = select_memory(
+                request.message, candidates, profile, api_key, request.memory_route or "standard",
+            )
+
+        sources_used, context_parts = build_conversation_context(selected)
+        profile_context, adaptive = ("", {})
+        if not skip_memory:
+            profile_context, adaptive = build_profile_context(
+                profile, request.message, api_key, picked_facts,
+            )
+
+        template_name, template_body = "", ""
+        if request.template and request.template != "none":
+            template_name = request.template
+            tmpl = get_prompt_template_by_name(request.template)
+            if tmpl:
+                template_body = tmpl.get("template", "")
+
+        system_prompt, user_content, max_tokens = build_engineer_messages(
+            request.message, context_parts, profile_context, adaptive,
+            template_name, template_body, skip_memory,
+        )
+        formatted = run_engineer(system_prompt, user_content, max_tokens, api_key)
+
+        _charge_improve_quota(user_id, quota_row)
+        log_growth_event(user_id, "improve_used_local", platform=request.platform)
+
+        if skip_memory:
+            memory = {"status": "skipped"}
+        elif sources_used:
+            memory = {"status": "used"}
+        else:
+            status = request.memory_status if request.memory_status in ("no_data", "not_indexed") else "no_match"
+            memory = {"status": status, "candidates": len(candidates)}
+        memory["storage"] = "local"
+
+        return {
+            "engineered_prompt": formatted,
+            "conversations_used": len(context_parts),
+            "sources_used": sources_used,
+            "memory": memory,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Improve failed ({type(e).__name__})")
+
+
+class RewriteQueriesRequest(BaseModel):
+    email: str
+    access_token: str
+    draft: str
+
+    @field_validator("draft")
+    @classmethod
+    def clamp_draft(cls, v: str) -> str:
+        return (v or "")[:_MAX_FIELD_LEN]
+
+
+@app.post("/rewrite_queries_stateless")
+async def rewrite_queries_stateless(http_req: Request, request: RewriteQueriesRequest):
+    """Search queries for an "about me" draft, so on-device retrieval can find
+    the personal facts it depends on. Nothing is stored."""
+    try:
+        if http_req.headers.get("X-MW-Client") != MW_CLIENT_SECRET:
+            raise HTTPException(status_code=401, detail="Unauthorised client.")
+        from services.personalization_llm import rewrite_about_me_queries_llm
+
+        user_id = _user_id(request.email.lower().strip(), request.access_token)
+        _check_improve_quota(user_id, None)
+        return {"queries": rewrite_about_me_queries_llm(request.draft, os.getenv("ANTHROPIC_API_KEY"))}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Query rewrite failed ({type(e).__name__})")
+
+
+class ProfileInferStatelessRequest(BaseModel):
+    email: str
+    access_token: str
+    # extract | synthesize | edit_feedback | popup_merge
+    op: str
+    profile_data: Optional[dict] = None
+    snippet: Optional[str] = ""
+    samples: Optional[list[dict]] = None
+    engineered_prompt: Optional[str] = ""
+    final_prompt: Optional[str] = ""
+    diff_metrics: Optional[dict] = None
+    accepted_unedited: Optional[bool] = False
+    popup_fields: Optional[dict] = None
+
+    @field_validator("op")
+    @classmethod
+    def validate_op(cls, v: str) -> str:
+        allowed = {"extract", "synthesize", "edit_feedback", "popup_merge"}
+        op = (v or "").strip().lower()
+        if op not in allowed:
+            raise ValueError(f"op must be one of {sorted(allowed)}")
+        return op
+
+    @field_validator("profile_data")
+    @classmethod
+    def check_profile(cls, v: Optional[dict]) -> Optional[dict]:
+        return _validate_stateless_profile(v)
+
+    @field_validator("snippet", "engineered_prompt", "final_prompt")
+    @classmethod
+    def clamp_text(cls, v: Optional[str]) -> str:
+        return (v or "")[:2500]
+
+    @field_validator("samples")
+    @classmethod
+    def clamp_samples(cls, v: Optional[list]) -> list:
+        return [
+            {
+                "title": str((s or {}).get("title") or "")[:200],
+                "preview": str((s or {}).get("preview") or "")[:200],
+                "source_app": str((s or {}).get("source_app") or "")[:40],
+            }
+            for s in (v or [])[:25]
+            if isinstance(s, dict)
+        ]
+
+
+@app.post("/profile/infer_stateless")
+async def profile_infer_stateless(http_req: Request, request: ProfileInferStatelessRequest):
+    """Profile updates for local mode: takes the on-device profile plus the
+    new signal and returns the updated profile. Nothing is stored."""
+    try:
+        if http_req.headers.get("X-MW-Client") != MW_CLIENT_SECRET:
+            raise HTTPException(status_code=401, detail="Unauthorised client.")
+        from services.personalization_llm import (
+            apply_edit_feedback_llm,
+            infer_profile_delta_llm,
+            merge_popup_profile_llm,
+            synthesize_profile_llm,
+        )
+
+        _user_id(request.email.lower().strip(), request.access_token)
+        key = os.getenv("ANTHROPIC_API_KEY")
+        profile_data = request.profile_data or {}
+
+        if request.op == "extract":
+            updated = infer_profile_delta_llm(profile_data, request.snippet or "", key)
+        elif request.op == "synthesize":
+            updated = synthesize_profile_llm(profile_data, request.samples or [], key)
+        elif request.op == "edit_feedback":
+            updated = apply_edit_feedback_adaptation(
+                profile_data, request.diff_metrics or {}, bool(request.accepted_unedited),
+            )
+            engineered, final = request.engineered_prompt or "", request.final_prompt or ""
+            if engineered and final and engineered.strip() != final.strip():
+                updated = apply_edit_feedback_llm(updated, engineered, final, key)
+        else:
+            updated = merge_popup_profile_llm(profile_data, request.popup_fields or {}, key)
+        return {"profile_data": updated}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Profile update failed ({type(e).__name__})")
+
+
+class ClearCloudMemoryRequest(BaseModel):
+    email: str
+    access_token: str
+
+
+@app.post("/clear_cloud_memory")
+async def clear_cloud_memory(request: ClearCloudMemoryRequest):
+    """Delete every stored conversation, chunk, embedding, profile, and
+    feedback row for the user but keep the account (switching to local mode)."""
+    try:
+        from services.auth import require_authenticated_user
+        from services.database import clear_user_memory
+
+        user_id = require_authenticated_user(request.email.lower().strip(), request.access_token)
+        return {"success": True, **clear_user_memory(user_id)}
     except HTTPException:
         raise
     except Exception as e:

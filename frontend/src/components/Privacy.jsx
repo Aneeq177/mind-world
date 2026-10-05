@@ -29,14 +29,48 @@ export default function Privacy() {
         <a href="/" style={S.back}>← Back to Mind World</a>
 
         <h1 style={S.h1}>Privacy Policy</h1>
-        <p style={S.updated}>Last updated: September 2026</p>
+        <p style={S.updated}>Last updated: October 2026</p>
 
         <p style={S.p}>
           Mind World helps you remember and reuse your AI conversations. Your data is yours —
           we collect only what is needed to run the service, and we never sell it.
         </p>
 
+        <h2 style={S.h2}>Where your memory is stored</h2>
+        <p style={S.p}>
+          The extension asks where your memory should live, and you can change it at any time in the
+          extension popup.
+        </p>
+        <ul style={S.ul}>
+          <li>
+            <strong style={{ color: 'white' }}>On this device</strong> (the default) — saved
+            conversations, their semantic search index, your personal profile, and Improve feedback
+            metrics are stored only in your browser (IndexedDB), and embeddings are computed on your
+            device. We do not receive or store your conversations. When you use Improve, your draft and
+            the few excerpts that match it are sent to our servers and Anthropic to write the prompt, or
+            straight from your browser to Anthropic if you add your own API key. Those requests are
+            processed and not stored. Profile updates work the same way: short snippets are sent for one
+            request and the result is saved back on your device. The memory map is not available in this
+            mode because it is built on our servers.
+          </li>
+          <li>
+            <strong style={{ color: 'white' }}>Sync across devices</strong> — conversations,
+            embeddings, profile, and feedback metrics are stored on our servers as described below, so
+            your memory follows you to other browsers and powers the memory map.
+          </li>
+        </ul>
+        <p style={S.p}>
+          Switching from sync to on-device copies your memory into your browser and can delete the
+          server copy in the same step. Switching to sync uploads the conversations stored on your device.
+          Your account (email, sign-in credentials, consent record) and usage counts for your Improve
+          quota are kept on our servers in both modes.
+        </p>
+
         <h2 style={S.h2}>What we collect</h2>
+        <p style={S.p}>
+          Conversation history, embeddings, profile, and feedback metrics below are stored on our servers
+          only when you use sync across devices, or upload chats on mind-world.app.
+        </p>
         <ul style={S.ul}>
           <li>
             <strong style={{ color: 'white' }}>Email address</strong> — to identify your account
@@ -57,8 +91,9 @@ export default function Privacy() {
           </li>
           <li>
             <strong style={{ color: 'white' }}>Semantic embeddings</strong> — 384-dimensional
-            vector representations of your conversations, generated on our servers to power search
-            and memory features. We do not store the raw embedding model on your device.
+            vector representations of your conversations that power search and memory features.
+            In sync mode they are generated and stored on our servers; with on-device memory they are
+            generated and stored in your browser.
           </li>
           <li>
             <strong style={{ color: 'white' }}>Draft text you type</strong> — when you use
@@ -83,8 +118,9 @@ export default function Privacy() {
           <li>
             <strong style={{ color: 'white' }}>Optional Anthropic API key</strong> — stored in
             your browser via Chrome extension local storage if you add one. It is sent to Anthropic
-            when you use AI features (prompt engineering, summarization) and is{' '}
-            <em>not</em> stored in our database.
+            when you use AI features (prompt engineering, summarization). The extension may also present it
+            to our server as a sign-in credential; if you link it to your account we keep only a one-way
+            hash, never the key itself.
           </li>
         </ul>
 
@@ -226,7 +262,8 @@ export default function Privacy() {
         <p style={S.p}>
           By default, the extension runs only on the supported AI chat sites you visit (Claude, ChatGPT,
           Gemini, Perplexity). It reads your chat input to power search and Improve, and may capture
-          conversation messages from the page to save them to your account when auto-save is on. It does
+          conversation messages from the page when auto-save is on, saving them in your browser (on-device
+          memory) or to your account (sync across devices). It does
           not read passwords, browsing history on other sites, or data from unrelated tabs.
         </p>
         <p style={S.p}>
@@ -258,15 +295,19 @@ export default function Privacy() {
           in the extension, or{' '}
           <strong style={{ color: 'white' }}>delete all data</strong> with one click. You can also email{' '}
           <a href="mailto:support@mind-world.app" style={S.a}>support@mind-world.app</a>{' '}
-          to request deletion. Uninstalling the extension removes locally stored credentials from
-          your browser but does not delete server-side data.
+          to request deletion. With on-device memory, &ldquo;Back up memory&rdquo; downloads your
+          conversations and profile as a file, and &ldquo;Delete memory on this device&rdquo; erases
+          them from your browser. Uninstalling the extension removes on-device memory and locally stored
+          credentials from your browser but does not delete server-side data.
         </p>
 
         <h2 style={S.h2}>Cookies and local storage</h2>
         <p style={S.p}>
           Mind World does not use advertising or tracking cookies. The Chrome extension uses
           browser local storage to save your email, optional API key, privacy preferences
-          (auto-save, memory, profile toggles), and extension settings on your device only.
+          (auto-save, memory, profile toggles), and extension settings on your device only. With
+          on-device memory it also uses IndexedDB in your browser for your conversations, search index,
+          and profile, and ships the embedding model inside the extension.
         </p>
 
         <h2 style={S.h2}>Contact</h2>

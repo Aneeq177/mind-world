@@ -238,6 +238,11 @@
       .mw-pop #mw-pop-body { max-height: 68vh; overflow-y: auto; }
       .mw-pop h4 { margin: 0; font-size: 13px; font-weight: 600; color: #c4b5fd; }
       .mw-pop .note { font-size: 11px; color: #888; text-align: center; margin: 0; }
+      .mw-pop .mw-mode-badge {
+        display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 999px;
+        font-size: 10px; color: #a7f3d0; background: rgba(16,185,129,0.12); border: 1px solid rgba(16,185,129,0.3);
+      }
+      .mw-pop .mw-mode-badge.cloud { color: #c4b5fd; background: rgba(124,58,237,0.12); border-color: rgba(124,58,237,0.3); }
       .mw-loading { display: flex; align-items: center; gap: 10px; justify-content: center; }
       .mw-spinner {
         width: 16px; height: 16px; border: 2px solid rgba(124,58,237,0.25);
@@ -806,6 +811,9 @@
     if (m.status === 'skipped') {
       return `<p class="mw-import-hint">Memory is turned off, so this was engineered from your draft alone. Turn it back on in the Mind World popup.</p>`
     }
+    if (m.status === 'unavailable') {
+      return `<p class="mw-import-hint">On-device memory couldn't load on this computer, so this was engineered from your draft alone. Your chats are still saved on this device. Open the Mind World popup to retry.</p>`
+    }
     if (m.status === 'not_indexed') {
       return `<p class="mw-import-hint">You have ${stored} chats stored but none are searchable yet — their embeddings are missing, so nothing can be matched. Re-import your history to rebuild the index.</p>`
     }
@@ -1001,7 +1009,10 @@
     })
     const openExt = popoverShadow.getElementById('mw-pop-open-extension')
     if (openExt) {
-      openExt.onclick = () => {
+      openExt.onclick = async () => {
+        // On-device memory imports in its own extension page; cloud uses the popup.
+        const res = await chrome.runtime.sendMessage({ type: 'OPEN_IMPORT' }).catch(() => null)
+        if (res && res.opened === 'page') { closePopover(); return }
         const body = popoverShadow.getElementById('mw-pop-body')
         if (body) {
           body.innerHTML = `<p style="font-size:12px;color:#ccc;line-height:1.6;margin:0;">
@@ -1016,6 +1027,16 @@
     positionPopover()
   }
 
+  function memoryModeBadge() {
+    const m = lastMemoryStatus
+    if (!m) return ''
+    if (m.storage === 'local') {
+      const title = m.key === 'own' ? 'Memory stays on this device; Improve used your Anthropic key' : 'Memory stays on this device'
+      return `<span class="mw-mode-badge" title="${title}">On-device${m.key === 'own' ? ' · your key' : ''}</span>`
+    }
+    return '<span class="mw-mode-badge cloud" title="Memory is synced to your Mind World account">Cloud</span>'
+  }
+
   function showPreviewResult(text, conversationsUsed, goal, templateName, sourcesUsed, telemetry) {
     const note = conversationsUsed > 0
       ? 'Improved using your draft + past conversations below'
@@ -1028,7 +1049,7 @@
       : ''
     openPopover('preview', `
       <div id="mw-diff-cta"></div>
-      <p class="note">${note}</p>
+      <p class="note">${note}${memoryModeBadge()}</p>
       ${compareHtml}
       ${sourcesHtml}
       <textarea id="mw-pop-preview-text" spellcheck="false"></textarea>

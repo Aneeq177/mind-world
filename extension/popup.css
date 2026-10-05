@@ -705,3 +705,166 @@ input:checked + .slider:before {
   color: #555;
   line-height: 1.45;
 }
+
+/* Memory storage: mode choice, switch, migration */
+.storage-choice {
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+}
+
+.storage-choice-title {
+  font-size: 0.78rem;
+  color: white;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.storage-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 0;
+  cursor: pointer;
+}
+
+.storage-option input {
+  margin-top: 3px;
+  flex-shrink: 0;
+  accent-color: #7c3aed;
+}
+
+.storage-option-name {
+  display: block;
+  font-size: 0.76rem;
+  color: #ddd;
+  font-weight: 600;
+}
+
+.storage-option-hint {
+  display: block;
+  font-size: 0.68rem;
+  color: #777;
+  line-height: 1.45;
+  margin-top: 2px;
+}
+
+.storage-recommended {
+  margin-left: 4px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 0.62rem;
+  font-weight: 600;
+  color: #6ee7b7;
+  background: rgba(16, 185, 129, 0.12);
+}
+
+.storage-section {
+  margin-top: 12px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.storage-section .privacy-action-btn {
+  width: 100%;
+}
+
+.storage-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.storage-mode-label {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 600;
+  color: #6ee7b7;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.storage-mode-label.cloud {
+  color: #c4b5fd;
+  background: rgba(124, 58, 237, 0.12);
+  border-color: rgba(124, 58, 237, 0.3);
+}
+
+.storage-clear-cloud {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 0.7rem;
+  color: #999;
+  cursor: pointer;
+}
+
+.migration-status {
+  font-size: 0.72rem;
+  margin-top: 8px;
+  line-height: 1.45;
+}
+
+.storage-offer {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.storage-offer-title {
+  font-size: 0.8rem;
+  color: white;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.storage-offer-text {
+  font-size: 0.72rem;
+  color: #aaa;
+  line-height: 1.5;
+}
+
+.storage-offer-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.storage-offer-primary,
+.storage-offer-secondary {
+  flex: 1;
+  padding: 8px;
+  border-radius: 6px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.storage-offer-primary {
+  border: none;
+  background: #10b981;
+  color: #04120d;
+}
+
+.storage-offer-primary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.storage-offer-secondary {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: none;
+  color: #aaa;
+}
+#privacy-data-actions .privacy-action-btn {
+  flex: 1 1 45%;
+}

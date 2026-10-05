@@ -1,0 +1,75 @@
+{
+  "meta": {
+    "corpus_size": 413,
+    "n_cases": 32,
+    "chunks": 4484,
+    "index_seconds": 115.8,
+    "search_ms_p50": 7,
+    "search_ms_p95": 10,
+    "model": "Xenova/all-MiniLM-L6-v2 fp32 (cpu)"
+  },
+  "local": {
+    "vector": {
+      "top5": {
+        "n_answerable": 28,
+        "n_no_match": 4,
+        "hit_rate": 0.8929,
+        "mrr": 0.8571,
+        "unrelated_rate": 0.4235,
+        "avg_unrelated_per_draft": 1.125,
+        "no_match_fp": 0
+      },
+      "top15": {
+        "n_answerable": 28,
+        "n_no_match": 4,
+        "hit_rate": 0.9286,
+        "mrr": 0.8604,
+        "unrelated_rate": 0.5917,
+        "avg_unrelated_per_draft": 3.125,
+        "no_match_fp": 0
+      }
+    },
+    "hybrid": {
+      "top5": {
+        "n_answerable": 28,
+        "n_no_match": 4,
+        "hit_rate": 0.9286,
+        "mrr": 0.8929,
+        "unrelated_rate": 0.4409,
+        "avg_unrelated_per_draft": 1.2813,
+        "no_match_fp": 0
+      },
+      "top15": {
+        "n_answerable": 28,
+        "n_no_match": 4,
+        "hit_rate": 0.9286,
+        "mrr": 0.8929,
+        "unrelated_rate": 0.6011,
+        "avg_unrelated_per_draft": 3.4375,
+        "no_match_fp": 0
+      }
+    }
+  },
+  "cloud": {
+    "strategy": "chunked_cutoff",
+    "top5": {
+      "n_answerable": 28,
+      "n_no_match": 4,
+      "hit_rate": 0.8929,
+      "mrr": 0.8571,
+      "unrelated_rate": 0.4235,
+      "avg_unrelated_per_draft": 1.125,
+      "no_match_fp": 0
+    },
+    "top15": {
+      "n_answerable": 28,
+      "n_no_match": 4,
+      "hit_rate": 0.9286,
+      "mrr": 0.8604,
+      "unrelated_rate": 0.5917,
+      "avg_unrelated_per_draft": 3.125,
+      "no_match_fp": 0
+    },
+    "top5_jaccard_vs_local_vector": 1
+  }
+}

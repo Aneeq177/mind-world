@@ -1,5 +1,20 @@
-importScripts('config.js', 'storage-utils.js')
+importScripts(
+  'config.js',
+  'storage-utils.js',
+  'memory/schema.js',
+  'memory/chunker.js',
+  'memory/retrieval.js',
+  'memory/scoring.js',
+  'memory/engineer.js',
+  'memory/local-db.js',
+  'memory/engine-client.js',
+  'memory/cloud-provider.js',
+  'memory/local-provider.js',
+  'memory/provider.js'
+)
 const API_BASE = CONFIG.API_BASE
+
+mwResolveStorageModeOnStartup().catch((err) => console.warn('[mw] storage mode init failed:', err))
 
 const UNIVERSAL_CONTENT_SCRIPT_ID = 'mw-universal-content-script'
 const UNIVERSAL_ORIGINS = ['https://*/*', 'http://*/*']
@@ -284,11 +299,111 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true
   }
 
+  if (message.type === 'OPEN_IMPORT') {
+    replyAsync(sendResponse, (async () => {
+      if ((await mwGetStorageMode()) !== MW_STORAGE_MODES.LOCAL) return { opened: 'none' }
+      await chrome.tabs.create({ url: chrome.runtime.getURL('import.html') })
+      return { opened: 'page' }
+    })())
+    return true
+  }
+
   if (message.type === 'PROMPT_EDIT_FEEDBACK') {
     replyAsync(sendResponse, handlePromptFeedback(message))
     return true
   }
+
+  // Local-mode memory operations from extension pages (popup, import page).
+  if (sender.id === chrome.runtime.id && !sender.tab && MEMORY_PAGE_HANDLERS[message.type]) {
+    replyAsync(sendResponse, MEMORY_PAGE_HANDLERS[message.type](message))
+    return true
+  }
 })
+
+async function requireLocalProvider() {
+  if ((await mwGetStorageMode()) !== MW_STORAGE_MODES.LOCAL) {
+    throw new Error('On-device memory is off. Switch to on-device memory in Mind World settings first.')
+  }
+  return mwGetProviderForMode(MW_STORAGE_MODES.LOCAL)
+}
+
+const MEMORY_PAGE_HANDLERS = {
+  MW_LOCAL_IMPORT_BATCH: async (m) => (await requireLocalProvider()).importConversations(m.conversations || []),
+  // Restoring a backup: the profile only replaces an empty on-device profile.
+  MW_RESTORE_PROFILE: async (m) => (await requireLocalProvider()).importAll({ conversations: [], profile: m.profile }),
+  MW_GET_PROFILE: async () => (await mwGetMemoryProvider()).getProfile(),
+  MW_UPDATE_PROFILE: async (m) => (await mwGetMemoryProvider()).updateProfile({
+    is_profile_enabled: m.is_profile_enabled,
+    profile_data: m.profile_data
+  }),
+  MW_CLEAR_INFERRED_PROFILE: async () => (await mwGetMemoryProvider()).clearInferredProfile(),
+  MW_EXPORT_LOCAL: async () => ({ data: await mwGetProviderForMode(MW_STORAGE_MODES.LOCAL).exportAll() }),
+  MW_DELETE_LOCAL_MEMORY: async () => {
+    await mwGetProviderForMode(MW_STORAGE_MODES.LOCAL).deleteAllMemory()
+    await chrome.storage.local.remove('mw_import_job')
+    return { success: true }
+  },
+  MW_ENGINE_STATUS: async () => MwEngine.status(),
+  MW_ENGINE_WARM: async () => MwEngine.warm(),
+  MW_SWITCH_STORAGE_MODE: (m) => switchStorageMode(m.mode, { clearCloud: !!m.clearCloud }),
+  // Already on-device but the account still has cloud memory (e.g. signed in on a new browser).
+  MW_COPY_CLOUD_TO_LOCAL: (m) => switchStorageMode(MW_STORAGE_MODES.LOCAL, { clearCloud: !!m.clearCloud, from: MW_STORAGE_MODES.CLOUD }),
+  MW_GET_MIGRATION_STATUS: async () => ({ migration: (await chrome.storage.local.get(MIGRATION_KEY))[MIGRATION_KEY] || null })
+}
+
+/* ---- Switching storage modes ---------------------------------------------
+ * cloud -> local: download the account export, index it on-device, then
+ * optionally delete the cloud copy. local -> cloud: upload every on-device
+ * conversation. The mode flips only after the copy succeeds, so a failure
+ * leaves the user where they were. Progress is kept in storage for the popup.
+ */
+
+const MIGRATION_KEY = 'mw_migration'
+let migrationRunning = null
+
+async function setMigration(state) {
+  await chrome.storage.local.set({ [MIGRATION_KEY]: { ...state, updated_at: Date.now() } })
+}
+
+function switchStorageMode(mode, { clearCloud = false, from = null } = {}) {
+  if (migrationRunning) return migrationRunning
+  migrationRunning = runStorageSwitch(mode, { clearCloud, from }).finally(() => { migrationRunning = null })
+  return migrationRunning
+}
+
+async function runStorageSwitch(mode, { clearCloud, from: source }) {
+  const target = mode === MW_STORAGE_MODES.CLOUD ? MW_STORAGE_MODES.CLOUD : MW_STORAGE_MODES.LOCAL
+  const current = source || await mwGetStorageMode()
+  if (current === target) {
+    await mwSetStorageMode(target)
+    return { success: true, mode: target, moved: 0 }
+  }
+  const from = mwGetProviderForMode(current)
+  const to = mwGetProviderForMode(target)
+  const progress = (phase) => ({ done, total }) => setMigration({ from: current, to: target, phase, done, total, status: 'running' })
+  try {
+    await setMigration({ from: current, to: target, phase: 'exporting', done: 0, total: 0, status: 'running' })
+    const data = await from.exportAll()
+    const total = (data.conversations || []).length
+    await setMigration({ from: current, to: target, phase: 'copying', done: 0, total, status: 'running' })
+    const result = await to.importAll(data, { onProgress: progress('copying') })
+    await mwSetStorageMode(target)
+    if (target === MW_STORAGE_MODES.LOCAL) await chrome.storage.local.set({ mw_cloud_copy_offer_dismissed: true })
+    let cloudCleared = false
+    if (target === MW_STORAGE_MODES.LOCAL && clearCloud) {
+      await setMigration({ from: current, to: target, phase: 'clearing_cloud', done: total, total, status: 'running' })
+      await from.deleteAllMemory()
+      cloudCleared = true
+    }
+    const summary = { success: true, mode: target, moved: result.imported || 0, total, ...result, cloudCleared }
+    await setMigration({ from: current, to: target, phase: 'done', done: total, total, status: 'done', result: summary })
+    return summary
+  } catch (err) {
+    const error = String((err && err.message) || err)
+    await setMigration({ from: current, to: target, phase: 'failed', status: 'failed', error })
+    return { error }
+  }
+}
 
 async function handleSearch(query) {
   try {
@@ -296,9 +411,8 @@ async function handleSearch(query) {
       return { results: [] }
     }
 
-    const auth = await getAuthContext()
-    if (auth.error) {
-      return { results: [], error: auth.error }
+    if (!(await isMindWorldLoggedIn())) {
+      return { results: [], error: 'not_logged_in' }
     }
     if (!(await isMemoryEnabled())) {
       return { results: [] }
@@ -310,21 +424,7 @@ async function handleSearch(query) {
       searchQuery = expandQuery(searchQuery)
     }
 
-    const response = await fetch(`${API_BASE}/search`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        query: searchQuery,
-        email: auth.email,
-        access_token: auth.accessToken,
-        limit: 5
-      })
-    })
-
-    if (!response.ok) return { results: [] }
-
-    const data = await response.json()
-    return { results: data.results || [] }
+    return (await mwGetMemoryProvider()).search(searchQuery, 5)
   } catch (error) {
     return { results: [] }
   }
@@ -362,50 +462,15 @@ function expandQuery(query) {
 
 async function handleEngineerPrompt(userMessage, templateStr, conversationIds, skipMemory, platform) {
   try {
-    const startedAt = Date.now()
-    const auth = await getAuthContext()
-    if (auth.error) return { error: auth.error }
-
-    const memoryEnabled = await isMemoryEnabled()
-    const stored = await chrome.storage.local.get('mw_device_id')
-
-    const body = {
-      email: auth.email,
-      access_token: auth.accessToken,
+    if (!(await isMindWorldLoggedIn())) return { error: 'not_logged_in' }
+    const provider = await mwGetMemoryProvider()
+    return await provider.engineerPrompt({
       message: userMessage,
-      template: templateStr || 'none',
-      api_key: auth.apiKey || null,
-      skip_memory: !!skipMemory || !memoryEnabled,
-      device_id: stored.mw_device_id || null,
-      platform: platform || null
-    }
-    if (conversationIds && conversationIds.length > 0) {
-      body.conversation_ids = conversationIds
-    }
-
-    const response = await fetch(`${API_BASE}/engineer_prompt`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-MW-Client': 'mwext-f8c3a91d-v3'
-      },
-      body: JSON.stringify(body)
+      template: templateStr,
+      conversationIds,
+      skipMemory,
+      platform
     })
-
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}))
-      // Pass quota_exceeded through as a structured error so the UI can show upgrade CTA
-      return { error: formatApiErrorDetail(err) || 'Engineer prompt failed' }
-    }
-
-    const data = await response.json()
-    return {
-      engineeredPrompt: data.prompt || data.engineered_prompt,
-      conversationsUsed: data.conversations_used || 0,
-      sourcesUsed: data.sources_used || [],
-      memory: data.memory || null,
-      latencyMs: Date.now() - startedAt
-    }
   } catch (error) {
     return { error: error.message }
   }
@@ -453,8 +518,7 @@ async function handleCompareAnswers(userMessage) {
 
 async function handlePersonalizationSummary() {
   try {
-    const auth = await getAuthContext()
-    if (auth.error) return { error: auth.error }
+    if (!(await isMindWorldLoggedIn())) return { error: 'not_logged_in' }
     if (!(await isMemoryEnabled())) {
       return {
         hasEnoughHistory: false,
@@ -466,26 +530,7 @@ async function handlePersonalizationSummary() {
         confirmedSummary: ''
       }
     }
-
-    const response = await fetch(`${API_BASE}/personalization_summary`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: auth.email, access_token: auth.accessToken })
-    })
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}))
-      return { error: err.detail || 'Failed to load personalization summary' }
-    }
-    const data = await response.json()
-    return {
-      hasEnoughHistory: !!data.has_enough_history,
-      shouldShowConfirmation: !!data.should_show_confirmation,
-      inferredSummary: data.inferred_summary || '',
-      summaryConfidence: data.summary_confidence || 0,
-      conversationCount: data.conversation_count || 0,
-      quickCorrections: data.quick_corrections || [],
-      confirmedSummary: data.confirmed_summary || ''
-    }
+    return await (await mwGetMemoryProvider()).getPersonalizationSummary()
   } catch (error) {
     return { error: error.message }
   }
@@ -493,28 +538,8 @@ async function handlePersonalizationSummary() {
 
 async function handleConfirmPersonalizationSummary(action, correctionIds) {
   try {
-    const auth = await getAuthContext()
-    if (auth.error) return { error: auth.error }
-
-    const response = await fetch(`${API_BASE}/confirm_personalization_summary`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email: auth.email,
-        access_token: auth.accessToken,
-        action: action || 'skip',
-        correction_ids: correctionIds || []
-      })
-    })
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}))
-      return { error: err.detail || 'Failed to save personalization summary' }
-    }
-    const data = await response.json()
-    return {
-      success: !!data.success,
-      confirmedSummary: data.confirmed_summary || ''
-    }
+    if (!(await isMindWorldLoggedIn())) return { error: 'not_logged_in' }
+    return await (await mwGetMemoryProvider()).confirmPersonalizationSummary(action, correctionIds)
   } catch (error) {
     return { error: error.message }
   }
@@ -640,20 +665,10 @@ async function handleTrackTemplateUse(name) {
 
 async function handleMemoryStats() {
   try {
-    const auth = await getAuthContext()
-    if (auth.error) return { conversationCount: 0, platformCount: 0, error: auth.error }
-
-    const response = await fetch(`${API_BASE}/user_stats`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: auth.email, access_token: auth.accessToken })
-    })
-    if (!response.ok) return { conversationCount: 0, platformCount: 0 }
-    const data = await response.json()
-    return {
-      conversationCount: data.conversation_count || 0,
-      platformCount: data.platform_count || 0
-    }
+    if (!(await isMindWorldLoggedIn())) return { conversationCount: 0, platformCount: 0, error: 'not_logged_in' }
+    const mode = await mwGetStorageMode()
+    const stats = await mwGetProviderForMode(mode).getStats()
+    return { ...stats, storageMode: mode }
   } catch (error) {
     return { conversationCount: 0, platformCount: 0, error: error.message }
   }
@@ -661,35 +676,8 @@ async function handleMemoryStats() {
 
 async function handlePromptFeedback(message) {
   try {
-    const auth = await getAuthContext()
-    if (auth.error) return { error: auth.error }
-
-    const response = await fetch(`${API_BASE}/prompt_feedback`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email: auth.email,
-        access_token: auth.accessToken,
-        rating: (typeof message.rating === 'number') ? message.rating : 1,
-        event_type: message.eventType || 'rating',
-        goal: message.goal || '',
-        prompt_preview: message.promptPreview || '',
-        template_used: message.templateUsed || '',
-        conversations_used: message.conversationsUsed || 0,
-        goal_hash: message.goalHash || '',
-        engineered_prompt_hash: message.engineeredPromptHash || '',
-        final_prompt_hash: message.finalPromptHash || '',
-        engineered_prompt_preview: message.engineeredPromptPreview || '',
-        final_prompt_preview: message.finalPromptPreview || '',
-        diff_metrics: message.diffMetrics || {},
-        accepted_unedited: !!message.acceptedUnedited,
-        edited: !!message.edited,
-        latency_ms: message.latencyMs || null
-      })
-    })
-
-    if (!response.ok) return { error: 'Failed to log feedback' }
-    return { success: true }
+    if (!(await isMindWorldLoggedIn())) return { error: 'not_logged_in' }
+    return await (await mwGetMemoryProvider()).recordEditFeedback(message)
   } catch (error) {
     return { error: error.message }
   }
@@ -715,27 +703,29 @@ async function processSaveQueue() {
     // Clear queue immediately to prevent double processing
     await chrome.storage.local.set({ mw_save_queue: [] })
 
-    const { email } = await getCredentials()
-    const accessToken = await getAccessToken()
-
-    if (!email || !accessToken) return
+    if (!(await isMindWorldLoggedIn())) return
+    const mode = await mwGetStorageMode()
+    const provider = mwGetProviderForMode(mode)
 
     let anySuccess = false
+    const retry = []
     for (const conversation of queue) {
       try {
-        const res = await fetch(`${API_BASE}/save_conversation`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email,
-            access_token: accessToken,
-            conversation
-          })
-        })
-        if (res.ok) anySuccess = true
+        const res = await provider.saveConversation(conversation)
+        if (res.saved) anySuccess = true
+        if (res.reason === 'auth_required') return
       } catch (err) {
-        // do nothing
+        // On-device indexing failed (e.g. the engine was still loading): retry a few times.
+        const attempts = (conversation._mw_attempts || 0) + 1
+        if (mode === MW_STORAGE_MODES.LOCAL && attempts < 3) retry.push({ ...conversation, _mw_attempts: attempts })
+        else console.warn('[mw] auto-save failed:', err)
       }
+    }
+    if (retry.length) {
+      setTimeout(async () => {
+        const { mw_save_queue: current = [] } = await chrome.storage.local.get('mw_save_queue')
+        await chrome.storage.local.set({ mw_save_queue: [...current, ...retry] })
+      }, 15000)
     }
 
     if (anySuccess) {

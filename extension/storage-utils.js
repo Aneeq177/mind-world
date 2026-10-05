@@ -41,7 +41,19 @@ async function clearAllMindWorldStorage() {
   keys = await getMindWorldStorageKeys()
   if (keys.length) await chrome.storage.local.remove(keys)
 
+  await deleteOnDeviceMemory()
   return keys
+}
+
+/* Delete the on-device memory database (memory/schema.js MW_DB_NAME). Only
+ * from extension contexts: in a content script indexedDB is the host page's. */
+function deleteOnDeviceMemory() {
+  if (typeof location === 'undefined' || location.protocol !== 'chrome-extension:') return Promise.resolve()
+  if (typeof indexedDB === 'undefined') return Promise.resolve()
+  return new Promise((resolve) => {
+    const req = indexedDB.deleteDatabase('mind-world-memory')
+    req.onsuccess = req.onerror = req.onblocked = () => resolve()
+  })
 }
 
 async function isMindWorldLoggedIn() {

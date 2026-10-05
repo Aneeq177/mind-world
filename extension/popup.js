@@ -43,9 +43,33 @@ document.addEventListener('DOMContentLoaded', async () => {
   const apikeyStatus = document.getElementById('apikey-status')
   const universalModeToggle = document.getElementById('universal-mode-toggle')
   const universalModeStatus = document.getElementById('universal-mode-status')
+  const storageModeLabel = document.getElementById('storage-mode-label')
+  const storageModeHint = document.getElementById('storage-mode-hint')
+  const switchStorageBtn = document.getElementById('switch-storage-btn')
+  const clearCloudRow = document.getElementById('clear-cloud-row')
+  const clearCloudCheckbox = document.getElementById('clear-cloud-checkbox')
+  const migrationStatus = document.getElementById('migration-status')
+  const localOfferBanner = document.getElementById('local-offer-banner')
+  const localOfferText = document.getElementById('local-offer-text')
+  const localOfferAccept = document.getElementById('local-offer-accept')
+  const localOfferDismiss = document.getElementById('local-offer-dismiss')
+  const offerClearCloud = document.getElementById('offer-clear-cloud')
+  const deleteLocalBtn = document.getElementById('delete-local-btn')
+  const byokHint = document.getElementById('byok-hint')
+  const byokDirectRow = document.getElementById('byok-direct-row')
+  const byokDirectToggle = document.getElementById('byok-direct-toggle')
+  const removeApikeyBtn = document.getElementById('remove-apikey-btn')
 
   let currentEmail = null
   let isRegisterMode = false
+  let storageMode = 'local'
+  // The local-mode offer: 'switch' moves a cloud-mode user on-device; 'copy'
+  // pulls leftover cloud memory into an install that is already on-device.
+  let offerKind = null
+
+  const isLocalMode = () => storageMode === 'local'
+  const uploadLabel = () => (isLocalMode() ? '📁 I downloaded it — import on this device' : '📁 I downloaded it — upload here')
+  const sendToBackground = (message) => chrome.runtime.sendMessage(message).catch((err) => ({ error: String(err.message || err) }))
 
   const passwordInput = document.getElementById('password-input-login')
   const toggleAuthMode = document.getElementById('toggle-auth-mode')
@@ -108,14 +132,20 @@ document.addEventListener('DOMContentLoaded', async () => {
   async function completeSignIn(email, accessToken, apiKey = null) {
     const autosaveEnabled = loginAutosaveOptIn ? loginAutosaveOptIn.checked : true
     const memoryEnabled = loginMemoryOptIn ? loginMemoryOptIn.checked : true
+    const chosen = document.querySelector('input[name="login-storage-mode"]:checked')
+    const chosenMode = chosen && chosen.value === 'cloud' ? 'cloud' : 'local'
 
     await chrome.storage.local.set({
       mw_email: email,
       mw_access_token: accessToken,
       mw_autosave_enabled: autosaveEnabled,
       mw_memory_enabled: memoryEnabled,
+      mw_storage_mode: chosenMode,
+      mw_storage_mode_explicit: true,
+      mw_offer_local_switch: false,
       ...(apiKey ? { mw_api_key: apiKey } : {})
     })
+    storageMode = chosenMode
     if (autosaveOptIn) autosaveOptIn.checked = autosaveEnabled
     if (memoryOptIn) memoryOptIn.checked = memoryEnabled
 
@@ -289,6 +319,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function triggerImportPicker() {
+    // On-device imports parse and index in a full tab; the popup would close mid-import.
+    if (isLocalMode()) {
+      chrome.tabs.create({ url: chrome.runtime.getURL('import.html') })
+      return
+    }
     if (importFileInput) importFileInput.click()
   }
 
@@ -354,18 +389,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     buttonEl.disabled = true
     buttonEl.textContent = 'Clearing...'
     try {
-      const accessToken = await getAccessToken()
-      if (!accessToken) throw new Error('Session expired. Reconnect in the extension.')
-      const res = await fetch(`${API_BASE}/clear_inferred_profile`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: currentEmail, access_token: accessToken })
-      })
-      if (res.status === 401) {
-        await chrome.storage.local.remove(['mw_access_token'])
-        throw new Error('Session expired. Add your API key in Advanced Settings and try again.')
-      }
-      if (!res.ok) throw new Error('Clear failed')
+      const res = await sendToBackground({ type: 'MW_CLEAR_INFERRED_PROFILE' })
+      if (!res || res.error) throw new Error((res && res.error) || 'Clear failed')
       showPrivacyStatus('Inferred profile cleared', false)
     } catch (err) {
       showPrivacyStatus(String(err.message || 'Clear failed'), true)
@@ -478,7 +503,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     } finally {
       if (uploadBtn) {
         uploadBtn.disabled = false
-        uploadBtn.textContent = '📁 I downloaded it — upload here'
+        uploadBtn.textContent = uploadLabel()
       }
       if (importFileInput) importFileInput.value = ''
     }
@@ -495,7 +520,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const claudeGuide = document.getElementById('export-guide-claude')
       if (chatgptGuide) chatgptGuide.style.display = platform === 'chatgpt' ? 'block' : 'none'
       if (claudeGuide) claudeGuide.style.display = platform === 'claude' ? 'block' : 'none'
-      uploadBtn.textContent = '📁 I downloaded it — upload here'
+      uploadBtn.textContent = uploadLabel()
       uploadBtn.style.background = ''
       uploadBtn.style.border = ''
       return
@@ -597,15 +622,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   async function loadProfileSettings(email) {
     if (!email) return
     try {
-      const accessToken = await getAccessToken()
-      if (!accessToken) return
-      const res = await fetch(`${API_BASE}/get_profile_settings`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, access_token: accessToken })
-      })
-      if (!res.ok) return
-      const data = await res.json()
+      const data = await sendToBackground({ type: 'MW_GET_PROFILE' })
+      if (!data || data.error) throw new Error((data && data.error) || 'profile unavailable')
       const enabled = !!data.is_profile_enabled
       if (profileOptIn) profileOptIn.checked = enabled
       await chrome.storage.local.set({ mw_profile_enabled: enabled })
@@ -622,19 +640,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   async function saveProfileSettings(isEnabled, profileData) {
     if (!currentEmail) return false
     try {
-      const accessToken = await getAccessToken()
-      if (!accessToken) return false
-      await fetch(`${API_BASE}/update_profile_settings`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: currentEmail,
-          access_token: accessToken,
-          is_profile_enabled: isEnabled,
-          profile_data: profileData
-        })
-      })
-      return true
+      const res = await sendToBackground({ type: 'MW_UPDATE_PROFILE', is_profile_enabled: isEnabled, profile_data: profileData })
+      return !!(res && res.success)
     } catch (err) {
       return false
     }
@@ -749,8 +756,23 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (exportDataBtn) {
     exportDataBtn.addEventListener('click', async () => {
       if (!currentEmail) return
+      const defaultLabel = exportDataBtn.textContent
       exportDataBtn.disabled = true
       exportDataBtn.textContent = 'Exporting...'
+      if (isLocalMode()) {
+        try {
+          const res = await sendToBackground({ type: 'MW_EXPORT_LOCAL' })
+          if (!res || res.error || !res.data) throw new Error((res && res.error) || 'Backup failed')
+          downloadJson(res.data, `mind-world-backup-${new Date().toISOString().slice(0, 10)}.json`)
+          showPrivacyStatus(`Backed up ${(res.data.conversations || []).length} conversations. Keep the file somewhere safe; it contains your chats.`, false)
+        } catch (err) {
+          showPrivacyStatus(String(err.message || 'Backup failed'), true)
+        } finally {
+          exportDataBtn.disabled = false
+          exportDataBtn.textContent = defaultLabel
+        }
+        return
+      }
       try {
         const accessToken = await getAccessToken()
         if (!accessToken) throw new Error('Session expired. Reconnect in the extension.')
@@ -765,20 +787,43 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         if (!res.ok) throw new Error('Export failed')
         const data = await res.json()
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = `mind-world-export-${Date.now()}.json`
-        a.click()
-        URL.revokeObjectURL(url)
+        downloadJson(data, `mind-world-export-${Date.now()}.json`)
         showPrivacyStatus(`Exported ${data.conversation_count || 0} conversations`, false)
       } catch (err) {
         showPrivacyStatus('Export failed. Try again.', true)
       } finally {
         exportDataBtn.disabled = false
-        exportDataBtn.textContent = 'Export my data'
+        exportDataBtn.textContent = defaultLabel
       }
+    })
+  }
+
+  function downloadJson(data, filename) {
+    const blob = new Blob([JSON.stringify(data)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
+
+  if (deleteLocalBtn) {
+    deleteLocalBtn.addEventListener('click', async () => {
+      const confirmed = confirm(
+        'Delete every conversation, search index, and profile stored on this device?\n\n' +
+        'Your account stays. Back up your memory first if you might want it later. This cannot be undone.'
+      )
+      if (!confirmed) return
+      deleteLocalBtn.disabled = true
+      const res = await sendToBackground({ type: 'MW_DELETE_LOCAL_MEMORY' })
+      deleteLocalBtn.disabled = false
+      if (!res || res.error) {
+        showPrivacyStatus(String((res && res.error) || 'Delete failed'), true)
+        return
+      }
+      showPrivacyStatus('On-device memory deleted', false)
+      loadStats(currentEmail)
     })
   }
 
@@ -841,6 +886,24 @@ document.addEventListener('DOMContentLoaded', async () => {
   })
 
   // Save API key separately
+  // Listing models is free, so this checks the key without spending credits.
+  async function checkAnthropicKey(apiKey) {
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/models?limit=1', {
+        headers: {
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true'
+        }
+      })
+      if (res.ok) return { ok: true }
+      if (res.status === 401 || res.status === 403) return { ok: false, message: 'Anthropic rejected this key. Copy it again from console.anthropic.com.' }
+      return { ok: true, unverified: true }
+    } catch (_) {
+      return { ok: true, unverified: true }
+    }
+  }
+
   saveApikeyBtn.addEventListener('click', async () => {
     const apiKey = apikeyInputConnected.value.trim()
     if (!apiKey || !apiKey.startsWith('sk-ant-')) {
@@ -848,10 +911,21 @@ document.addEventListener('DOMContentLoaded', async () => {
       apikeyStatus.className = 'apikey-error'
       return
     }
+    saveApikeyBtn.disabled = true
+    apikeyStatus.textContent = 'Checking key...'
+    apikeyStatus.className = ''
+    const check = await checkAnthropicKey(apiKey)
+    saveApikeyBtn.disabled = false
+    if (!check.ok) {
+      apikeyStatus.textContent = check.message
+      apikeyStatus.className = 'apikey-error'
+      return
+    }
     await chrome.storage.local.set({ mw_api_key: apiKey })
-    apikeyStatus.textContent = '✓ API key saved'
+    apikeyStatus.textContent = check.unverified ? '✓ API key saved (could not reach Anthropic to check it)' : '✓ API key saved and verified'
     apikeyStatus.className = 'apikey-saved'
     apikeyInputConnected.value = ''
+    if (removeApikeyBtn) removeApikeyBtn.style.display = 'inline-block'
     if (currentEmail) {
       try {
         await establishSession(currentEmail, apiKey)
@@ -861,6 +935,21 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     }
   })
+
+  if (removeApikeyBtn) {
+    removeApikeyBtn.addEventListener('click', async () => {
+      await chrome.storage.local.remove(['mw_api_key'])
+      removeApikeyBtn.style.display = 'none'
+      apikeyStatus.textContent = 'Key removed. Improve uses your Mind World quota.'
+      apikeyStatus.className = 'apikey-saved'
+    })
+  }
+
+  if (byokDirectToggle) {
+    byokDirectToggle.addEventListener('change', async (e) => {
+      await chrome.storage.local.set({ mw_byok_direct: e.target.checked })
+    })
+  }
 
   async function signOut() {
     await chrome.storage.local.remove(['mw_email', 'mw_api_key', 'mw_access_token', 'mw_password_setup_dismissed'])
@@ -891,58 +980,207 @@ document.addEventListener('DOMContentLoaded', async () => {
       apikeyStatus.textContent = 'API key configured'
       apikeyStatus.className = 'apikey-saved'
     }
+    if (removeApikeyBtn) removeApikeyBtn.style.display = existingApiKey ? 'inline-block' : 'none'
 
     const uploadUrl = `${UPLOAD_BASE}?email=${encodeURIComponent(email)}`
     if (openMap) openMap.href = uploadUrl
     if (manageConversationsLink) manageConversationsLink.href = uploadUrl
     loadAuthAccount(email)
+    refreshStorageState()
   }
+
+  /* ---- Memory storage mode ------------------------------------------------ */
+
+  const MIGRATION_PHASES = {
+    exporting: 'Getting your memory ready…',
+    copying: 'Copying',
+    clearing_cloud: 'Deleting the cloud copy…'
+  }
+  // A "running" migration this old means the background worker was stopped mid-way.
+  const MIGRATION_STALE_MS = 3 * 60 * 1000
+
+  async function refreshStorageState() {
+    const s = await chrome.storage.local.get(['mw_storage_mode', 'mw_offer_local_switch', 'mw_migration', 'mw_byok_direct', 'mw_cloud_copy_offer_dismissed'])
+    storageMode = s.mw_storage_mode === 'cloud' ? 'cloud' : 'local'
+    applyStorageMode()
+    renderMigration(s.mw_migration)
+    if (byokDirectToggle) byokDirectToggle.checked = s.mw_byok_direct !== false
+    if (storageMode === 'cloud' && s.mw_offer_local_switch) {
+      offerKind = 'switch'
+      if (localOfferText) localOfferText.textContent = 'Move your saved chats into this browser. Improve keeps working the same way, and Mind World stops storing your conversations.'
+      if (localOfferAccept) localOfferAccept.textContent = 'Move to this device'
+      if (localOfferBanner) localOfferBanner.style.display = 'block'
+    } else if (storageMode === 'local' && !s.mw_cloud_copy_offer_dismissed) {
+      loadCloudInfo()
+    } else if (localOfferBanner) {
+      localOfferBanner.style.display = 'none'
+    }
+  }
+
+  function applyStorageMode() {
+    const local = isLocalMode()
+    if (storageModeLabel) {
+      storageModeLabel.textContent = local ? 'On this device' : 'Synced'
+      storageModeLabel.classList.toggle('cloud', !local)
+    }
+    if (storageModeHint) {
+      storageModeHint.textContent = local
+        ? 'Your chats, search index, and profile stay in this browser. Improve sends only the excerpts that match each draft.'
+        : 'Your chats are stored on Mind World servers so they follow you to other browsers.'
+    }
+    if (switchStorageBtn) switchStorageBtn.textContent = local ? 'Switch to sync across devices' : 'Move memory to this device'
+    if (clearCloudRow) clearCloudRow.style.display = local ? 'none' : 'flex'
+    if (manageConversationsLink) manageConversationsLink.style.display = local ? 'none' : ''
+    if (exportDataBtn && !exportDataBtn.disabled) exportDataBtn.textContent = local ? 'Back up memory' : 'Export my data'
+    if (deleteLocalBtn) deleteLocalBtn.style.display = local ? '' : 'none'
+    if (openMap && local) openMap.style.display = 'none'
+    if (byokDirectRow) byokDirectRow.style.display = local ? 'flex' : 'none'
+    if (byokHint) {
+      byokHint.textContent = local
+        ? 'Optional. With your own key, Improve calls Anthropic straight from your browser and doesn\'t use your Mind World quota.'
+        : 'Optional. Used for Improve instead of your Mind World quota.'
+    }
+    if (uploadBtn && !uploadBtn.disabled && uploadBtn.textContent.startsWith('📁 I downloaded it')) uploadBtn.textContent = uploadLabel()
+  }
+
+  function renderMigration(m) {
+    if (!migrationStatus) return
+    const running = m && m.status === 'running' && Date.now() - (m.updated_at || 0) < MIGRATION_STALE_MS
+    if (switchStorageBtn) switchStorageBtn.disabled = !!running
+    if (localOfferAccept) localOfferAccept.disabled = !!running
+    if (!m || Date.now() - (m.updated_at || 0) > 10 * 60 * 1000) {
+      migrationStatus.style.display = 'none'
+      return
+    }
+    let text = ''
+    let isError = false
+    if (running) {
+      const label = MIGRATION_PHASES[m.phase] || 'Working…'
+      text = m.phase === 'copying' && m.total ? `${label} ${m.done || 0} of ${m.total} chats…` : label
+      text += ' You can close this window.'
+    } else if (m.status === 'running') {
+      text = 'The last move was interrupted. Nothing was lost. Try again.'
+      isError = true
+    } else if (m.status === 'done') {
+      const r = m.result || {}
+      const moved = r.moved || 0
+      text = m.to === 'local'
+        ? `Moved ${moved} chats to this device.${r.cloudCleared ? ' The cloud copy was deleted.' : ''}`
+        : `Uploaded ${moved} chats to your account.${r.trimmed ? ` ${r.trimmed} very long chats were shortened to fit.` : ''}`
+      if (r.skipped) text += ` ${r.skipped} couldn't be copied.`
+    } else if (m.status === 'failed') {
+      text = `The move failed, so your memory wasn't changed. ${m.error || ''}`.trim()
+      isError = true
+    }
+    migrationStatus.style.display = 'block'
+    migrationStatus.textContent = text
+    migrationStatus.style.color = isError ? '#f87171' : '#6ee7b7'
+  }
+
+  async function loadCloudInfo() {
+    try {
+      const accessToken = await getAccessToken()
+      if (!accessToken || !currentEmail) return
+      const res = await fetch(`${API_BASE}/user_stats`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: currentEmail, access_token: accessToken })
+      })
+      if (!res.ok) return
+      const data = await res.json()
+      updateConsentStatus(data)
+      const cloudCount = data.conversation_count || 0
+      if (!isLocalMode() || !cloudCount || !localOfferBanner) return
+      offerKind = 'copy'
+      if (localOfferText) {
+        localOfferText.textContent = `Your account still has ${cloudCount} chats stored on Mind World servers. Copy them to this device so Improve can use them.`
+      }
+      if (localOfferAccept) localOfferAccept.textContent = 'Copy to this device'
+      localOfferBanner.style.display = 'block'
+    } catch (_) {}
+  }
+
+  async function startMigration(message) {
+    if (switchStorageBtn) switchStorageBtn.disabled = true
+    if (localOfferAccept) localOfferAccept.disabled = true
+    renderMigration({ status: 'running', phase: 'exporting', updated_at: Date.now() })
+    const res = await sendToBackground(message)
+    await refreshStorageState()
+    if (res && !res.error) {
+      if (localOfferBanner) localOfferBanner.style.display = 'none'
+      if (offerKind === 'copy') await chrome.storage.local.set({ mw_cloud_copy_offer_dismissed: true })
+    }
+    loadStats(currentEmail)
+  }
+
+  if (switchStorageBtn) {
+    switchStorageBtn.addEventListener('click', () => {
+      const toCloud = isLocalMode()
+      const confirmed = confirm(toCloud
+        ? 'Upload every chat stored on this device to your Mind World account?\n\nYour memory will be stored on Mind World servers and sync across browsers. The copy on this device stays until you delete it.'
+        : 'Move your memory to this device?\n\nYour chats are downloaded and indexed in this browser. This can take a few minutes for large histories.')
+      if (!confirmed) return
+      startMigration({
+        type: 'MW_SWITCH_STORAGE_MODE',
+        mode: toCloud ? 'cloud' : 'local',
+        clearCloud: !toCloud && !!(clearCloudCheckbox && clearCloudCheckbox.checked)
+      })
+    })
+  }
+
+  if (localOfferAccept) {
+    localOfferAccept.addEventListener('click', () => {
+      const clearCloud = !!(offerClearCloud && offerClearCloud.checked)
+      startMigration(offerKind === 'copy'
+        ? { type: 'MW_COPY_CLOUD_TO_LOCAL', clearCloud }
+        : { type: 'MW_SWITCH_STORAGE_MODE', mode: 'local', clearCloud })
+    })
+  }
+
+  if (localOfferDismiss) {
+    localOfferDismiss.addEventListener('click', async () => {
+      if (localOfferBanner) localOfferBanner.style.display = 'none'
+      await chrome.storage.local.set(offerKind === 'copy' ? { mw_cloud_copy_offer_dismissed: true } : { mw_offer_local_switch: false })
+    })
+  }
+
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local' || !currentEmail) return
+    if (changes.mw_migration) renderMigration(changes.mw_migration.newValue)
+    if (changes.mw_storage_mode) {
+      storageMode = changes.mw_storage_mode.newValue === 'cloud' ? 'cloud' : 'local'
+      applyStorageMode()
+    }
+  })
 
   async function loadStats(email) {
     try {
-      const accessToken = await getAccessToken()
-      if (!accessToken) {
+      const data = await sendToBackground({ type: 'GET_MEMORY_STATS' })
+      if (data && data.storageMode) {
+        storageMode = data.storageMode
+        applyStorageMode()
+      }
+      if (!data || data.error) {
         convCount.textContent = '—'
         platformsCount.textContent = '—'
         return
       }
-      const res = await fetch(`${API_BASE}/user_stats`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, access_token: accessToken })
-      })
-      if (res.ok) {
-        const data = await res.json()
-        const count = data.conversation_count || 0
-        convCount.textContent = count
-        platformsCount.textContent = data.platform_count || '0'
-        updateConsentStatus(data)
+      const count = data.conversationCount || 0
+      convCount.textContent = count
+      platformsCount.textContent = data.platformCount || '0'
+      if (data.consent) updateConsentStatus(data.consent)
 
-        const onboarding = document.getElementById('onboarding')
-        const instructions = document.getElementById('instructions')
-        const addMoreBanner = document.getElementById('add-more-banner')
-        const uploadUrl = `${UPLOAD_BASE}?email=${encodeURIComponent(email)}`
+      const onboarding = document.getElementById('onboarding')
+      const instructions = document.getElementById('instructions')
+      const addMoreBanner = document.getElementById('add-more-banner')
+      // The memory map reads server-side clusters, so it only exists for synced memory.
+      const mapDisplay = count > 0 && !isLocalMode() ? 'block' : 'none'
 
-        if (count === 0) {
-          if (onboarding) onboarding.style.display = 'block'
-          if (addMoreBanner) addMoreBanner.style.display = 'none'
-          if (instructions) instructions.style.display = 'none'
-          if (openMap) openMap.style.display = 'none'
-          setOnboardingMode(true)
-        } else if (count < 50) {
-          if (onboarding) onboarding.style.display = 'none'
-          if (addMoreBanner) addMoreBanner.style.display = 'flex'
-          if (instructions) instructions.style.display = 'block'
-          if (openMap) openMap.style.display = 'block'
-          setOnboardingMode(false)
-        } else {
-          if (onboarding) onboarding.style.display = 'none'
-          if (addMoreBanner) addMoreBanner.style.display = 'none'
-          if (instructions) instructions.style.display = 'block'
-          if (openMap) openMap.style.display = 'block'
-          setOnboardingMode(false)
-        }
-      }
+      if (openMap) openMap.style.display = mapDisplay
+      if (onboarding) onboarding.style.display = count === 0 ? 'block' : 'none'
+      if (addMoreBanner) addMoreBanner.style.display = count > 0 && count < 50 ? 'flex' : 'none'
+      if (instructions) instructions.style.display = count === 0 ? 'none' : 'block'
+      setOnboardingMode(count === 0)
     } catch {
       convCount.textContent = '—'
       platformsCount.textContent = '—'

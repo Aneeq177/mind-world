@@ -7,6 +7,7 @@ import os
 from datetime import datetime, timezone
 from typing import Any
 
+from services.engineer_core import model_name, prompt_system
 from services.personalization import (
     QUICK_CORRECTION_OPTIONS,
     _utcnow_iso,
@@ -14,7 +15,7 @@ from services.personalization import (
     normalize_profile_data,
 )
 
-HAIKU = "claude-haiku-4-5-20251001"
+HAIKU = model_name()
 SYNTHESIS_STALE_HOURS = 24
 EXTRACTION_BATCH_SIZE = 3
 
@@ -187,20 +188,7 @@ def infer_profile_delta_llm(
     pending = profile.get("llm_pending_snippets") or []
     combined = "\n\n---\n\n".join(pending[-EXTRACTION_BATCH_SIZE:])[:6000]
 
-    system = """You extract personalization signals from a user's AI chat history.
-Return ONLY valid JSON (no markdown):
-{
-  "domains": {
-    "domain_id": {"label": "human readable", "confidence": 0.0-1.0, "expertise_level": "beginner|intermediate|advanced|unknown"}
-  },
-  "preferences": {
-    "concise|step_by_step|examples|formal_tone": {"value": true, "confidence": 0.0-1.0}
-  },
-  "active_projects": [{"name": "...", "confidence": 0.0-1.0}],
-  "constraints": ["short stable facts about deadlines, goals, stack choices"],
-  "entities": {"stack": [], "schools": [], "roles": [], "companies": []}
-}
-Use snake_case domain ids. Only include fields supported by evidence. Be conservative with confidence."""
+    system, max_tokens = prompt_system("profile_extract")
 
     user = (
         f"EXISTING PROFILE:\n{json.dumps(normalize_profile_data(profile), ensure_ascii=False)[:3000]}\n\n"
@@ -208,7 +196,7 @@ Use snake_case domain ids. Only include fields supported by evidence. Be conserv
     )
 
     try:
-        raw = _haiku(key, system, user, max_tokens=700)
+        raw = _haiku(key, system, user, max_tokens=max_tokens)
         delta = _parse_json_text(raw)
         if isinstance(delta, dict):
             merged = merge_llm_profile_delta(profile, delta)
@@ -243,18 +231,7 @@ def synthesize_profile_llm(
         for s in conversation_samples[:25]
     ]
 
-    system = """Synthesize a user personalization profile from their recent AI conversations.
-Return ONLY valid JSON:
-{
-  "inferred_summary": "One natural sentence, e.g. software engineering and grad school applications",
-  "summary_confidence": 0.0-1.0,
-  "domains": { "domain_id": {"label": "...", "confidence": 0.0-1.0} },
-  "preferences": { "concise|step_by_step|examples|formal_tone": {"value": true, "confidence": 0.0-1.0} },
-  "active_projects": [{"name": "...", "confidence": 0.0-1.0}],
-  "constraints": ["..."],
-  "quick_corrections": [{"id": "snake_case", "label": "Mostly ..."}]
-}
-quick_corrections: 3-5 tap options tailored to THIS user (not generic). Respect existing confirmed_anchors if present."""
+    system, max_tokens = prompt_system("profile_synthesize")
 
     user = (
         f"CURRENT PROFILE:\n{json.dumps(profile, ensure_ascii=False)[:3500]}\n\n"
@@ -262,7 +239,7 @@ quick_corrections: 3-5 tap options tailored to THIS user (not generic). Respect 
     )
 
     try:
-        raw = _haiku(key, system, user, max_tokens=900)
+        raw = _haiku(key, system, user, max_tokens=max_tokens)
         payload = _parse_json_text(raw)
         if not isinstance(payload, dict):
             return profile
@@ -313,15 +290,12 @@ def pick_relevant_profile_facts_llm(
     if not key or not query.strip():
         return []
 
-    system = f"""Pick personalization facts relevant to the user's current draft.
-Return ONLY JSON: {{"facts": ["fact 1", "fact 2"]}}
-Max {max_facts} facts. Use only information from the profile. Never invent details.
-Prefer user-verified anchors, active projects, constraints, entities, and preferences."""
+    system, max_tokens = prompt_system("pick_facts", max_facts=max_facts)
 
     user = f"USER DRAFT:\n{query[:1500]}\n\nPROFILE:\n{json.dumps(profile, ensure_ascii=False)[:4000]}"
 
     try:
-        raw = _haiku(key, system, user, max_tokens=350)
+        raw = _haiku(key, system, user, max_tokens=max_tokens)
         payload = _parse_json_text(raw)
         facts = payload.get("facts") if isinstance(payload, dict) else payload
         if isinstance(facts, list):
@@ -344,15 +318,10 @@ def rewrite_about_me_queries_llm(
     if not key or not (draft or "").strip():
         return []
 
-    system = f"""The user is drafting a prompt about themselves. Their past AI chats hold the
-personal facts needed to answer it well. Write up to {max_queries} short search queries
-(3-8 words each) that would find those chats, e.g. their studies, grades, work
-experience, projects, skills, goals, finances, or location — whichever matter for
-this draft. Phrase them the way the user would have written about it.
-Return ONLY JSON: {{"queries": ["...", "..."]}}"""
+    system, max_tokens = prompt_system("rewrite_about_me", max_queries=max_queries)
 
     try:
-        raw = _haiku(key, system, f"DRAFT:\n{draft[:1500]}", max_tokens=200)
+        raw = _haiku(key, system, f"DRAFT:\n{draft[:1500]}", max_tokens=max_tokens)
         payload = _parse_json_text(raw)
         queries = payload.get("queries") if isinstance(payload, dict) else payload
         if isinstance(queries, list):
@@ -387,16 +356,12 @@ def rerank_conversations_llm(
     if not compact:
         return candidates[:limit]
 
-    system = f"""Pick the past conversations that would genuinely help with the user's current draft.
-Return ONLY JSON: {{"ranked_ids": ["id1", "id2", ...]}}
-Include at most {limit} ids, best first. Use only ids from the list.
-Leave out conversations that merely share a word or broad topic. Returning fewer
-ids, or an empty list, is correct when few or none are relevant."""
+    system, max_tokens = prompt_system("rerank", limit=limit)
 
     user = f"DRAFT:\n{query[:1500]}\n\nCANDIDATES:\n{json.dumps(compact, ensure_ascii=False)}"
 
     try:
-        raw = _haiku(key, system, user, max_tokens=200)
+        raw = _haiku(key, system, user, max_tokens=max_tokens)
         payload = _parse_json_text(raw)
         ranked_ids = payload.get("ranked_ids") if isinstance(payload, dict) else None
         if not isinstance(ranked_ids, list):
@@ -458,15 +423,7 @@ def apply_edit_feedback_llm(
     if engineered_prompt.strip() == final_prompt.strip():
         return profile
 
-    system = """Analyze how the user edited an AI-engineered prompt.
-Return ONLY JSON preference deltas (only if clear evidence):
-{
-  "preferences": {
-    "concise|step_by_step|examples|formal_tone": {"value": true/false, "confidence": 0.0-1.0}
-  },
-  "style_notes": ["short note about tone/structure preference"]
-}
-Be conservative."""
+    system, max_tokens = prompt_system("profile_edit_feedback")
 
     user = (
         f"ENGINEERED:\n{engineered_prompt[:2000]}\n\n"
@@ -474,7 +431,7 @@ Be conservative."""
     )
 
     try:
-        raw = _haiku(key, system, user, max_tokens=300)
+        raw = _haiku(key, system, user, max_tokens=max_tokens)
         payload = _parse_json_text(raw)
         if isinstance(payload, dict) and payload.get("preferences"):
             return merge_llm_profile_delta(profile, {"preferences": payload["preferences"]})
@@ -496,9 +453,7 @@ def merge_popup_profile_llm(
         profile.update(cleaned_popup)
         return profile
 
-    system = """Convert explicit user-provided profile fields into structured personalization JSON.
-Return ONLY JSON with optional keys: domains, preferences, active_projects, constraints, entities.
-Use the same schema as profile extraction. Only include fields clearly stated by the user."""
+    system, max_tokens = prompt_system("profile_popup_merge")
 
     user = (
         f"EXISTING PROFILE:\n{json.dumps(profile, ensure_ascii=False)[:2500]}\n\n"
@@ -506,7 +461,7 @@ Use the same schema as profile extraction. Only include fields clearly stated by
     )
 
     try:
-        raw = _haiku(key, system, user, max_tokens=500)
+        raw = _haiku(key, system, user, max_tokens=max_tokens)
         payload = _parse_json_text(raw)
         if isinstance(payload, dict):
             merged = merge_llm_profile_delta(profile, payload)
