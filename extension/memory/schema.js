@@ -3,7 +3,7 @@
  * Loaded as a classic script (service worker importScripts, extension pages via
  * <script>) and as a CommonJS module by the Node tests.
  *
- * Records in IndexedDB (database MW_DB_NAME):
+ * Records in IndexedDB (one database per account, see mwAccountDbName):
  *   conversations  { id, title, source_app, created_at, updated_at, full_text,
  *                    text_hash, num_messages, char_count, preview }
  *   chunks         { id: `${conversation_id}:${chunk_index}`, conversation_id,
@@ -17,8 +17,19 @@
 const MW_STORAGE_MODE_KEY = 'mw_storage_mode'
 const MW_STORAGE_MODES = Object.freeze({ LOCAL: 'local', CLOUD: 'cloud' })
 
+// Each signed-in account has its own database, MW_DB_NAME + '-' + a hash of the
+// email. A database named exactly MW_DB_NAME predates per-account storage; the
+// first account to open memory takes over its contents (see local-db.js).
 const MW_DB_NAME = 'mind-world-memory'
 const MW_DB_VERSION = 1
+
+async function mwAccountDbName(email) {
+  const normalized = String(email || '').trim().toLowerCase()
+  if (!normalized.includes('@')) throw new Error('Sign in to Mind World to use on-device memory.')
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(normalized))
+  const hex = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('')
+  return `${MW_DB_NAME}-${hex.slice(0, 16)}`
+}
 const MW_STORES = Object.freeze({
   CONVERSATIONS: 'conversations',
   CHUNKS: 'chunks',
@@ -113,6 +124,7 @@ if (typeof module !== 'undefined' && module.exports) {
     MW_STORAGE_MODES,
     MW_DB_NAME,
     MW_DB_VERSION,
+    mwAccountDbName,
     MW_STORES,
     MW_INDEX_VERSION,
     MW_EMBED_MODEL,

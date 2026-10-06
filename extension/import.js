@@ -6,6 +6,7 @@
 const JOB_KEY = 'mw_import_job'
 const BATCH_MAX_CONVERSATIONS = 16
 const BATCH_MAX_CHARS = 3_000_000
+const SIGNED_OUT_MESSAGE = 'Sign in to Mind World from the extension popup first. Imported chats are saved to the signed-in account only.'
 
 const $ = (id) => document.getElementById(id)
 const state = { running: false, paused: false }
@@ -107,8 +108,13 @@ async function parseFiles(files) {
   return { conversations: newestFirst([...byId.values()]), errors, profile }
 }
 
-async function sendBatch(conversations) {
-  const res = await chrome.runtime.sendMessage({ type: 'MW_LOCAL_IMPORT_BATCH', conversations })
+async function currentAccount() {
+  const { mw_email: email } = await chrome.storage.local.get('mw_email')
+  return typeof email === 'string' && email.includes('@') ? email.trim().toLowerCase() : null
+}
+
+async function sendBatch(conversations, account) {
+  const res = await chrome.runtime.sendMessage({ type: 'MW_LOCAL_IMPORT_BATCH', conversations, account })
   if (!res) throw new Error('Mind World did not respond. Reload the extension and try again.')
   if (res.error) throw new Error(res.error)
   return res
@@ -125,6 +131,11 @@ async function runImport(files) {
   setProgress(0, 0, 'reading your export…')
 
   try {
+    if (!(await currentAccount())) {
+      $('progress-card').style.display = 'none'
+      showStatus(SIGNED_OUT_MESSAGE, true)
+      return
+    }
     const { conversations, errors, profile } = await parseFiles(files)
     if (profile) await chrome.runtime.sendMessage({ type: 'MW_RESTORE_PROFILE', profile }).catch(() => {})
     if (!conversations.length) {
@@ -134,10 +145,14 @@ async function runImport(files) {
     }
 
     const key = filesKey(files)
+    const account = await currentAccount()
     const stored = (await chrome.storage.local.get(JOB_KEY))[JOB_KEY]
-    const resumeAt = stored && stored.key === key && stored.total === conversations.length ? Math.min(stored.done, conversations.length) : 0
+    const resumeAt = stored && stored.key === key && stored.account === account && stored.total === conversations.length
+      ? Math.min(stored.done, conversations.length)
+      : 0
     const job = {
       key,
+      account,
       label: files.map((f) => f.name).join(', '),
       total: conversations.length,
       done: resumeAt,
@@ -153,7 +168,7 @@ async function runImport(files) {
         showStatus('Import paused. Choose the same file(s) again any time to continue.', false)
         return
       }
-      const res = await sendBatch(batch)
+      const res = await sendBatch(batch, account)
       job.done += batch.length
       job.kept_newer += Number(res.kept_newer || 0)
       await chrome.storage.local.set({ [JOB_KEY]: job })
@@ -180,8 +195,10 @@ async function init() {
     return
   }
 
+  const account = await currentAccount()
+  if (!account) showStatus(SIGNED_OUT_MESSAGE, true)
   const job = (await chrome.storage.local.get(JOB_KEY))[JOB_KEY]
-  if (job && job.done < job.total) {
+  if (job && job.done < job.total && job.account === account) {
     $('resume-text').textContent =
       `Your last import (${job.label}) stopped at ${job.done.toLocaleString()} of ${job.total.toLocaleString()}. ` +
       'Choose the same file(s) to continue where it left off.'

@@ -102,8 +102,8 @@
         <span>Mind World</span>
       </div>
 
-      <div id="password-setup-section" style="display:none; margin-top:12px; padding:12px; background:rgba(124,58,237,0.08); border-radius:8px; border:1px solid rgba(124,58,237,0.25);">
-        <div style="font-size:0.82rem; color:#a78bfa; font-weight:600; margin-bottom:4px;">Create your password</div>
+      <div id="password-setup-section" style="display:none; margin-top:12px; padding:12px; background:rgba(59,130,246,0.08); border-radius:8px; border:1px solid rgba(59,130,246,0.25);">
+        <div style="font-size:0.82rem; color:#60a5fa; font-weight:600; margin-bottom:4px;">Create your password</div>
         <div style="font-size:0.72rem; color:#888; line-height:1.5; margin-bottom:10px;">
           Required after Google sign-in. Use this password to access Mind World on any device.
         </div>
@@ -113,7 +113,7 @@
         <div class="input-group" style="margin-bottom:8px;">
           <input type="password" id="setup-password-confirm" placeholder="Confirm password" autocomplete="new-password" />
         </div>
-        <button type="button" id="setup-password-btn" style="width:100%; padding:10px; border:none; border-radius:6px; background:#7c3aed; color:white; font-size:0.82rem; font-weight:600; cursor:pointer; margin-bottom:8px;">Continue</button>
+        <button type="button" id="setup-password-btn" style="width:100%; padding:10px; border:none; border-radius:6px; background:#3b82f6; color:white; font-size:0.82rem; font-weight:600; cursor:pointer; margin-bottom:8px;">Continue</button>
         <button type="button" id="password-setup-signout-btn" style="width:100%; padding:0; border:none; background:none; color:#666; font-size:0.72rem; cursor:pointer;">Sign out</button>
         <div id="password-setup-status" style="display:none; font-size:0.72rem; margin-top:8px;"></div>
       </div>
@@ -294,7 +294,7 @@
             <label>Preferences</label>
             <input type="text" id="profile-preferences" placeholder="e.g. Concise answers, step-by-step explanations" />
           </div>
-          <button id="save-profile-btn" style="padding:8px; border-radius:6px; border:none; background:#7c3aed; color:white; font-size:0.82rem; cursor:pointer; font-weight:600;">Save Profile</button>
+          <button id="save-profile-btn" style="padding:8px; border-radius:6px; border:none; background:#3b82f6; color:white; font-size:0.82rem; cursor:pointer; font-weight:600;">Save Profile</button>
           <button type="button" id="clear-inferred-btn" class="privacy-action-btn" style="margin-top:4px;">Clear inferred profile</button>
         </div>
         <div id="profile-status" style="font-size:0.72rem; color:#00FF88; margin-top:6px; display:none;"></div>
@@ -303,7 +303,7 @@
       <!-- Add more history: shown when 1-49 conversations -->
       <div id="add-more-banner" style="display:none">
         <span>💡 Import more chats for better memory</span>
-        <button id="add-more-import-btn" type="button" style="background:none;border:none;color:#a78bfa;font-size:0.75rem;cursor:pointer;padding:0;">Add more</button>
+        <button id="add-more-import-btn" type="button" style="background:none;border:none;color:#60a5fa;font-size:0.75rem;cursor:pointer;padding:0;">Add more</button>
       </div>
 
       <!-- Onboarding: shown when 0 conversations -->
@@ -367,7 +367,7 @@
       <!-- Normal instructions: shown when conversations exist -->
       <div id="instructions" style="display:none">
         Click <strong>Improve</strong> above any chat to get smarter prompts using your past conversations.
-        <button id="instructions-import-btn" type="button" style="display:block;margin-top:8px;width:100%;padding:8px;border-radius:6px;border:1px solid rgba(124,58,237,0.4);background:rgba(124,58,237,0.12);color:#c4b5fd;font-size:0.8rem;cursor:pointer;">Import more chats</button>
+        <button id="instructions-import-btn" type="button" style="display:block;margin-top:8px;width:100%;padding:8px;border-radius:6px;border:1px solid rgba(59,130,246,0.4);background:rgba(59,130,246,0.12);color:#93c5fd;font-size:0.8rem;cursor:pointer;">Import more chats</button>
       </div>
 
       <a
@@ -384,6 +384,7 @@
   </div>
   <script src="config.js"></script>
   <script src="consent-copy.js"></script>
+  <script src="memory/schema.js"></script>
   <script src="storage-utils.js"></script>
   <script src="popup.js"></script>
 </body>

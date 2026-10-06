@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mind World — palette preview</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #e5e7eb;
+    color: #111;
+    padding: 32px;
+  }
+  .page-title { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+  .page-sub { color: #555; font-size: 14px; margin-bottom: 28px; }
+
+  .palette { margin-bottom: 40px; }
+  .palette-label {
+    display: flex; align-items: baseline; gap: 12px;
+    font-size: 15px; font-weight: 700; margin-bottom: 10px;
+  }
+  .palette-label span { font-weight: 400; color: #555; font-size: 13px; }
+
+  .swatches { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  .sw { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #333;
+        background: #fff; padding: 4px 8px 4px 4px; border-radius: 6px; }
+  .sw i { width: 20px; height: 20px; border-radius: 4px; display: block; border: 1px solid rgba(0,0,0,.12); }
+
+  /* ---------- Mockup (driven entirely by CSS variables) ---------- */
+  .mock {
+    background: var(--bg);
+    color: var(--text);
+    border-radius: 14px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  .nav {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 16px 32px; border-bottom: 1px solid var(--border);
+  }
+  .logo { display: flex; align-items: center; gap: 10px; font-weight: 700; }
+  .logo-mark {
+    width: 26px; height: 26px; border-radius: 7px; background: var(--accent);
+    display: grid; place-items: center; color: var(--on-accent); font-size: 13px; font-weight: 800;
+  }
+  .nav-links { display: flex; gap: 22px; font-size: 14px; color: var(--muted); align-items: center; }
+  .btn {
+    padding: 9px 16px; border-radius: 8px; font-size: 14px; font-weight: 600;
+    border: 1px solid transparent; cursor: pointer; font-family: inherit;
+  }
+  .btn-primary { background: var(--accent); color: var(--on-accent); }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-secondary { background: transparent; color: var(--text); border-color: var(--border-strong); }
+  .btn-lg { padding: 13px 24px; font-size: 15px; }
+
+  .hero { display: grid; grid-template-columns: 1.05fr 1fr; gap: 40px; padding: 56px 32px 48px; align-items: center; }
+  .eyebrow {
+    display: inline-block; font-size: 12px; font-weight: 600; color: var(--accent-text);
+    background: var(--accent-soft); padding: 5px 10px; border-radius: 999px; margin-bottom: 18px;
+  }
+  .hero h1 { font-size: 38px; line-height: 1.12; letter-spacing: -0.02em; margin-bottom: 16px; }
+  .hero h1 em { font-style: normal; color: var(--accent-text); }
+  .hero p { color: var(--muted); font-size: 16px; line-height: 1.6; margin-bottom: 26px; max-width: 460px; }
+  .cta { display: flex; gap: 12px; flex-wrap: wrap; }
+  .platforms { margin-top: 26px; font-size: 13px; color: var(--muted); display: flex; gap: 14px; flex-wrap: wrap; }
+  .platforms b { color: var(--text); font-weight: 600; }
+
+  /* Fake chat window with the extension's input dock */
+  .chat {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px;
+  }
+  .chat-msg { background: var(--surface-2); border-radius: 10px; padding: 10px 12px; font-size: 13px;
+              color: var(--muted); margin-bottom: 14px; line-height: 1.5; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .chip {
+    font-size: 12px; padding: 5px 10px; border-radius: 999px;
+    background: var(--surface-2); color: var(--text); border: 1px solid var(--border);
+  }
+  .chip.active { background: var(--accent-soft); color: var(--accent-text); border-color: var(--accent-border); }
+  .input {
+    border: 1px solid var(--border-strong); border-radius: 10px; padding: 12px; background: var(--bg);
+    font-size: 13px; color: var(--text); min-height: 64px; line-height: 1.5; position: relative;
+  }
+  .input-row { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
+  .kbd { font-family: ui-monospace, Consolas, monospace; font-size: 11px; color: var(--muted);
+         border: 1px solid var(--border); border-radius: 5px; padding: 2px 6px; }
+  .improve { padding: 7px 14px; font-size: 13px; }
+
+  .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--border);
+              border-top: 1px solid var(--border); }
+  .feature { background: var(--bg); padding: 24px 28px; }
+  .feature .ic {
+    width: 30px; height: 30px; border-radius: 8px; background: var(--accent-soft); color: var(--accent-text);
+    display: grid; place-items: center; margin-bottom: 12px;
+  }
+  .feature h3 { font-size: 15px; margin-bottom: 6px; }
+  .feature p { font-size: 13px; color: var(--muted); line-height: 1.55; }
+
+  .privacy { display: flex; gap: 10px; padding: 20px 28px; border-top: 1px solid var(--border);
+             align-items: center; flex-wrap: wrap; font-size: 13px; }
+  .pill { padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border); color: var(--muted); }
+  .pill.on { border-color: var(--success); color: var(--success); }
+
+  /* ---------- Palettes ---------- */
+  .p-current {
+    --bg: #000008; --surface: #0b0a18; --surface-2: #15132a;
+    --border: rgba(255,255,255,.08); --border-strong: rgba(255,255,255,.16);
+    --text: #ffffff; --muted: #888888;
+    --accent: #7c3aed; --accent-hover: #6d28d9; --on-accent: #fff;
+    --accent-text: #a78bfa; --accent-soft: rgba(124,58,237,.14); --accent-border: rgba(124,58,237,.4);
+    --success: #34d399;
+  }
+  .p-blue {
+    --bg: #0b1120; --surface: #111827; --surface-2: #1f2937;
+    --border: #1f2a3c; --border-strong: #334155;
+    --text: #f8fafc; --muted: #94a3b8;
+    --accent: #3b82f6; --accent-hover: #2563eb; --on-accent: #fff;
+    --accent-text: #60a5fa; --accent-soft: rgba(59,130,246,.12); --accent-border: rgba(59,130,246,.45);
+    --success: #10b981;
+  }
+  .p-teal {
+    --bg: #0b1120; --surface: #111827; --surface-2: #1f2937;
+    --border: #1f2a3c; --border-strong: #334155;
+    --text: #f8fafc; --muted: #94a3b8;
+    --accent: #14b8a6; --accent-hover: #0d9488; --on-accent: #042f2e;
+    --accent-text: #2dd4bf; --accent-soft: rgba(20,184,166,.12); --accent-border: rgba(20,184,166,.45);
+    --success: #22c55e;
+  }
+  .p-light {
+    --bg: #ffffff; --surface: #f8fafc; --surface-2: #f1f5f9;
+    --border: #e2e8f0; --border-strong: #cbd5e1;
+    --text: #0f172a; --muted: #64748b;
+    --accent: #2563eb; --accent-hover: #1d4ed8; --on-accent: #fff;
+    --accent-text: #1d4ed8; --accent-soft: #eff6ff; --accent-border: #bfdbfe;
+    --success: #059669;
+  }
+  /* Current site uses gradients; reproduce for a fair comparison */
+  .p-current .btn-primary { background: linear-gradient(135deg, #7c3aed, #5b21b6); }
+  .p-current .hero h1 em {
+    background: linear-gradient(135deg, #a78bfa, #7c3aed);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .p-current.mock { background-image: radial-gradient(ellipse at 50% 0%, #0d0a1f 0%, #000008 60%); }
+</style>
+</head>
+<body>
+  <div class="page-title">Mind World — colour options</div>
+  <div class="page-sub">Same layout in each palette. The first one is today's purple for comparison. The chat box on the right of each mockup shows how the extension's template chips and Improve button would look.</div>
+
+  <div id="root"></div>
+
+<script>
+  const palettes = [
+    { cls: 'p-current', name: 'Current — Purple', note: "today's site, for comparison",
+      sw: [['#000008','bg'],['#7c3aed','accent'],['#a78bfa','accent text'],['#888888','muted']] },
+    { cls: 'p-blue', name: 'Option A — Slate + Blue', note: 'recommended: confident, developer-tool feel',
+      sw: [['#0b1120','bg'],['#111827','surface'],['#3b82f6','accent'],['#60a5fa','accent text'],['#94a3b8','muted']] },
+    { cls: 'p-teal', name: 'Option B — Slate + Teal', note: 'calmer, slightly more distinctive',
+      sw: [['#0b1120','bg'],['#111827','surface'],['#14b8a6','accent'],['#2dd4bf','accent text'],['#94a3b8','muted']] },
+    { cls: 'p-light', name: 'Option C — Light + Blue', note: 'classic SaaS marketing look (map would stay dark)',
+      sw: [['#ffffff','bg'],['#f8fafc','surface'],['#2563eb','accent'],['#0f172a','text'],['#64748b','muted']] },
+  ];
+
+  const icon = d => `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+  const ICONS = {
+    spark: icon('<path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M5.6 18.4l2.8-2.8M15.6 8.4l2.8-2.8"/>'),
+    grid: icon('<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>'),
+    lock: icon('<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>'),
+  };
+
+  const mock = p => `
+  <section class="palette">
+    <div class="palette-label">${p.name}<span>${p.note}</span></div>
+    <div class="swatches">${p.sw.map(([c,l]) => `<div class="sw"><i style="background:${c}"></i>${l} ${c}</div>`).join('')}</div>
+    <div class="mock ${p.cls}">
+      <div class="nav">
+        <div class="logo"><div class="logo-mark">M</div>Mind World</div>
+        <div class="nav-links">
+          <span>How it works</span><span>Privacy</span><span>FAQ</span>
+          <button class="btn btn-primary">Add to Chrome</button>
+        </div>
+      </div>
+
+      <div class="hero">
+        <div>
+          <div class="eyebrow">Chrome extension · Free</div>
+          <h1>Better AI prompts, <em>built from your own conversations.</em></h1>
+          <p>Template chips and a one-click Improve button on ChatGPT, Claude, Gemini and Perplexity. Your memory stays on your device by default.</p>
+          <div class="cta">
+            <button class="btn btn-primary btn-lg">Add to Chrome — Free</button>
+            <button class="btn btn-secondary btn-lg">See how it works</button>
+          </div>
+          <div class="platforms">Works on <b>ChatGPT</b><b>Claude</b><b>Gemini</b><b>Perplexity</b></div>
+        </div>
+
+        <div class="chat">
+          <div class="chat-msg">How can I help you today?</div>
+          <div class="chips">
+            <span class="chip active">Debug code</span>
+            <span class="chip">Review essay</span>
+            <span class="chip">Write email</span>
+            <span class="chip">Explain concept</span>
+          </div>
+          <div class="input">fix the login bug from yesterday, the token refresh thing</div>
+          <div class="input-row">
+            <span class="kbd">Alt + Shift + M</span>
+            <button class="btn btn-primary improve">Improve</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="features">
+        <div class="feature"><div class="ic">${ICONS.spark}</div><h3>One-click Improve</h3><p>Turns a rough draft into a clear, structured prompt using context from your past chats.</p></div>
+        <div class="feature"><div class="ic">${ICONS.grid}</div><h3>Template chips</h3><p>Proven prompt scaffolds above every chat box. Useful from day one, no history needed.</p></div>
+        <div class="feature"><div class="ic">${ICONS.lock}</div><h3>Private by default</h3><p>Conversations are saved and searched on your device. Cloud sync is optional.</p></div>
+      </div>
+
+      <div class="privacy">
+        <span style="color:var(--muted)">Memory mode:</span>
+        <span class="pill on">On-device (default)</span>
+        <span class="pill">On-device + your key</span>
+        <span class="pill">Cloud</span>
+      </div>
+    </div>
+  </section>`;
+
+  document.getElementById('root').innerHTML = palettes.map(mock).join('');
+</script>
+</body>
+</html>

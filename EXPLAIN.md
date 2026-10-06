@@ -1,6 +1,13 @@
 ## **System Architecture**
 ### The purpose of this file is to explain the system architecture, how it works, what decisions where made and why
 
+**Local Mode**
+This mode has all the user's data stored locally on their device using IndexedDB on each google chrome account. **NOTE:**Currently each chrome account has a single DB no matter which mind world account signs into that chrome account. They will have a merged memory if they use the same chrome account. (working to fix this privacy issue - No such issue on the cloud mode)
+
+**Cloud Mode**
+This mode has all the user's data (conversations, embeddings etc) stored in mind world's servers. 
+
+
 
 
 **RAG Pipline**

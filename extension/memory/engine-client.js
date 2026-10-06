@@ -27,9 +27,12 @@ async function mwEnsureOffscreen() {
   await mwOffscreenCreating
 }
 
+/* Every call names the signed-in account's database, so the engine never
+ * reads or writes another account's memory. */
 async function mwEngineCall(type, payload = {}) {
+  const db = await MwLocalDB.name()
   await mwEnsureOffscreen()
-  const res = await chrome.runtime.sendMessage({ target: 'mw-offscreen', type, ...payload })
+  const res = await chrome.runtime.sendMessage({ target: 'mw-offscreen', type, db, ...payload })
   if (!res) throw new Error('Memory engine did not respond')
   if (!res.ok) throw new Error(res.error || 'Memory engine failed')
   return res.result

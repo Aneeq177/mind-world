@@ -3,7 +3,8 @@
  * Owns the embedding model and the in-memory search index, both of which are
  * too heavy for the service worker (it sleeps, and has no WebGPU). Indexing
  * writes chunks straight to IndexedDB so vectors never cross extension
- * messaging. Messages carry target: 'mw-offscreen'.
+ * messaging. Messages carry target: 'mw-offscreen' and db: the signed-in
+ * account's database name.
  */
 import * as transformers from './vendor/transformers/transformers.min.js'
 import { createEmbedder } from './memory/embedder-core.mjs'
@@ -18,7 +19,7 @@ transformers.env.backends.onnx.wasm.numThreads = self.crossOriginIsolated
   : 1
 
 const DTYPE = 'fp32'
-const state = { embedder: null, loading: null, error: null, index: null, indexStamp: null }
+const state = { embedder: null, loading: null, error: null, index: null, indexDb: null, indexStamp: null }
 let queue = Promise.resolve()
 
 function serialize(fn) {
@@ -53,27 +54,36 @@ async function loadEmbedder() {
   return state.loading
 }
 
-async function ensureIndex() {
-  const stamp = await MwLocalDB.getMeta('index_stamp')
-  if (state.index && state.indexStamp === stamp) return state.index
+/* The account's database, named by the service worker on every message. */
+function memoryDb(name) {
+  if (!name) throw new Error('No account database named')
+  return MwLocalDB.forName(name)
+}
+
+async function ensureIndex(dbName) {
+  const db = memoryDb(dbName)
+  const stamp = await db.getMeta('index_stamp')
+  if (state.index && state.indexDb === dbName && state.indexStamp === stamp) return state.index
   const chunks = []
-  await MwLocalDB.forEachChunk((c) => chunks.push(c))
+  await db.forEachChunk((c) => chunks.push(c))
   state.index = new MwVectorIndex().build(chunks)
+  state.indexDb = dbName
   state.indexStamp = stamp
   return state.index
 }
 
-async function indexConversations(conversations, { force = false } = {}) {
+async function indexConversations(dbName, conversations, { force = false } = {}) {
+  const db = memoryDb(dbName)
   const embedder = await loadEmbedder()
   let indexed = 0
   let skipped = 0
   for (const conv of conversations) {
     const fullText = conv.full_text || ''
     const digest = await mwTextHash(fullText)
-    const stored = await MwLocalDB.getConversation(conv.id)
+    const stored = await db.getConversation(conv.id)
     const record = { ...conv, text_hash: digest, index_version: MW_INDEX_VERSION }
     if (!force && stored && stored.text_hash === digest && stored.index_version === MW_INDEX_VERSION) {
-      await MwLocalDB.putConversation(record)
+      await db.putConversation(record)
       skipped++
       continue
     }
@@ -88,15 +98,15 @@ async function indexConversations(conversations, { force = false } = {}) {
       vector: vectors[i],
       terms: mwKeywordTerms(`${conv.title || ''} ${fullText.slice(start, end)}`)
     }))
-    await MwLocalDB.putConversationWithChunks(record, chunks)
+    await db.putConversationWithChunks(record, chunks)
     indexed++
   }
   return { indexed, skipped }
 }
 
-async function search(queries, vectorK, keywordK) {
+async function search(dbName, queries, vectorK, keywordK) {
   const embedder = await loadEmbedder()
-  const index = await ensureIndex()
+  const index = await ensureIndex(dbName)
   const vectors = await embedder.embed(queries.map((q) => q.text || ''))
   return queries.map((q, i) => ({
     vector: index.search(vectors[i], vectorK),
@@ -104,7 +114,7 @@ async function search(queries, vectorK, keywordK) {
   }))
 }
 
-async function status() {
+async function status(dbName) {
   return {
     ready: !!state.embedder,
     loading: !!state.loading && !state.embedder,
@@ -112,15 +122,15 @@ async function status() {
     dtype: DTYPE,
     threads: transformers.env.backends.onnx.wasm.numThreads,
     error: state.error,
-    chunks: state.index ? state.index.size : await MwLocalDB.countChunks()
+    chunks: state.index && state.indexDb === dbName ? state.index.size : await memoryDb(dbName).countChunks()
   }
 }
 
 const handlers = {
-  MW_ENGINE_WARM: () => loadEmbedder().then(() => ensureIndex()).then(status),
-  MW_ENGINE_STATUS: () => status(),
-  MW_ENGINE_INDEX: (m) => serialize(() => indexConversations(m.conversations || [], { force: !!m.force })),
-  MW_ENGINE_SEARCH: (m) => search(m.queries || [], m.vectorK || 60, m.keywordK || 30)
+  MW_ENGINE_WARM: (m) => loadEmbedder().then(() => ensureIndex(m.db)).then(() => status(m.db)),
+  MW_ENGINE_STATUS: (m) => status(m.db),
+  MW_ENGINE_INDEX: (m) => serialize(() => indexConversations(m.db, m.conversations || [], { force: !!m.force })),
+  MW_ENGINE_SEARCH: (m) => search(m.db, m.queries || [], m.vectorK || 60, m.keywordK || 30)
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {

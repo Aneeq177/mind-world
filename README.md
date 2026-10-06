@@ -23,7 +23,7 @@ Product scope and the v1 finish line live in [VISION.md](VISION.md). Security po
 | **On-device + your key** | Same as above | Your own Anthropic key, called directly from the browser (`sk-ant-…` in settings) |
 | **Cloud** | Supabase (Postgres + pgvector) | Mind World's backend |
 
-Users can switch modes in the popup at any time; the copy runs in the background and the mode only flips after it succeeds. Moving to on-device can optionally delete the cloud copy. The 2D map is available in cloud mode only. Existing cloud users are offered a one-click move to on-device.
+On-device memory is kept per account: each signed-in account gets its own IndexedDB database (`mind-world-memory-<hash of email>`), so several people can share a Chrome profile without seeing each other's chats. Users can switch modes in the popup at any time; the copy runs in the background and the mode only flips after it succeeds. Moving to on-device can optionally delete the cloud copy. The 2D map is available in cloud mode only. Existing cloud users are offered a one-click move to on-device.
 
 ```
 Chrome extension (MV3)

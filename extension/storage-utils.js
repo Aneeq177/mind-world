@@ -34,6 +34,7 @@ async function getMindWorldStorageKeys() {
 }
 
 async function clearAllMindWorldStorage() {
+  const { mw_email: email } = await chrome.storage.local.get('mw_email')
   let keys = await getMindWorldStorageKeys()
   if (keys.length) await chrome.storage.local.remove(keys)
 
@@ -41,19 +42,23 @@ async function clearAllMindWorldStorage() {
   keys = await getMindWorldStorageKeys()
   if (keys.length) await chrome.storage.local.remove(keys)
 
-  await deleteOnDeviceMemory()
+  await deleteOnDeviceMemory(email)
   return keys
 }
 
-/* Delete the on-device memory database (memory/schema.js MW_DB_NAME). Only
- * from extension contexts: in a content script indexedDB is the host page's. */
-function deleteOnDeviceMemory() {
-  if (typeof location === 'undefined' || location.protocol !== 'chrome-extension:') return Promise.resolve()
-  if (typeof indexedDB === 'undefined') return Promise.resolve()
-  return new Promise((resolve) => {
-    const req = indexedDB.deleteDatabase('mind-world-memory')
+/* Delete this account's on-device memory database (memory/schema.js
+ * mwAccountDbName) and any pre-per-account one. Other accounts' memory on this
+ * device is left alone. Only from extension contexts: in a content script
+ * indexedDB is the host page's. */
+async function deleteOnDeviceMemory(email) {
+  if (typeof location === 'undefined' || location.protocol !== 'chrome-extension:') return
+  if (typeof indexedDB === 'undefined') return
+  const names = ['mind-world-memory']
+  if (email && typeof mwAccountDbName === 'function') names.push(await mwAccountDbName(email))
+  await Promise.all(names.map((name) => new Promise((resolve) => {
+    const req = indexedDB.deleteDatabase(name)
     req.onsuccess = req.onerror = req.onblocked = () => resolve()
-  })
+  })))
 }
 
 async function isMindWorldLoggedIn() {

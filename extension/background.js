@@ -314,7 +314,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   // Local-mode memory operations from extension pages (popup, import page).
-  if (sender.id === chrome.runtime.id && !sender.tab && MEMORY_PAGE_HANDLERS[message.type]) {
+  // The import page runs in a tab, so check the sender's URL rather than sender.tab;
+  // content scripts report the host page's URL and are rejected here.
+  const fromExtensionPage = sender.id === chrome.runtime.id &&
+    (sender.url || '').startsWith(chrome.runtime.getURL(''))
+  if (fromExtensionPage && MEMORY_PAGE_HANDLERS[message.type]) {
     replyAsync(sendResponse, MEMORY_PAGE_HANDLERS[message.type](message))
     return true
   }
@@ -327,8 +331,19 @@ async function requireLocalProvider() {
   return mwGetProviderForMode(MW_STORAGE_MODES.LOCAL)
 }
 
+async function requireSameAccount(account) {
+  if (!account) return
+  const { mw_email: email } = await chrome.storage.local.get('mw_email')
+  if (String(email || '').trim().toLowerCase() !== account) {
+    throw new Error('A different account is signed in now. Choose the files again to import into this account')
+  }
+}
+
 const MEMORY_PAGE_HANDLERS = {
-  MW_LOCAL_IMPORT_BATCH: async (m) => (await requireLocalProvider()).importConversations(m.conversations || []),
+  MW_LOCAL_IMPORT_BATCH: async (m) => {
+    await requireSameAccount(m.account)
+    return (await requireLocalProvider()).importConversations(m.conversations || [])
+  },
   // Restoring a backup: the profile only replaces an empty on-device profile.
   MW_RESTORE_PROFILE: async (m) => (await requireLocalProvider()).importAll({ conversations: [], profile: m.profile }),
   MW_GET_PROFILE: async () => (await mwGetMemoryProvider()).getProfile(),
@@ -704,12 +719,15 @@ async function processSaveQueue() {
     await chrome.storage.local.set({ mw_save_queue: [] })
 
     if (!(await isMindWorldLoggedIn())) return
+    const { mw_email: account } = await chrome.storage.local.get('mw_email')
     const mode = await mwGetStorageMode()
     const provider = mwGetProviderForMode(mode)
 
     let anySuccess = false
     const retry = []
     for (const conversation of queue) {
+      // A retry queued under another account never lands in this one's memory.
+      if (conversation._mw_account && conversation._mw_account !== account) continue
       try {
         const res = await provider.saveConversation(conversation)
         if (res.saved) anySuccess = true
@@ -717,7 +735,7 @@ async function processSaveQueue() {
       } catch (err) {
         // On-device indexing failed (e.g. the engine was still loading): retry a few times.
         const attempts = (conversation._mw_attempts || 0) + 1
-        if (mode === MW_STORAGE_MODES.LOCAL && attempts < 3) retry.push({ ...conversation, _mw_attempts: attempts })
+        if (mode === MW_STORAGE_MODES.LOCAL && attempts < 3) retry.push({ ...conversation, _mw_attempts: attempts, _mw_account: account })
         else console.warn('[mw] auto-save failed:', err)
       }
     }

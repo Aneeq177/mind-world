@@ -14,7 +14,8 @@ const here = dirname(fileURLToPath(import.meta.url))
 const prompts = JSON.parse(readFileSync(join(here, '..', '..', 'backend', 'services', 'prompts.json'), 'utf8'))
 
 const LOGGED_IN = { mw_email: 'tester@example.com', mw_access_token: 'tok-1', mw_device_id: 'dev-1' }
-const CONTENT_SCRIPT = { id: 'test-extension', tab: { id: 7 } }
+const CONTENT_SCRIPT = { id: 'test-extension', tab: { id: 7 }, url: 'https://claude.ai/chat/abc' }
+const IMPORT_TAB = { id: 'test-extension', tab: { id: 8 }, url: 'chrome-extension://test-extension/import.html' }
 
 const CONVERSATIONS = [
   {
@@ -159,7 +160,8 @@ test('local mode end to end', async (t) => {
 
   await t.test('bulk import batches are accepted from extension pages only', async () => {
     await assert.rejects(sw.send({ type: 'MW_LOCAL_IMPORT_BATCH', conversations: CONVERSATIONS }, CONTENT_SCRIPT))
-    const res = await sw.send({ type: 'MW_LOCAL_IMPORT_BATCH', conversations: CONVERSATIONS })
+    await assert.rejects(sw.send({ type: 'MW_LOCAL_IMPORT_BATCH', conversations: CONVERSATIONS }, { id: 'test-extension' }))
+    const res = await sw.send({ type: 'MW_LOCAL_IMPORT_BATCH', conversations: CONVERSATIONS }, IMPORT_TAB)
     assert.equal(res.stored, 3)
     assert.equal(res.indexed, 3)
     assert.equal(await db.countConversations(), 4)

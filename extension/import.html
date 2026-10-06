@@ -8,7 +8,7 @@
     body {
       margin: 0;
       min-height: 100vh;
-      background: #0a0a14;
+      background: #0b1120;
       color: #e5e7eb;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       display: flex;
@@ -24,11 +24,11 @@
       color: #a7f3d0; font-size: 0.9rem; line-height: 1.45;
     }
     #drop {
-      border: 2px dashed rgba(124,58,237,0.5); border-radius: 14px;
+      border: 2px dashed rgba(59,130,246,0.5); border-radius: 14px;
       padding: 40px 20px; text-align: center; cursor: pointer;
-      background: rgba(124,58,237,0.06); transition: background 0.15s, border-color 0.15s;
+      background: rgba(59,130,246,0.06); transition: background 0.15s, border-color 0.15s;
     }
-    #drop.over { background: rgba(124,58,237,0.16); border-color: #a78bfa; }
+    #drop.over { background: rgba(59,130,246,0.16); border-color: #60a5fa; }
     #drop strong { display: block; font-size: 1.05rem; margin-bottom: 6px; }
     #drop span { color: #9ca3af; font-size: 0.9rem; }
     .guides { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 20px 0 0; }
@@ -39,15 +39,15 @@
     .guide b { color: #e5e7eb; }
     #progress-card { display: none; margin-top: 24px; }
     .bar { height: 10px; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden; }
-    .bar > div { height: 100%; width: 0; background: linear-gradient(90deg, #7c3aed, #a78bfa); transition: width 0.3s; }
+    .bar > div { height: 100%; width: 0; background: #3b82f6; transition: width 0.3s; }
     #progress-text { margin: 10px 0 0; color: #cbd5e1; font-size: 0.9rem; }
     #progress-note { margin: 6px 0 0; color: #9ca3af; font-size: 0.85rem; }
     .actions { display: flex; gap: 10px; margin-top: 16px; }
     button {
-      padding: 9px 16px; border-radius: 8px; border: 1px solid rgba(124,58,237,0.45);
-      background: rgba(124,58,237,0.15); color: #ddd6fe; font-size: 0.9rem; cursor: pointer;
+      padding: 9px 16px; border-radius: 8px; border: 1px solid rgba(59,130,246,0.45);
+      background: rgba(59,130,246,0.15); color: #bfdbfe; font-size: 0.9rem; cursor: pointer;
     }
-    button.primary { background: linear-gradient(135deg, #7c3aed, #5b21b6); border: none; color: #fff; }
+    button.primary { background: #3b82f6; border: none; color: #fff; }
     button:disabled { opacity: 0.5; cursor: default; }
     #status { display: none; margin-top: 20px; padding: 12px 14px; border-radius: 10px; font-size: 0.9rem; line-height: 1.45; }
     #status.ok { display: block; color: #6ee7b7; background: rgba(110,231,183,0.1); border: 1px solid rgba(110,231,183,0.3); }

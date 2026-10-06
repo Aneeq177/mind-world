@@ -8,7 +8,7 @@ body {
   width: 340px;
   max-height: 600px;
   overflow-y: auto;
-  background: #0a0a14;
+  background: #0b1120;
   color: white;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
@@ -39,7 +39,7 @@ body {
   width: 100%;
   background: none;
   border: none;
-  color: #a78bfa;
+  color: #60a5fa;
   font-size: 0.78rem;
   cursor: pointer;
   margin-bottom: 12px;
@@ -72,13 +72,13 @@ body {
 }
 
 .input-group input:focus {
-  border-color: rgba(124,58,237,0.6);
+  border-color: rgba(59,130,246,0.6);
 }
 
 #get-key-link {
   display: block;
   font-size: 0.72rem;
-  color: #7c3aed;
+  color: #3b82f6;
   margin-top: 4px;
   text-decoration: none;
 }
@@ -93,7 +93,7 @@ body {
 #save-btn {
   width: 100%;
   padding: 12px;
-  background: linear-gradient(135deg, #7c3aed, #5b21b6);
+  background: #3b82f6;
   border: none;
   border-radius: 10px;
   color: white;
@@ -191,10 +191,10 @@ body {
 #open-map {
   display: block;
   padding: 10px;
-  background: rgba(124,58,237,0.15);
-  border: 1px solid rgba(124,58,237,0.3);
+  background: rgba(59,130,246,0.15);
+  border: 1px solid rgba(59,130,246,0.3);
   border-radius: 8px;
-  color: #a78bfa;
+  color: #60a5fa;
   text-decoration: none;
   text-align: center;
   font-size: 0.82rem;
@@ -204,7 +204,7 @@ body {
 }
 
 #open-map:hover {
-  background: rgba(124,58,237,0.25);
+  background: rgba(59,130,246,0.25);
   color: white;
 }
 
@@ -244,13 +244,13 @@ body {
 }
 
 #advanced-toggle:hover {
-  border-color: rgba(124,58,237,0.3);
+  border-color: rgba(59,130,246,0.3);
   color: #aaa;
 }
 
 #advanced-toggle.advanced-open {
-  border-color: rgba(124,58,237,0.3);
-  color: #a78bfa;
+  border-color: rgba(59,130,246,0.3);
+  color: #60a5fa;
   border-bottom-left-radius: 0;
   border-bottom-right-radius: 0;
 }
@@ -267,10 +267,10 @@ body {
 #save-apikey-btn {
   width: 100%;
   padding: 8px;
-  background: rgba(124,58,237,0.2);
-  border: 1px solid rgba(124,58,237,0.35);
+  background: rgba(59,130,246,0.2);
+  border: 1px solid rgba(59,130,246,0.35);
   border-radius: 7px;
-  color: #a78bfa;
+  color: #60a5fa;
   font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
@@ -279,7 +279,7 @@ body {
 }
 
 #save-apikey-btn:hover {
-  background: rgba(124,58,237,0.35);
+  background: rgba(59,130,246,0.35);
   color: white;
 }
 
@@ -303,8 +303,8 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 8px 12px;
-  background: rgba(124,58,237,0.08);
-  border: 1px solid rgba(124,58,237,0.2);
+  background: rgba(59,130,246,0.08);
+  border: 1px solid rgba(59,130,246,0.2);
   border-radius: 8px;
   font-size: 0.75rem;
   color: #888;
@@ -313,7 +313,7 @@ body {
 }
 
 #add-more-banner a {
-  color: #a78bfa;
+  color: #60a5fa;
   text-decoration: none;
   font-weight: 500;
   white-space: nowrap;
@@ -331,8 +331,8 @@ body {
 
 #onboarding-hero {
   padding: 14px;
-  background: linear-gradient(135deg, rgba(124,58,237,0.15), rgba(91,33,182,0.08));
-  border: 1px solid rgba(124,58,237,0.25);
+  background: rgba(59,130,246,0.15);
+  border: 1px solid rgba(59,130,246,0.25);
   border-radius: 10px;
   text-align: center;
   margin-bottom: 12px;
@@ -371,9 +371,9 @@ body {
 }
 
 .platform-btn.active {
-  background: rgba(124,58,237,0.2);
-  border-color: rgba(124,58,237,0.5);
-  color: #c4b5fd;
+  background: rgba(59,130,246,0.2);
+  border-color: rgba(59,130,246,0.5);
+  color: #93c5fd;
 }
 
 .platform-btn[data-platform="chatgpt"].active {
@@ -411,7 +411,7 @@ body {
 }
 
 .export-steps a {
-  color: #a78bfa;
+  color: #60a5fa;
   text-decoration: none;
 }
 
@@ -465,9 +465,9 @@ body {
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: rgba(124,58,237,0.2);
-  border: 1px solid rgba(124,58,237,0.4);
-  color: #a78bfa;
+  background: rgba(59,130,246,0.2);
+  border: 1px solid rgba(59,130,246,0.4);
+  color: #60a5fa;
   font-size: 0.72rem;
   font-weight: 700;
   display: flex;
@@ -492,11 +492,11 @@ body {
 
 #no-data-box {
   padding: 10px 12px;
-  background: rgba(124,58,237,0.1);
-  border: 1px solid rgba(124,58,237,0.3);
+  background: rgba(59,130,246,0.1);
+  border: 1px solid rgba(59,130,246,0.3);
   border-radius: 8px;
   font-size: 0.78rem;
-  color: #a78bfa;
+  color: #60a5fa;
   text-align: center;
   margin-bottom: 14px;
 }
@@ -504,7 +504,7 @@ body {
 #upload-btn {
   width: 100%;
   padding: 14px 12px;
-  background: linear-gradient(135deg, #7c3aed, #5b21b6);
+  background: #3b82f6;
   border: none;
   border-radius: 10px;
   color: white;
@@ -527,14 +527,14 @@ body {
 }
 
 .privacy-onboarding-prominent {
-  border-color: rgba(124, 58, 237, 0.45) !important;
-  background: rgba(124, 58, 237, 0.08) !important;
-  box-shadow: 0 0 0 1px rgba(124, 58, 237, 0.12);
+  border-color: rgba(59,130,246,0.45) !important;
+  background: rgba(59,130,246,0.08) !important;
+  box-shadow: 0 0 0 1px rgba(59,130,246,0.12);
 }
 
 .privacy-onboarding-note {
   font-size: 0.68rem;
-  color: #a78bfa;
+  color: #60a5fa;
   line-height: 1.45;
   margin-bottom: 10px;
 }
@@ -577,7 +577,7 @@ body {
   transition: .2s;
 }
 input:checked + .slider {
-  background-color: #7c3aed;
+  background-color: #3b82f6;
 }
 input:checked + .slider:before {
   transform: translateX(16px);
@@ -606,7 +606,7 @@ input:checked + .slider:before {
 }
 
 .login-consent a {
-  color: #a78bfa;
+  color: #60a5fa;
   text-decoration: none;
 }
 
@@ -684,7 +684,7 @@ input:checked + .slider:before {
 }
 
 .privacy-policy-link:hover {
-  color: #a78bfa;
+  color: #60a5fa;
 }
 
 .privacy-manage-link {
@@ -696,7 +696,7 @@ input:checked + .slider:before {
 }
 
 .privacy-manage-link:hover {
-  color: #a78bfa;
+  color: #60a5fa;
 }
 
 .consent-status {
@@ -733,7 +733,7 @@ input:checked + .slider:before {
 .storage-option input {
   margin-top: 3px;
   flex-shrink: 0;
-  accent-color: #7c3aed;
+  accent-color: #3b82f6;
 }
 
 .storage-option-name {
@@ -791,9 +791,9 @@ input:checked + .slider:before {
 }
 
 .storage-mode-label.cloud {
-  color: #c4b5fd;
-  background: rgba(124, 58, 237, 0.12);
-  border-color: rgba(124, 58, 237, 0.3);
+  color: #93c5fd;
+  background: rgba(59,130,246,0.12);
+  border-color: rgba(59,130,246,0.3);
 }
 
 .storage-clear-cloud {

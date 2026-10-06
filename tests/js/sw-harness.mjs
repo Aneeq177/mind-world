@@ -166,8 +166,8 @@ export async function loadServiceWorker({ storage = {}, fetchRoutes = {}, indexe
     status: async () => ({ ready: true, device: 'cpu' })
   })
 
-  /* Deliver a runtime message like Chrome does; sender defaults to an extension page. */
-  const send = (message, sender = { id: 'test-extension' }) => new Promise((resolve, reject) => {
+  /* Deliver a runtime message like Chrome does; sender defaults to the popup. */
+  const send = (message, sender = { id: 'test-extension', url: 'chrome-extension://test-extension/popup.html' }) => new Promise((resolve, reject) => {
     let handled = false
     for (const l of listeners.message) {
       const keepOpen = l(message, sender, (res) => resolve(res))

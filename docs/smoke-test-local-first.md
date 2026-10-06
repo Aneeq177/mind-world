@@ -55,7 +55,14 @@ cd ../../backend && pytest
 - [ ] **Delete memory on this device** → stats go to 0, Improve shows no memory sources.
 - [ ] Import the backup on the import page → conversations and the confirmed profile come back.
 
-## 6. Failure modes
+## 6. Two accounts on one Chrome profile
+
+- [ ] Signed in as account A (on-device) with memory, sign out and sign in as account B. B's stats show 0 conversations, and Improve on claude.ai shows no sources from A's chats.
+- [ ] Import a file as B, have a new chat, then sign back in as A. A's count is unchanged and none of B's chats appear as sources.
+- [ ] Start an import as A, sign in as B mid-import: the import stops with "A different account is signed in now".
+- [ ] Upgrading from a build before per-account memory: the account that signs in first keeps the existing memory.
+
+## 7. Failure modes
 
 - [ ] Block the model files (rename `extension/models/`) → Improve shows "memory unavailable"; nothing is sent to cloud storage.
 - [ ] Offline → Improve shows a clear network error; auto-save still queues locally.

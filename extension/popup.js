@@ -426,8 +426,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       skipImportBtn.style.display = 'none'
       if (uploadBtn) {
         uploadBtn.textContent = '📁 Import chats later'
-        uploadBtn.style.background = 'rgba(124,58,237,0.15)'
-        uploadBtn.style.border = '1px solid rgba(124,58,237,0.35)'
+        uploadBtn.style.background = 'rgba(59,130,246,0.15)'
+        uploadBtn.style.border = '1px solid rgba(59,130,246,0.35)'
       }
       if (afterSkipHint) afterSkipHint.style.display = 'block'
     })
@@ -811,8 +811,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (deleteLocalBtn) {
     deleteLocalBtn.addEventListener('click', async () => {
       const confirmed = confirm(
-        'Delete every conversation, search index, and profile stored on this device?\n\n' +
-        'Your account stays. Back up your memory first if you might want it later. This cannot be undone.'
+        `Delete every conversation, search index, and profile stored on this device for ${currentEmail}?\n\n` +
+        'Your account stays, and other accounts\' memory on this device is not touched. ' +
+        'Back up your memory first if you might want it later. This cannot be undone.'
       )
       if (!confirmed) return
       deleteLocalBtn.disabled = true
