@@ -1056,8 +1056,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       const r = m.result || {}
       const moved = r.moved || 0
       text = m.to === 'local'
-        ? `Moved ${moved} chats to this device.${r.cloudCleared ? ' The cloud copy was deleted.' : ''}`
+        ? `Moved ${moved} chats to this device.${r.cloudCleared ? ' The cloud copy was deleted.' : ''}${r.cloudKept ? ' Not every chat was copied, so the cloud copy was kept.' : ''}`
         : `Uploaded ${moved} chats to your account.${r.trimmed ? ` ${r.trimmed} very long chats were shortened to fit.` : ''}`
+      if (r.kept_newer) text += ` ${r.kept_newer} longer copies were kept.`
       if (r.skipped) text += ` ${r.skipped} couldn't be copied.`
     } else if (m.status === 'failed') {
       const sessionExpired = SESSION_ERRORS.has(m.error)

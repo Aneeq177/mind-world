@@ -240,6 +240,7 @@ class MwCloudProvider {
     const auth = await getAuthContext()
     if (auth.error) throw new Error(auth.error)
     let imported = 0
+    let keptNewer = 0
     let skipped = 0
     let trimmed = 0
     let done = 0
@@ -258,7 +259,8 @@ class MwCloudProvider {
           body: JSON.stringify({ email: auth.email, access_token: auth.accessToken, conversation })
         })
         const data = res.ok ? await res.json().catch(() => ({})) : {}
-        if (data.success) imported++
+        if (data.kept_newer) keptNewer++
+        else if (data.success) imported++
         else skipped++
       } catch (_) {
         skipped++
@@ -279,14 +281,17 @@ class MwCloudProvider {
         if (!res.ok) throw new Error(`process ${res.status}`)
         const data = await res.json().catch(() => ({}))
         const stored = Math.min(batch.length, Number(data.total || 0))
-        imported += stored
+        const kept = Math.min(stored, Number(data.kept_newer || 0))
+        keptNewer += kept
+        imported += stored - kept
         skipped += batch.length - stored
       } catch (_) {
         // /process can't map one or two conversations; save each with its
         // text cut to the /save_conversation limit rather than dropping it.
         for (const conv of batch) {
-          const ok = await this._saveTrimmed(auth, conv).catch(() => false)
-          if (ok) { imported++; trimmed++ } else skipped++
+          const outcome = await this._saveTrimmed(auth, conv).catch(() => 'failed')
+          if (outcome === 'kept_newer') keptNewer++
+          else if (outcome === 'saved') { imported++; trimmed++ } else skipped++
         }
       }
       done += batch.length
@@ -298,7 +303,7 @@ class MwCloudProvider {
         profile_data: json.profile.profile_data
       }).catch(() => {})
     }
-    return { imported, skipped, trimmed }
+    return { imported, kept_newer: keptNewer, skipped, trimmed }
   }
 
   async _saveTrimmed(auth, conv) {
@@ -313,7 +318,8 @@ class MwCloudProvider {
       body: JSON.stringify({ email: auth.email, access_token: auth.accessToken, conversation })
     })
     const data = res.ok ? await res.json().catch(() => ({})) : {}
-    return !!data.success
+    if (data.kept_newer) return 'kept_newer'
+    return data.success ? 'saved' : 'failed'
   }
 
   async deleteAllMemory() {

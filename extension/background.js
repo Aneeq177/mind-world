@@ -427,12 +427,18 @@ async function runStorageSwitch(mode, { clearCloud, from: source }) {
       await chrome.storage.local.set({ mw_cloud_copy_offer_dismissed: email || true })
     }
     let cloudCleared = false
+    let cloudKept = false
     if (target === MW_STORAGE_MODES.LOCAL && clearCloud) {
-      await setMigration({ from: current, to: target, phase: 'clearing_cloud', done: total, total, status: 'running' })
-      await from.deleteAllMemory()
-      cloudCleared = true
+      const copied = (result.imported || 0) + (result.kept_newer || 0)
+      if (total > 0 && copied >= total) {
+        await setMigration({ from: current, to: target, phase: 'clearing_cloud', done: total, total, status: 'running' })
+        await from.deleteAllMemory()
+        cloudCleared = true
+      } else {
+        cloudKept = true
+      }
     }
-    const summary = { success: true, mode: target, moved: result.imported || 0, total, ...result, cloudCleared }
+    const summary = { success: true, mode: target, moved: result.imported || 0, total, ...result, cloudCleared, cloudKept }
     await setMigration({ from: current, to: target, phase: 'done', done: total, total, status: 'done', result: summary })
     return summary
   } catch (err) {

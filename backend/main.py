@@ -1926,6 +1926,15 @@ async def run_llm_edit_feedback(
     )
 
 
+def _stored_copy_is_longer(stored: dict, num_messages: int, char_count: int) -> bool:
+    """More messages wins; on equal messages more text wins, so a trimmed
+    upload never replaces the full stored copy. Ties go to the upload."""
+    stored_messages = int(stored.get("num_messages") or 0)
+    if stored_messages != num_messages:
+        return stored_messages > num_messages
+    return int(stored.get("char_count") or 0) > char_count
+
+
 @app.post("/save_conversation")
 async def save_conversation(request: SaveConversationRequest, background_tasks: BackgroundTasks):
     try:
@@ -1954,6 +1963,16 @@ async def save_conversation(request: SaveConversationRequest, background_tasks: 
         conv_id = convo.get('id', '')
         if not conv_id:
             return {"success": False, "reason": "no_id"}
+
+        existing_rows = supabase.table("knowledge_nodes")\
+            .select("num_messages, char_count, created_at, cluster_id, region, color, x, y")\
+            .eq("user_id", user_id)\
+            .eq("id", conv_id)\
+            .limit(1)\
+            .execute().data or []
+        existing = existing_rows[0] if existing_rows else None
+        if existing and _stored_copy_is_longer(existing, len(messages), len(full_text)):
+            return {"success": True, "id": conv_id, "kept_newer": True}
 
         embed_text = f"{convo.get('title', 'Untitled')}. {full_text[:500]}"
         embedding = embed_single(embed_text)
@@ -1988,6 +2007,10 @@ async def save_conversation(request: SaveConversationRequest, background_tasks: 
             "x": 0.0,
             "y": 0.0,
         }
+        if existing:
+            for key in ("created_at", "cluster_id", "region", "color", "x", "y"):
+                if existing.get(key) is not None:
+                    row[key] = existing[key]
 
         supabase.table("knowledge_nodes").upsert(
             row, on_conflict="id"
