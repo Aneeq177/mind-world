@@ -409,7 +409,9 @@ async def process_files(
             # So removing the full text here helps reduce the size of the data that is sent to the frontend, making the process faster to load the map.
 
         from services.auth import issue_session_token
-        session_token = issue_session_token(user_id)
+        # A caller that signed in with a session keeps it; only an API-key
+        # sign-in gets a new one.
+        session_token = access_token or issue_session_token(user_id)
 
         return { # This JSON response is sent to the frontend to display the conversations, total number of conversations, sources and user_id
             "conversations": chats, # list of chats ready to draw as orbs on the map

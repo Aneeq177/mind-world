@@ -5,7 +5,10 @@ import pytest
 from fastapi import HTTPException
 
 from services.auth import (
+    MAX_SESSIONS,
     authenticate_user,
+    issue_session_token,
+    session_token_matches,
     create_oauth_state,
     establish_session,
     get_account_auth_info,
@@ -60,6 +63,44 @@ def test_establish_session_rejects_unbound_api_key():
             with pytest.raises(HTTPException) as exc:
                 establish_session("user@example.com", api_key="sk-ant-attacker-key")
     assert exc.value.status_code == 401
+
+
+def test_any_live_session_token_is_accepted():
+    stored = " ".join(hash_secret(t) for t in ["web-token", "extension-token"])
+    assert session_token_matches(stored, "web-token")
+    assert session_token_matches(stored, "extension-token")
+    assert not session_token_matches(stored, "stolen-token")
+    assert not session_token_matches(None, "web-token")
+    assert session_token_matches(hash_secret("legacy-token"), "legacy-token")
+
+
+def test_establish_session_returns_the_same_token_without_rotating():
+    with patch("services.auth._get_user_auth_row") as mock_auth_row:
+        mock_auth_row.return_value = {"id": "user-1", "session_token_hash": hash_secret("tok-1"), "api_key_hash": None}
+        with patch("services.auth.issue_session_token") as mock_issue:
+            first = establish_session("user@example.com", access_token="tok-1")
+            second = establish_session("user@example.com", access_token="tok-1")
+    assert first["access_token"] == second["access_token"] == "tok-1"
+    assert first["refreshed"] is True
+    mock_issue.assert_not_called()
+
+
+def test_issue_session_token_keeps_other_sessions_and_caps_them():
+    existing = " ".join(hash_secret(f"old-{i}") for i in range(MAX_SESSIONS))
+    mock_supabase = MagicMock()
+    users = mock_supabase.table.return_value
+    users.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = [
+        {"session_token_hash": existing}
+    ]
+    mock_db = MagicMock()
+    mock_db.get_supabase.return_value = mock_supabase
+    with patch.dict("sys.modules", {"services.database": mock_db}):
+        token = issue_session_token("user-1")
+    written = users.update.call_args[0][0]["session_token_hash"]
+    assert session_token_matches(written, token)
+    assert len(written.split()) == MAX_SESSIONS
+    assert not session_token_matches(written, "old-0"), "the oldest session is dropped"
+    assert session_token_matches(written, f"old-{MAX_SESSIONS - 1}")
 
 
 def test_verify_api_key_for_user_does_not_bind_new_keys():

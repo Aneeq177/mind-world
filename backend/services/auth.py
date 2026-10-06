@@ -196,13 +196,31 @@ def bind_api_key_for_user(user_id: str, api_key: str, access_token: str, email: 
     return {"success": True}
 
 
+# users.session_token_hash holds the hashes of the account's live sessions,
+# space-separated, newest last, so the web app, the extension, and other
+# browsers don't sign each other out. Signing in somewhere new drops the oldest
+# once there are more than MAX_SESSIONS.
+MAX_SESSIONS = 5
+
+
+def _session_hashes(stored: Optional[str]) -> list[str]:
+    return [h for h in (stored or "").split() if h]
+
+
+def session_token_matches(stored: Optional[str], token: str) -> bool:
+    candidate = hash_secret(token)
+    return any(hmac.compare_digest(h, candidate) for h in _session_hashes(stored))
+
+
 def issue_session_token(user_id: str) -> str:
     from services.database import get_supabase
 
     token = secrets.token_urlsafe(32)
-    token_hash = hash_secret(token)
     supabase = get_supabase()
-    supabase.table("users").update({"session_token_hash": token_hash}).eq("id", user_id).execute()
+    current = supabase.table("users").select("session_token_hash").eq("id", user_id).limit(1).execute()
+    existing = _session_hashes(current.data[0].get("session_token_hash")) if current.data else []
+    hashes = (existing + [hash_secret(token)])[-MAX_SESSIONS:]
+    supabase.table("users").update({"session_token_hash": " ".join(hashes)}).eq("id", user_id).execute()
     return token
 
 
@@ -504,7 +522,7 @@ def verify_session_token(email: str, access_token: str) -> str:
     if not user or not user.get("session_token_hash"):
         raise HTTPException(status_code=401, detail="Invalid or expired session. Please sign in again.")
 
-    if not hmac.compare_digest(user["session_token_hash"], hash_secret(token)):
+    if not session_token_matches(user["session_token_hash"], token):
         raise HTTPException(status_code=401, detail="Invalid or expired session. Please sign in again.")
 
     return user["id"]
@@ -512,9 +530,11 @@ def verify_session_token(email: str, access_token: str) -> str:
 
 def establish_session(email: str, access_token: Optional[str] = None, api_key: Optional[str] = None) -> dict:
     """
-    Refresh a session token.
+    Check or obtain a session token.
 
-    - Valid existing token → rotate and return new token
+    - Valid existing token → return the same token. Not rotating means two
+      callers refreshing at once, or a response lost when the popup closes,
+      can't leave the client holding a token the server no longer accepts.
     - Bound API key that matches → issue token (legacy Advanced Settings only)
     - Otherwise → 401
     """
@@ -528,9 +548,8 @@ def establish_session(email: str, access_token: Optional[str] = None, api_key: O
 
     user_id = user["id"]
 
-    if access_token and user.get("session_token_hash"):
-        if hmac.compare_digest(user["session_token_hash"], hash_secret(access_token)):
-            return _session_response(user_id, email, refreshed=True)
+    if access_token and session_token_matches(user.get("session_token_hash"), access_token):
+        return {"access_token": access_token, "email": email.lower().strip(), "refreshed": True}
 
     if api_key:
         if verify_api_key_for_user(user_id, api_key, user.get("api_key_hash")):

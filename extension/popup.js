@@ -138,6 +138,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await chrome.storage.local.set({
       mw_email: email,
       mw_access_token: accessToken,
+      mw_session_checked_at: Date.now(),
       mw_autosave_enabled: autosaveEnabled,
       mw_memory_enabled: memoryEnabled,
       mw_storage_mode: chosenMode,
@@ -163,52 +164,42 @@ document.addEventListener('DOMContentLoaded', async () => {
     loadAuthAccount(email)
     saveBtn.disabled = false
     saveBtn.textContent = isRegisterMode ? 'Create account' : 'Sign in'
+    if (chosenMode === 'local') copyCloudChatsAfterSignIn()
   }
 
-  async function establishSession(email, apiKey = null) {
-    const stored = await chrome.storage.local.get(['mw_access_token'])
-    const body = { email }
-    if (apiKey) body.api_key = apiKey
-    if (stored.mw_access_token) body.access_token = stored.mw_access_token
-
-    const res = await fetch(`${API_BASE}/auth/session`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    })
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}))
-      const detail = err.detail
-      const message = typeof detail === 'string'
-        ? detail
-        : Array.isArray(detail)
-          ? detail.map((d) => d.msg || d).join(', ')
-          : 'Session verification failed'
-      throw new Error(message)
-    }
-    const data = await res.json()
-    await chrome.storage.local.set({ mw_access_token: data.access_token })
-    return data.access_token
+  /* An account that already has chats in the cloud and signs in with
+   * "On this device" gets them copied here, so Improve doesn't start empty.
+   * The cloud copy stays until the user deletes it. */
+  async function copyCloudChatsAfterSignIn() {
+    try {
+      const accessToken = await getAccessToken()
+      if (!accessToken || !currentEmail) return
+      const res = await fetch(`${API_BASE}/user_stats`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: currentEmail, access_token: accessToken })
+      })
+      if (!res.ok) return
+      const data = await res.json()
+      if ((data.conversation_count || 0) > 0) {
+        offerKind = 'copy'
+        startMigration({ type: 'MW_COPY_CLOUD_TO_LOCAL', clearCloud: false })
+      }
+    } catch (_) {}
   }
 
+  async function presetLoginStorageMode() {
+    const { mw_storage_mode: mode } = await chrome.storage.local.get('mw_storage_mode')
+    const radio = document.querySelector(`input[name="login-storage-mode"][value="${mode === 'cloud' ? 'cloud' : 'local'}"]`)
+    if (radio) radio.checked = true
+  }
+
+  /* The service worker owns session checks so the popup and background never
+   * race each other for the token. */
   async function getAccessToken() {
-    const stored = await chrome.storage.local.get(['mw_access_token', 'mw_api_key'])
     if (!currentEmail) return null
-    if (stored.mw_access_token) {
-      try {
-        return await establishSession(currentEmail, stored.mw_api_key || null)
-      } catch {
-        // expired
-      }
-    }
-    if (stored.mw_api_key) {
-      try {
-        return await establishSession(currentEmail, stored.mw_api_key)
-      } catch {
-        return null
-      }
-    }
-    return null
+    const res = await chrome.runtime.sendMessage({ type: 'GET_ACCESS_TOKEN' }).catch(() => null)
+    return (res && res.accessToken) || null
   }
 
   if (toggleAuthMode) {
@@ -312,10 +303,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (stored.mw_email) {
     showConnectedView(stored.mw_email, stored.mw_api_key)
     loadStats(stored.mw_email)
-    establishSession(stored.mw_email, stored.mw_api_key || null).catch(() => {})
   } else {
     loginView.style.display = 'block'
     connectedView.style.display = 'none'
+    presetLoginStorageMode()
   }
 
   function triggerImportPicker() {
@@ -928,12 +919,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     apikeyInputConnected.value = ''
     if (removeApikeyBtn) removeApikeyBtn.style.display = 'inline-block'
     if (currentEmail) {
-      try {
-        await establishSession(currentEmail, apiKey)
-        apikeyStatus.textContent = '✓ API key saved — session verified'
-      } catch (_) {
-        apikeyStatus.textContent = '✓ API key saved (session pending)'
-      }
+      apikeyStatus.textContent = (await getAccessToken())
+        ? '✓ API key saved — session verified'
+        : '✓ API key saved (session pending)'
     }
   })
 
@@ -953,12 +941,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   async function signOut() {
-    await chrome.storage.local.remove(['mw_email', 'mw_api_key', 'mw_access_token', 'mw_password_setup_dismissed'])
+    await chrome.storage.local.remove(['mw_email', 'mw_api_key', 'mw_access_token', 'mw_session_checked_at', 'mw_password_setup_dismissed'])
     currentEmail = null
     connectedView.style.display = 'none'
     loginView.style.display = 'block'
     emailInput.value = ''
     setPasswordSetupRequired(false)
+    presetLoginStorageMode()
   }
 
   // Logout
@@ -999,6 +988,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   // A "running" migration this old means the background worker was stopped mid-way.
   const MIGRATION_STALE_MS = 3 * 60 * 1000
+  const SESSION_ERRORS = new Set(['auth_required', 'not_logged_in'])
 
   async function refreshStorageState() {
     const s = await chrome.storage.local.get(['mw_storage_mode', 'mw_offer_local_switch', 'mw_migration', 'mw_byok_direct', 'mw_cloud_copy_offer_dismissed'])
@@ -1011,7 +1001,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (localOfferText) localOfferText.textContent = 'Move your saved chats into this browser. Improve keeps working the same way, and Mind World stops storing your conversations.'
       if (localOfferAccept) localOfferAccept.textContent = 'Move to this device'
       if (localOfferBanner) localOfferBanner.style.display = 'block'
-    } else if (storageMode === 'local' && !s.mw_cloud_copy_offer_dismissed) {
+    } else if (storageMode === 'local' && s.mw_cloud_copy_offer_dismissed !== currentEmail) {
       loadCloudInfo()
     } else if (localOfferBanner) {
       localOfferBanner.style.display = 'none'
@@ -1070,8 +1060,26 @@ document.addEventListener('DOMContentLoaded', async () => {
         : `Uploaded ${moved} chats to your account.${r.trimmed ? ` ${r.trimmed} very long chats were shortened to fit.` : ''}`
       if (r.skipped) text += ` ${r.skipped} couldn't be copied.`
     } else if (m.status === 'failed') {
-      text = `The move failed, so your memory wasn't changed. ${m.error || ''}`.trim()
+      const sessionExpired = SESSION_ERRORS.has(m.error)
+      text = sessionExpired
+        ? 'The move failed because your session expired, so your memory wasn\'t changed. Sign in again, then retry. Your on-device memory is kept.'
+        : `The move failed, so your memory wasn't changed. ${m.error || ''}`.trim()
       isError = true
+      migrationStatus.style.display = 'block'
+      migrationStatus.textContent = text
+      migrationStatus.style.color = '#f87171'
+      if (sessionExpired) {
+        const btn = document.createElement('button')
+        btn.type = 'button'
+        btn.className = 'link-btn'
+        btn.textContent = 'Sign in again'
+        btn.addEventListener('click', async () => {
+          await chrome.storage.local.remove('mw_migration')
+          await signOut()
+        })
+        migrationStatus.append(' ', btn)
+      }
+      return
     }
     migrationStatus.style.display = 'block'
     migrationStatus.textContent = text
@@ -1109,7 +1117,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await refreshStorageState()
     if (res && !res.error) {
       if (localOfferBanner) localOfferBanner.style.display = 'none'
-      if (offerKind === 'copy') await chrome.storage.local.set({ mw_cloud_copy_offer_dismissed: true })
+      if (offerKind === 'copy') await chrome.storage.local.set({ mw_cloud_copy_offer_dismissed: currentEmail })
     }
     loadStats(currentEmail)
   }
@@ -1141,7 +1149,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (localOfferDismiss) {
     localOfferDismiss.addEventListener('click', async () => {
       if (localOfferBanner) localOfferBanner.style.display = 'none'
-      await chrome.storage.local.set(offerKind === 'copy' ? { mw_cloud_copy_offer_dismissed: true } : { mw_offer_local_switch: false })
+      await chrome.storage.local.set(offerKind === 'copy' ? { mw_cloud_copy_offer_dismissed: currentEmail } : { mw_offer_local_switch: false })
     })
   }
 

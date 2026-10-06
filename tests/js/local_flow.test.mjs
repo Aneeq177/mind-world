@@ -284,7 +284,7 @@ test('local mode end to end', async (t) => {
     assert.equal(res.cloudCleared, false)
     assert.equal(state.cleared, false)
     assert.equal(sw.storage.mw_storage_mode, 'local')
-    assert.equal(sw.storage.mw_cloud_copy_offer_dismissed, true)
+    assert.equal(sw.storage.mw_cloud_copy_offer_dismissed, 'tester@example.com')
   })
 
   await t.test('restoring a backup profile fills only an empty profile', async () => {

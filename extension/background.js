@@ -120,41 +120,56 @@ async function getCredentials() {
   }
 }
 
+// A token the server accepted is reused for this long before checking again.
+const MW_SESSION_CHECK_MS = 10 * 60 * 1000
+let mwSessionCheck = null
+
 async function establishSession(email, apiKey = null) {
   const stored = await chrome.storage.local.get(['mw_access_token'])
+  const sent = stored.mw_access_token || null
   const body = { email }
   if (apiKey) body.api_key = apiKey
-  if (stored.mw_access_token) body.access_token = stored.mw_access_token
+  if (sent) body.access_token = sent
 
-  const res = await fetch(`${API_BASE}/auth/session`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  })
-  if (!res.ok) return null
+  let res
+  try {
+    res = await fetch(`${API_BASE}/auth/session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    })
+  } catch (_) {
+    // Server unreachable says nothing about the token; let the real request fail.
+    return sent
+  }
+  if (!res.ok) {
+    // The popup may have stored a new token (fresh sign-in) while this was in flight.
+    const { mw_access_token: now } = await chrome.storage.local.get('mw_access_token')
+    return now && now !== sent ? now : null
+  }
   const data = await res.json()
-  await chrome.storage.local.set({ mw_access_token: data.access_token })
+  await chrome.storage.local.set({ mw_access_token: data.access_token, mw_session_checked_at: Date.now() })
   return data.access_token
 }
 
+/* The session token, checked with the server at most every MW_SESSION_CHECK_MS
+ * and by one request at a time, however many callers ask at once. */
 async function getAccessToken() {
   const { email, apiKey, accessToken } = await getCredentials()
-  if (!email) return null
+  if (!email || (!accessToken && !apiKey)) return null
   if (accessToken) {
-    const refreshed = await establishSession(email, apiKey || null)
-    if (refreshed) return refreshed
+    const { mw_session_checked_at: checkedAt } = await chrome.storage.local.get('mw_session_checked_at')
+    if (checkedAt && Date.now() - checkedAt < MW_SESSION_CHECK_MS) return accessToken
   }
-  if (apiKey) {
-    return establishSession(email, apiKey)
+  if (!mwSessionCheck) {
+    mwSessionCheck = establishSession(email, apiKey || null).finally(() => { mwSessionCheck = null })
   }
-  return null
+  return mwSessionCheck
 }
 
-// Refresh session when the service worker wakes so Improve/weave work without opening the popup.
-chrome.storage.local.get(['mw_email', 'mw_api_key'], (stored) => {
-  if (stored.mw_email) {
-    establishSession(stored.mw_email, stored.mw_api_key || null).catch(() => {})
-  }
+// Check the session when the service worker wakes so Improve works without opening the popup.
+chrome.storage.local.get(['mw_email'], (stored) => {
+  if (stored.mw_email) getAccessToken().catch(() => {})
 })
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
@@ -340,6 +355,7 @@ async function requireSameAccount(account) {
 }
 
 const MEMORY_PAGE_HANDLERS = {
+  GET_ACCESS_TOKEN: async () => ({ accessToken: await getAccessToken() }),
   MW_LOCAL_IMPORT_BATCH: async (m) => {
     await requireSameAccount(m.account)
     return (await requireLocalProvider()).importConversations(m.conversations || [])
@@ -402,8 +418,14 @@ async function runStorageSwitch(mode, { clearCloud, from: source }) {
     const total = (data.conversations || []).length
     await setMigration({ from: current, to: target, phase: 'copying', done: 0, total, status: 'running' })
     const result = await to.importAll(data, { onProgress: progress('copying') })
+    if (total > 0 && (result.imported || 0) + (result.kept_newer || 0) === 0) {
+      throw new Error('None of your chats could be copied. Check your connection and try again')
+    }
     await mwSetStorageMode(target)
-    if (target === MW_STORAGE_MODES.LOCAL) await chrome.storage.local.set({ mw_cloud_copy_offer_dismissed: true })
+    if (target === MW_STORAGE_MODES.LOCAL) {
+      const { mw_email: email } = await chrome.storage.local.get('mw_email')
+      await chrome.storage.local.set({ mw_cloud_copy_offer_dismissed: email || true })
+    }
     let cloudCleared = false
     if (target === MW_STORAGE_MODES.LOCAL && clearCloud) {
       await setMigration({ from: current, to: target, phase: 'clearing_cloud', done: total, total, status: 'running' })
