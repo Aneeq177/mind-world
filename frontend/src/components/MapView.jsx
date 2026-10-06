@@ -207,10 +207,10 @@ export default function MapView() {
         onClick={() => setFilterSource(value)}
         style={{
           padding: '4px 12px',
-          background: active ? 'rgba(124,58,237,0.28)' : 'rgba(255,255,255,0.04)',
-          border: `1px solid ${active ? 'rgba(124,58,237,0.55)' : 'rgba(255,255,255,0.08)'}`,
+          background: active ? 'rgba(59,130,246,0.28)' : 'rgba(255,255,255,0.04)',
+          border: `1px solid ${active ? 'rgba(59,130,246,0.55)' : 'rgba(255,255,255,0.08)'}`,
           borderRadius: '6px',
-          color: active ? '#a78bfa' : '#666',
+          color: active ? '#60a5fa' : '#666',
           fontSize: '0.75rem',
           fontWeight: active ? '600' : '400',
           cursor: 'pointer',
@@ -272,7 +272,7 @@ export default function MapView() {
     ? {
         position: 'fixed',
         zIndex: 101,
-        background: 'rgba(124, 58, 237, 0.85)',
+        background: 'rgba(59,130,246,0.85)',
         border: 'none',
         color: 'white',
         padding: '8px 14px',
@@ -285,7 +285,7 @@ export default function MapView() {
     : {
         position: 'fixed',
         zIndex: 101,
-        background: 'rgba(124, 58, 237, 0.8)',
+        background: 'rgba(59,130,246,0.8)',
         border: 'none',
         color: 'white',
         padding: '16px 8px',
@@ -438,8 +438,11 @@ export default function MapView() {
         minWidth: 0,
       }}>
         {/* Logo */}
-        <div style={{ fontWeight: '700', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0 }}>
-          <span>🌍</span>
+        <div style={{ fontWeight: '700', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+          <span style={{
+            width: 22, height: 22, borderRadius: 6, background: 'var(--accent)', color: '#fff',
+            display: 'inline-grid', placeItems: 'center', fontSize: '0.72rem', fontWeight: 800
+          }}>M</span>
           {!isMobile && <span>Mind World</span>}
         </div>
 
@@ -448,7 +451,7 @@ export default function MapView() {
           <div style={{ display: 'flex', gap: '12px', fontSize: '0.72rem', color: '#555', flexShrink: 0 }}>
             <span><b style={{ color: 'white' }}>{conversations.length}</b> convos</span>
             <span><b style={{ color: 'white' }}>{totalMessages.toLocaleString()}</b> msgs</span>
-            <span><b style={{ color: '#a78bfa' }}>{claudeCount}</b> claude</span>
+            <span><b style={{ color: '#e8a082' }}>{claudeCount}</b> claude</span>
             <span><b style={{ color: '#34d399' }}>{chatgptCount}</b> chatgpt</span>
           </div>
         )}
@@ -465,10 +468,10 @@ export default function MapView() {
                 width: '100%',
                 padding: '5px 28px 5px 10px',
                 background: searchMatchIds.size > 0
-                  ? 'rgba(124,58,237,0.18)'
+                  ? 'rgba(59,130,246,0.18)'
                   : 'rgba(255,255,255,0.05)',
                 border: `1px solid ${searchMatchIds.size > 0
-                  ? 'rgba(124,58,237,0.5)'
+                  ? 'rgba(59,130,246,0.5)'
                   : 'rgba(255,255,255,0.1)'}`,
                 borderRadius: '6px',
                 color: 'white',
@@ -512,9 +515,9 @@ export default function MapView() {
                 style={{
                   padding: '4px 10px',
                   background: 'rgba(255,255,255,0.04)',
-                  border: `1px solid ${filterRegion !== 'all' ? 'rgba(124,58,237,0.5)' : 'rgba(255,255,255,0.08)'}`,
+                  border: `1px solid ${filterRegion !== 'all' ? 'rgba(59,130,246,0.5)' : 'rgba(255,255,255,0.08)'}`,
                   borderRadius: '6px',
-                  color: filterRegion !== 'all' ? '#a78bfa' : '#666',
+                  color: filterRegion !== 'all' ? '#60a5fa' : '#666',
                   fontSize: '0.75rem',
                   outline: 'none',
                   cursor: 'pointer',
@@ -564,7 +567,7 @@ export default function MapView() {
           left: '50%',
           transform: 'translateX(-50%)',
           zIndex: 199,
-          background: 'rgba(124,58,237,0.9)',
+          background: 'rgba(59,130,246,0.9)',
           backdropFilter: 'blur(8px)',
           borderRadius: '20px',
           padding: '3px 12px',
@@ -597,7 +600,7 @@ export default function MapView() {
           {!isMobile && (
             <span style={{ fontSize: '0.72rem', color: '#555', flexShrink: 0, whiteSpace: 'nowrap' }}>
               {fmt(months[0])} →{' '}
-              <span style={{ color: isAtMax ? '#555' : '#a78bfa' }}>{fmt(months[safeIdx])}</span>
+              <span style={{ color: isAtMax ? '#555' : '#60a5fa' }}>{fmt(months[safeIdx])}</span>
             </span>
           )}
           <input
@@ -606,12 +609,12 @@ export default function MapView() {
             max={months.length - 1}
             value={safeIdx}
             onChange={e => setTimeIdx(Number(e.target.value))}
-            style={{ flex: 1, accentColor: '#7c3aed', cursor: 'pointer' }}
+            style={{ flex: 1, accentColor: '#3b82f6', cursor: 'pointer' }}
           />
           <span style={{ fontSize: '0.72rem', color: '#555', flexShrink: 0, whiteSpace: 'nowrap' }}>
             <b style={{ color: 'white' }}>{displayCount}</b>
             {!isMobile && ' conversations'}
-            {!isAtMax && <> · <b style={{ color: '#a78bfa' }}>{newCount}</b>{!isMobile && ' new'}</>}
+            {!isAtMax && <> · <b style={{ color: '#60a5fa' }}>{newCount}</b>{!isMobile && ' new'}</>}
             {!isMobile && <> · <b style={{ color: 'white' }}>{totalMsgCount.toLocaleString()}</b>{' messages'}</>}
           </span>
           {!isAtMax && (

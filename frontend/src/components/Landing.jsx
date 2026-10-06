@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useStore } from '../store'
 import { processFiles, loadExistingMap, recordConsent, ensureAccessToken, login, register } from '../api'
-import CompareDemo from './CompareDemo'
+import MarketingHome from './MarketingHome'
 
 const CHROME_STORE_URL =
   'https://chromewebstore.google.com/detail/mind-world/dcbicejbdecfpdjgmnclmafiobgomhdp?utm_source=item'
@@ -10,11 +10,11 @@ const CONSENT_VERSION = '2026-06-2'
 const UPLOAD_CONSENT_LABEL = (
   <>
     I agree to Mind World processing my uploaded AI chat exports and account data as described in the{' '}
-    <a href="/privacy" target="_blank" rel="noreferrer" style={{ color: '#a78bfa' }}>
+    <a href="/privacy" target="_blank" rel="noreferrer" style={{ color: 'var(--accent-text)' }}>
       Privacy Policy
     </a>{' '}
     and{' '}
-    <a href="/terms" target="_blank" rel="noreferrer" style={{ color: '#a78bfa' }}>
+    <a href="/terms" target="_blank" rel="noreferrer" style={{ color: 'var(--accent-text)' }}>
       Terms of Service
     </a>
     , including:
@@ -24,7 +24,7 @@ const UPLOAD_CONSENT_LABEL = (
       <li>Creating semantic embeddings for search and memory</li>
       <li>Optional AI topic labeling via Anthropic during import</li>
       <li>
-        Storing Improve feedback metrics in <code style={{ fontSize: '0.85em', color: '#999' }}>prompt_feedback</code>{' '}
+        Storing Improve feedback metrics in <code style={{ fontSize: '0.85em', color: 'var(--text-muted)' }}>prompt_feedback</code>{' '}
         (edit distance, hashes, and goal text up to 500 characters) when I use the extension
       </li>
       <li>Optional personal profile and inference from my conversations when profile is enabled</li>
@@ -32,31 +32,40 @@ const UPLOAD_CONSENT_LABEL = (
   </>
 )
 
-const FEATURES = [
-  {
-    icon: '⚡',
-    title: 'One-click Improve',
-    desc: 'Hit Improve (or Alt+Shift+M) and Mind World rewrites your draft into a structured, contextual prompt — using your own past conversations as context. No prompt engineering experience required.'
-  },
-  {
-    icon: '🧩',
-    title: 'Template chips',
-    desc: 'A row of chips sits above every chat box: Debug code, Review essay, Write email, and more. Tap one — a professional prompt scaffold drops in. Works on day one with zero history.'
-  },
-  {
-    icon: '🌍',
-    title: 'Memory that travels with you',
-    desc: 'New conversations auto-save in the background across Claude, ChatGPT, and Gemini. Import your full history once on mind-world.app — Improve gets smarter every session.'
-  }
-]
-
 const LOADING_MESSAGES = [
   'Reading your conversations...',
   'Generating embeddings...',
-  'Mapping your mind in 2D...',
-  'Identifying your unique topics...',
+  'Mapping your conversations in 2D...',
+  'Identifying your topics...',
   'Building your map...'
 ]
+
+const inputStyle = {
+  width: '100%', padding: '13px 14px',
+  background: 'var(--bg)',
+  border: '1px solid var(--border-strong)',
+  borderRadius: '8px', color: 'var(--text)',
+  fontSize: '0.9rem', marginBottom: '12px', outline: 'none',
+  fontFamily: 'inherit'
+}
+
+const stepLabelStyle = {
+  fontSize: '0.75rem', color: 'var(--text-subtle)', marginBottom: '10px',
+  fontWeight: '600', letterSpacing: '0.04em', textTransform: 'uppercase'
+}
+
+function LogoMark({ size = 28 }) {
+  return (
+    <span style={{
+      width: size, height: size, borderRadius: size / 4,
+      background: 'var(--accent)', color: '#fff',
+      display: 'inline-grid', placeItems: 'center',
+      fontSize: size * 0.48, fontWeight: 800
+    }}>
+      M
+    </span>
+  )
+}
 
 export default function Landing() {
   const setPhase = useStore(s => s.setPhase)
@@ -203,22 +212,6 @@ export default function Landing() {
     setPassword('')
   }
 
-  async function autoLoadMap(emailValue) {
-    setError('')
-    setLoadingMsg('Loading your map...')
-    setPhase('processing')
-    try {
-      const token = await ensureAccessToken(emailValue)
-      const data = await loadExistingMap({ email: emailValue, accessToken: token })
-      setCredentials(emailValue, apiKey || '')
-      setConversations(data.conversations, data.sources)
-      setPhase('map')
-    } catch (err) {
-      setError(err.message || 'Failed to load map')
-      setPhase('landing')
-    }
-  }
-
   async function checkExistingData(emailValue) {
     if (!emailValue || !emailValue.includes('@')) return
     if (!signedIn && !sessionStorage.getItem('mw_access_token')) return
@@ -355,19 +348,19 @@ export default function Landing() {
         width: '100vw', height: '100vh',
         display: 'flex', flexDirection: 'column',
         alignItems: 'center', justifyContent: 'center',
-        background: '#000008', color: 'white', gap: '24px'
+        background: 'var(--bg)', color: 'var(--text)', gap: '24px'
       }}>
-        <div style={{ fontSize: '4rem' }}>🌍</div>
-        <div style={{ fontSize: '1.2rem', color: '#888', minHeight: '2rem', textAlign: 'center' }}>
+        <LogoMark size={48} />
+        <div style={{ fontSize: '1.05rem', color: 'var(--text-muted)', minHeight: '2rem', textAlign: 'center' }}>
           {loadingMsg}
         </div>
         <div style={{
-          width: '200px', height: '2px',
-          background: 'rgba(255,255,255,0.1)',
-          borderRadius: '1px', overflow: 'hidden'
+          width: '200px', height: '3px',
+          background: 'var(--surface-2)',
+          borderRadius: '2px', overflow: 'hidden'
         }}>
           <div style={{
-            height: '100%', background: '#7c3aed',
+            height: '100%', background: 'var(--accent)',
             animation: 'progress 60s linear forwards', width: '0%'
           }} />
         </div>
@@ -404,52 +397,52 @@ export default function Landing() {
         display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
         padding: '32px 24px 48px',
         boxSizing: 'border-box',
-        background: '#000008',
-        backgroundImage: 'radial-gradient(ellipse at center, #0a0a1a 0%, #000008 100%)'
+        background: 'var(--bg)'
       }}>
         <div style={{
-          width: '520px', maxWidth: '100%', padding: '40px',
-          background: 'rgba(255,255,255,0.03)',
-          border: '1px solid rgba(255,255,255,0.08)',
-          borderRadius: '24px', color: 'white'
+          width: '520px', maxWidth: '100%', padding: '36px',
+          background: 'var(--surface)',
+          border: '1px solid var(--border)',
+          borderRadius: '16px', color: 'var(--text)'
         }}>
           <button
             onClick={() => setView('home')}
             style={{
-              background: 'none', border: 'none', color: '#555',
-              fontSize: '0.82rem', cursor: 'pointer', marginBottom: '20px',
+              background: 'none', border: 'none', color: 'var(--text-muted)',
+              fontSize: '0.85rem', cursor: 'pointer', marginBottom: '20px',
               padding: 0, display: 'flex', alignItems: 'center', gap: '4px'
             }}
           >
             ← Back
           </button>
 
-          <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-            <div style={{ fontSize: '2.5rem', marginBottom: '10px' }}>🌍</div>
-            <h1 style={{ fontSize: '1.6rem', fontWeight: '700', marginBottom: '8px' }}>
+          <div style={{ textAlign: 'center', marginBottom: '28px' }}>
+            <div style={{ marginBottom: '14px' }}><LogoMark size={40} /></div>
+            <h1 style={{ fontSize: '1.5rem', fontWeight: '700', marginBottom: '8px', letterSpacing: '-0.01em' }}>
               Import your AI chats
             </h1>
-            <p style={{ color: '#888', fontSize: '0.9rem', lineHeight: '1.6' }}>
-              One-time setup. Takes about 2 minutes.
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', lineHeight: '1.6' }}>
+              One-time setup that takes about 2 minutes. Imported chats are stored in your
+              cloud account and power the conversation map.
             </p>
           </div>
 
           {hasExistingData && !checkingEmail && (
             <div style={{
-              background: 'rgba(124,58,237,0.1)',
-              border: '1px solid rgba(124,58,237,0.3)',
+              background: 'var(--accent-soft)',
+              border: '1px solid var(--accent-border)',
               borderRadius: '10px',
               padding: '14px 16px',
               marginBottom: '20px'
             }}>
-              <div style={{ color: '#a78bfa', fontWeight: '600', marginBottom: '4px' }}>
-                ✓ You already have {existingCount} conversations saved
+              <div style={{ color: 'var(--accent-text)', fontWeight: '600', marginBottom: '4px' }}>
+                You already have {existingCount} conversations saved
               </div>
               <button
                 onClick={handleLoadExisting}
                 style={{
                   width: '100%', padding: '12px', marginTop: '8px',
-                  background: 'linear-gradient(135deg, #7c3aed, #5b21b6)',
+                  background: 'var(--accent)',
                   border: 'none', borderRadius: '8px',
                   color: 'white', fontSize: '0.9rem', fontWeight: '600',
                   cursor: 'pointer'
@@ -457,7 +450,7 @@ export default function Landing() {
               >
                 Open my map →
               </button>
-              <div style={{ color: '#555', fontSize: '0.75rem', textAlign: 'center', marginTop: '8px' }}>
+              <div style={{ color: 'var(--text-subtle)', fontSize: '0.75rem', textAlign: 'center', marginTop: '8px' }}>
                 or add more chats below
               </div>
             </div>
@@ -465,31 +458,27 @@ export default function Landing() {
 
           {/* Step 1: Which AI? */}
           <div style={{ marginBottom: '20px' }}>
-            <div style={{ fontSize: '0.75rem', color: '#666', marginBottom: '10px', fontWeight: '600' }}>
-              STEP 1 — Which AI do you use?
-            </div>
+            <div style={stepLabelStyle}>Step 1 — Which AI do you use?</div>
             <div style={{ display: 'flex', gap: '10px' }}>
               {[
-                { id: 'chatgpt', label: 'ChatGPT', emoji: '🟢' },
-                { id: 'claude', label: 'Claude', emoji: '🟣' }
+                { id: 'chatgpt', label: 'ChatGPT' },
+                { id: 'claude', label: 'Claude' }
               ].map(p => (
                 <button
                   key={p.id}
                   onClick={() => setSelectedPlatform(p.id)}
                   style={{
-                    flex: 1, padding: '14px',
-                    borderRadius: '10px', cursor: 'pointer',
+                    flex: 1, padding: '13px',
+                    borderRadius: '8px', cursor: 'pointer',
                     border: selectedPlatform === p.id
-                      ? (p.id === 'chatgpt' ? '1px solid rgba(16,163,127,0.5)' : '1px solid rgba(124,58,237,0.5)')
-                      : '1px solid rgba(255,255,255,0.1)',
-                    background: selectedPlatform === p.id
-                      ? (p.id === 'chatgpt' ? 'rgba(16,163,127,0.12)' : 'rgba(124,58,237,0.12)')
-                      : 'rgba(255,255,255,0.03)',
-                    color: selectedPlatform === p.id ? 'white' : '#888',
+                      ? '1px solid var(--accent-border)'
+                      : '1px solid var(--border-strong)',
+                    background: selectedPlatform === p.id ? 'var(--accent-soft)' : 'transparent',
+                    color: selectedPlatform === p.id ? 'var(--text)' : 'var(--text-muted)',
                     fontSize: '0.9rem', fontWeight: '600'
                   }}
                 >
-                  {p.emoji} {p.label}
+                  {p.label}
                 </button>
               ))}
             </div>
@@ -498,14 +487,12 @@ export default function Landing() {
           {/* Step 2: How to download */}
           <div style={{
             marginBottom: '20px', padding: '16px',
-            background: 'rgba(255,255,255,0.02)',
-            border: '1px solid rgba(255,255,255,0.06)',
-            borderRadius: '12px'
+            background: 'var(--bg)',
+            border: '1px solid var(--border)',
+            borderRadius: '10px'
           }}>
-            <div style={{ fontSize: '0.75rem', color: '#666', marginBottom: '12px', fontWeight: '600' }}>
-              STEP 2 — Download your chats
-            </div>
-            <ol style={{ margin: 0, paddingLeft: '20px', fontSize: '0.85rem', color: '#aaa', lineHeight: '1.7' }}>
+            <div style={stepLabelStyle}>Step 2 — Download your chats</div>
+            <ol style={{ margin: 0, paddingLeft: '20px', fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: '1.7' }}>
               {EXPORT_STEPS[selectedPlatform].map((step, i) => (
                 <li key={i} style={{ marginBottom: '6px' }}>{step}</li>
               ))}
@@ -519,14 +506,14 @@ export default function Landing() {
             gap: '10px',
             marginBottom: '20px',
             padding: '14px',
-            background: uploadConsent ? 'rgba(124,58,237,0.06)' : 'rgba(255,255,255,0.02)',
+            background: uploadConsent ? 'var(--accent-soft)' : 'transparent',
             border: uploadConsent
-              ? '1px solid rgba(124,58,237,0.35)'
-              : '1px solid rgba(255,255,255,0.08)',
+              ? '1px solid var(--accent-border)'
+              : '1px solid var(--border)',
             borderRadius: '10px',
             cursor: 'pointer',
             fontSize: '0.82rem',
-            color: '#aaa',
+            color: 'var(--text-muted)',
             lineHeight: '1.55'
           }}>
             <input
@@ -542,42 +529,38 @@ export default function Landing() {
                   setChatgptFile(null)
                 }
               }}
-              style={{ marginTop: '3px', flexShrink: 0 }}
+              style={{ marginTop: '3px', flexShrink: 0, accentColor: 'var(--accent)' }}
             />
             <span>{UPLOAD_CONSENT_LABEL}</span>
           </label>
 
           {/* Step 3: Upload */}
           <div style={{ marginBottom: '16px' }}>
-            <div style={{ fontSize: '0.75rem', color: '#666', marginBottom: '10px', fontWeight: '600' }}>
-              STEP 3 — Upload the file
-            </div>
+            <div style={stepLabelStyle}>Step 3 — Upload the file</div>
             <label style={{
               display: 'block', padding: '28px 20px', textAlign: 'center',
-              border: `2px dashed ${uploadedFile ? '#7c3aed' : 'rgba(255,255,255,0.15)'}`,
-              borderRadius: '14px',
+              border: `2px dashed ${uploadedFile ? 'var(--accent)' : 'var(--border-strong)'}`,
+              borderRadius: '12px',
               cursor: uploadConsent ? 'pointer' : 'not-allowed',
               opacity: uploadConsent ? 1 : 0.55,
-              background: uploadedFile ? 'rgba(124,58,237,0.08)' : 'rgba(255,255,255,0.02)',
+              background: uploadedFile ? 'var(--accent-soft)' : 'transparent',
               transition: 'all 0.2s'
             }}>
               {uploadedFile ? (
                 <>
-                  <div style={{ fontSize: '1.5rem', marginBottom: '6px' }}>✓</div>
-                  <div style={{ fontSize: '0.9rem', color: '#a78bfa', fontWeight: '600' }}>
+                  <div style={{ fontSize: '0.9rem', color: 'var(--accent-text)', fontWeight: '600' }}>
                     {uploadedFile.name}
                   </div>
-                  <div style={{ fontSize: '0.75rem', color: '#666', marginTop: '4px' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', marginTop: '4px' }}>
                     Click to choose a different file
                   </div>
                 </>
               ) : (
                 <>
-                  <div style={{ fontSize: '2rem', marginBottom: '8px' }}>📁</div>
-                  <div style={{ fontSize: '0.95rem', color: '#ccc', fontWeight: '600' }}>
-                    Click here to upload
+                  <div style={{ fontSize: '0.95rem', color: 'var(--text)', fontWeight: '600' }}>
+                    Click to upload
                   </div>
-                  <div style={{ fontSize: '0.78rem', color: '#555', marginTop: '4px' }}>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', marginTop: '4px' }}>
                     {selectedPlatform === 'chatgpt' ? '.zip file from your email' : 'conversations .zip from your email'}
                   </div>
                 </>
@@ -594,7 +577,7 @@ export default function Landing() {
               />
             </label>
             {!uploadConsent && (
-              <div style={{ fontSize: '0.75rem', color: '#666', marginTop: '8px', textAlign: 'center' }}>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', marginTop: '8px', textAlign: 'center' }}>
                 Acknowledge the data processing notice above to enable upload.
               </div>
             )}
@@ -607,14 +590,7 @@ export default function Landing() {
             onChange={e => setEmail(e.target.value)}
             onBlur={e => checkExistingData(e.target.value)}
             disabled={signedIn}
-            style={{
-              width: '100%', padding: '14px 16px',
-              background: 'rgba(255,255,255,0.05)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: '10px', color: 'white',
-              fontSize: '0.9rem', marginBottom: '12px', outline: 'none',
-              opacity: signedIn ? 0.7 : 1
-            }}
+            style={{ ...inputStyle, opacity: signedIn ? 0.7 : 1 }}
           />
 
           {!signedIn ? (
@@ -624,24 +600,18 @@ export default function Landing() {
                 placeholder="Password (8+ characters)"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                style={{
-                  width: '100%', padding: '14px 16px',
-                  background: 'rgba(255,255,255,0.05)',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  borderRadius: '10px', color: 'white',
-                  fontSize: '0.9rem', marginBottom: '12px', outline: 'none'
-                }}
+                style={inputStyle}
               />
               <button
                 type="button"
                 onClick={handlePasswordAuth}
                 disabled={authLoading}
                 style={{
-                  width: '100%', padding: '14px',
-                  background: 'linear-gradient(135deg, #7c3aed, #5b21b6)',
-                  border: 'none', borderRadius: '10px',
+                  width: '100%', padding: '13px',
+                  background: 'var(--accent)',
+                  border: 'none', borderRadius: '8px',
                   color: 'white', fontWeight: 600, cursor: 'pointer',
-                  marginBottom: '10px'
+                  marginBottom: '10px', fontSize: '0.92rem'
                 }}
               >
                 {authLoading ? 'Please wait…' : (isRegisterMode ? 'Create account' : 'Sign in')}
@@ -651,7 +621,7 @@ export default function Landing() {
                 onClick={() => setIsRegisterMode(v => !v)}
                 style={{
                   width: '100%', background: 'none', border: 'none',
-                  color: '#888', fontSize: '0.8rem', cursor: 'pointer',
+                  color: 'var(--text-muted)', fontSize: '0.82rem', cursor: 'pointer',
                   marginBottom: '12px'
                 }}
               >
@@ -661,13 +631,13 @@ export default function Landing() {
           ) : (
             <div style={{
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              marginBottom: '12px', fontSize: '0.82rem', color: '#8b8'
+              marginBottom: '12px', fontSize: '0.82rem', color: 'var(--success)'
             }}>
               <span>Signed in as {email}</span>
               <button
                 type="button"
                 onClick={handleSignOut}
-                style={{ background: 'none', border: 'none', color: '#a78bfa', cursor: 'pointer' }}
+                style={{ background: 'none', border: 'none', color: 'var(--accent-text)', cursor: 'pointer' }}
               >
                 Sign out
               </button>
@@ -675,7 +645,7 @@ export default function Landing() {
           )}
 
           {checkingEmail && (
-            <div style={{ fontSize: '0.78rem', color: '#555', marginBottom: '12px', textAlign: 'center' }}>
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', marginBottom: '12px', textAlign: 'center' }}>
               Checking your account...
             </div>
           )}
@@ -683,8 +653,8 @@ export default function Landing() {
           <button
             onClick={() => setShowAdvanced(!showAdvanced)}
             style={{
-              background: 'none', border: 'none', color: '#555',
-              fontSize: '0.75rem', cursor: 'pointer', marginBottom: '12px', padding: 0
+              background: 'none', border: 'none', color: 'var(--text-subtle)',
+              fontSize: '0.78rem', cursor: 'pointer', marginBottom: '12px', padding: 0
             }}
           >
             {showAdvanced ? '▾ Hide advanced settings' : '▸ Advanced settings (optional)'}
@@ -696,22 +666,16 @@ export default function Landing() {
               placeholder="Anthropic API key (optional — for Improve and import labeling)"
               value={apiKey}
               onChange={e => setApiKey(e.target.value)}
-              style={{
-                width: '100%', padding: '14px 16px',
-                background: 'rgba(255,255,255,0.05)',
-                border: '1px solid rgba(255,255,255,0.1)',
-                borderRadius: '10px', color: 'white',
-                fontSize: '0.85rem', marginBottom: '16px', outline: 'none'
-              }}
+              style={{ ...inputStyle, fontSize: '0.85rem', marginBottom: '16px' }}
             />
           )}
 
           {error && (
             <div style={{
               padding: '12px',
-              background: 'rgba(255,68,68,0.1)',
-              border: '1px solid rgba(255,68,68,0.3)',
-              borderRadius: '8px', color: '#ff6b6b',
+              background: 'rgba(248,113,113,0.1)',
+              border: '1px solid rgba(248,113,113,0.35)',
+              borderRadius: '8px', color: 'var(--danger)',
               fontSize: '0.85rem', marginBottom: '16px'
             }}>
               {error}
@@ -722,349 +686,31 @@ export default function Landing() {
             onClick={handleGenerate}
             disabled={!canUpload}
             style={{
-              width: '100%', padding: '16px',
-              background: canUpload
-                ? 'linear-gradient(135deg, #7c3aed, #5b21b6)'
-                : 'rgba(255,255,255,0.05)',
-              border: 'none', borderRadius: '12px',
-              color: canUpload ? 'white' : '#555',
-              fontSize: '1rem', fontWeight: '600',
+              width: '100%', padding: '15px',
+              background: canUpload ? 'var(--accent)' : 'var(--surface-2)',
+              border: 'none', borderRadius: '8px',
+              color: canUpload ? 'white' : 'var(--text-subtle)',
+              fontSize: '0.98rem', fontWeight: '600',
               cursor: canUpload ? 'pointer' : 'not-allowed',
               transition: 'all 0.2s'
             }}
           >
-            {hasFile ? '🌍 Import & build my map' : '🌍 Open my map'}
+            {hasFile ? 'Import & build my map' : 'Open my map'}
           </button>
 
           <p style={{
-            textAlign: 'center', color: '#444',
+            textAlign: 'center', color: 'var(--text-subtle)',
             fontSize: '0.75rem', marginTop: '16px', lineHeight: '1.5'
           }}>
-            Your chats stay private. Only you can see them.{' '}
-            <a href="/privacy" style={{ color: '#666' }}>Privacy Policy</a>
+            Your chats are private to your account.{' '}
+            <a href="/privacy" style={{ color: 'var(--text-muted)' }}>Privacy Policy</a>
             {' · '}
-            <a href="/terms" style={{ color: '#666' }}>Terms of Service</a>
+            <a href="/terms" style={{ color: 'var(--text-muted)' }}>Terms of Service</a>
           </p>
         </div>
       </div>
     )
   }
 
-  // Marketing home
-  return (
-    <div style={{
-      width: '100vw', height: '100vh',
-      background: '#000008',
-      backgroundImage: 'radial-gradient(ellipse at 50% 0%, #0d0a1f 0%, #000008 60%)',
-      color: 'white',
-      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-      overflowY: 'auto'
-    }}>
-      {/* Nav */}
-      <nav style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '20px 48px',
-        borderBottom: '1px solid rgba(255,255,255,0.05)'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: '700', fontSize: '1.05rem' }}>
-          <span>🌍</span>
-          <span>Mind World</span>
-        </div>
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-          <button
-            onClick={() => setView('upload')}
-            style={{
-              padding: '8px 20px',
-              background: 'rgba(124,58,237,0.15)',
-              border: '1px solid rgba(124,58,237,0.35)',
-              borderRadius: '8px', color: '#a78bfa',
-              fontSize: '0.85rem', cursor: 'pointer',
-              fontWeight: '500'
-            }}
-          >
-            Import History
-          </button>
-          <a
-            href={CHROME_STORE_URL}
-            target="_blank"
-            rel="noreferrer"
-            style={{
-              padding: '8px 20px',
-              background: 'linear-gradient(135deg, #7c3aed, #5b21b6)',
-              border: 'none', borderRadius: '8px', color: 'white',
-              fontSize: '0.85rem', cursor: 'pointer',
-              fontWeight: '600', textDecoration: 'none'
-            }}
-          >
-            Install Extension
-          </a>
-        </div>
-      </nav>
-
-      {/* Hero */}
-      <div style={{
-        textAlign: 'center',
-        padding: '100px 24px 80px',
-        maxWidth: '760px', margin: '0 auto'
-      }}>
-        <div style={{
-          display: 'inline-block',
-          padding: '6px 14px',
-          background: 'rgba(124,58,237,0.12)',
-          border: '1px solid rgba(124,58,237,0.3)',
-          borderRadius: '20px',
-          fontSize: '0.78rem', color: '#a78bfa',
-          marginBottom: '32px', letterSpacing: '0.3px'
-        }}>
-          Templates · Improve · Memory
-        </div>
-
-        <h1 style={{
-          fontSize: 'clamp(2.4rem, 5vw, 3.6rem)',
-          fontWeight: '800',
-          lineHeight: '1.15',
-          marginBottom: '24px',
-          letterSpacing: '-0.02em'
-        }}>
-          The prompt engineer that<br />
-          <span style={{
-            background: 'linear-gradient(135deg, #a78bfa, #7c3aed)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent'
-          }}>
-            remembers everything
-          </span>
-          <br />
-          you've ever asked AI.
-        </h1>
-
-        <p style={{
-          fontSize: '1.1rem', color: '#888',
-          lineHeight: '1.7', marginBottom: '48px',
-          maxWidth: '560px', margin: '0 auto 48px'
-        }}>
-          Mind World is a Chrome extension that makes your AI chats smarter. Template chips and a one-click{' '}
-          <strong style={{ color: '#c4b5fd' }}>Improve</strong> button rewrite what you typed using your past
-          conversations — automatically, without searching old chats.
-        </p>
-
-        <div style={{ display: 'flex', gap: '16px', justifyContent: 'center', flexWrap: 'wrap' }}>
-          <a
-            href={CHROME_STORE_URL}
-            target="_blank"
-            rel="noreferrer"
-            style={{
-              padding: '16px 36px',
-              background: 'linear-gradient(135deg, #7c3aed, #5b21b6)',
-              border: 'none', borderRadius: '12px', color: 'white',
-              fontSize: '1rem', fontWeight: '700', textDecoration: 'none',
-              display: 'inline-block'
-            }}
-          >
-            Install Chrome Extension — Free
-          </a>
-          <button
-            onClick={() => setView('upload')}
-            style={{
-              padding: '16px 36px',
-              background: 'rgba(255,255,255,0.05)',
-              border: '1px solid rgba(255,255,255,0.12)',
-              borderRadius: '12px', color: '#ccc',
-              fontSize: '1rem', fontWeight: '600', cursor: 'pointer'
-            }}
-          >
-            Import history & see your map →
-          </button>
-        </div>
-      </div>
-
-      {/* How it works */}
-      <div style={{
-        maxWidth: '860px', margin: '0 auto 100px',
-        padding: '0 24px'
-      }}>
-        <div style={{
-          textAlign: 'center',
-          fontSize: '0.75rem', color: '#555',
-          fontWeight: '600', letterSpacing: '0.8px',
-          marginBottom: '36px'
-        }}>
-          HOW IT WORKS
-        </div>
-
-        {/* Step flow */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-          gap: '0',
-          position: 'relative'
-        }}>
-          {[
-            { step: '1', label: 'Install the extension', detail: 'Add to Chrome. Enter your email in the popup. Done.' },
-            { step: '2', label: 'Start chatting', detail: 'Open Claude, ChatGPT, or Gemini — template chips appear above the input.' },
-            { step: '3', label: 'Hit Improve', detail: 'Type a rough idea and press Improve (or Alt+Shift+M). Mind World rewrites it.' },
-            { step: '4', label: 'Send a better prompt', detail: 'Review the improved version, replace your input, and send. Every new chat auto-saves.' }
-          ].map((item, i, arr) => (
-            <div key={item.step} style={{
-              display: 'flex', flexDirection: 'column', alignItems: 'center',
-              padding: '28px 20px', textAlign: 'center',
-              position: 'relative'
-            }}>
-              {i < arr.length - 1 && (
-                <div style={{
-                  position: 'absolute', right: 0, top: '38px',
-                  width: '1px', height: '40px',
-                  background: 'rgba(124,58,237,0.2)',
-                  display: window.innerWidth < 640 ? 'none' : 'block'
-                }} />
-              )}
-              <div style={{
-                width: '40px', height: '40px',
-                borderRadius: '50%',
-                background: 'rgba(124,58,237,0.15)',
-                border: '1px solid rgba(124,58,237,0.4)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '0.9rem', fontWeight: '700', color: '#a78bfa',
-                marginBottom: '14px', flexShrink: 0
-              }}>
-                {item.step}
-              </div>
-              <div style={{ fontWeight: '600', fontSize: '0.95rem', marginBottom: '8px', color: 'white' }}>
-                {item.label}
-              </div>
-              <div style={{ fontSize: '0.82rem', color: '#666', lineHeight: '1.6' }}>
-                {item.detail}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Keyboard shortcut callout */}
-        <div style={{
-          marginTop: '40px',
-          padding: '18px 24px',
-          background: 'rgba(124,58,237,0.07)',
-          border: '1px solid rgba(124,58,237,0.2)',
-          borderRadius: '14px',
-          display: 'flex', alignItems: 'center', gap: '16px',
-          justifyContent: 'center', flexWrap: 'wrap'
-        }}>
-          <span style={{ color: '#888', fontSize: '0.88rem' }}>Keyboard shortcut:</span>
-          <span style={{
-            background: 'rgba(255,255,255,0.08)',
-            border: '1px solid rgba(255,255,255,0.15)',
-            borderRadius: '6px',
-            padding: '4px 10px',
-            fontFamily: 'monospace',
-            fontSize: '0.88rem',
-            color: '#c4b5fd',
-            fontWeight: '600',
-            letterSpacing: '0.5px'
-          }}>
-            Alt + Shift + M
-          </span>
-          <span style={{ color: '#555', fontSize: '0.88rem' }}>— Improve current draft instantly</span>
-        </div>
-      </div>
-
-      <CompareDemo />
-
-      {/* Feature callouts */}
-      <div style={{
-        maxWidth: '960px', margin: '0 auto 120px',
-        padding: '0 24px',
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-        gap: '24px'
-      }}>
-        {FEATURES.map(f => (
-          <div
-            key={f.title}
-            style={{
-              padding: '32px',
-              background: 'rgba(255,255,255,0.03)',
-              border: '1px solid rgba(255,255,255,0.07)',
-              borderRadius: '16px'
-            }}
-          >
-            <div style={{ fontSize: '2rem', marginBottom: '16px' }}>{f.icon}</div>
-            <div style={{
-              fontSize: '1.05rem', fontWeight: '700',
-              marginBottom: '10px', color: 'white'
-            }}>
-              {f.title}
-            </div>
-            <div style={{ fontSize: '0.88rem', color: '#666', lineHeight: '1.65' }}>
-              {f.desc}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Bottom CTA */}
-      <div style={{
-        textAlign: 'center',
-        padding: '80px 24px 100px',
-        borderTop: '1px solid rgba(255,255,255,0.05)'
-      }}>
-        <h2 style={{ fontSize: '2rem', fontWeight: '700', marginBottom: '16px' }}>
-          Write better prompts.<br />
-          <span style={{
-            background: 'linear-gradient(135deg, #a78bfa, #7c3aed)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent'
-          }}>Starting today.</span>
-        </h2>
-        <p style={{ color: '#666', fontSize: '0.95rem', marginBottom: '12px' }}>
-          Free to install. Works on Claude, ChatGPT, and Gemini.
-        </p>
-        <p style={{ color: '#555', fontSize: '0.85rem', marginBottom: '36px' }}>
-          Template chips work on day one — no conversation history needed.
-        </p>
-        <div style={{ display: 'flex', gap: '16px', justifyContent: 'center', flexWrap: 'wrap' }}>
-          <a
-            href={CHROME_STORE_URL}
-            target="_blank"
-            rel="noreferrer"
-            style={{
-              padding: '16px 40px',
-              background: 'linear-gradient(135deg, #7c3aed, #5b21b6)',
-              border: 'none', borderRadius: '12px', color: 'white',
-              fontSize: '1rem', fontWeight: '700', textDecoration: 'none',
-              display: 'inline-block'
-            }}
-          >
-            Install Chrome Extension — Free
-          </a>
-          <button
-            onClick={() => setView('upload')}
-            style={{
-              padding: '16px 32px',
-              background: 'rgba(255,255,255,0.04)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: '12px', color: '#aaa',
-              fontSize: '1rem', fontWeight: '600', cursor: 'pointer'
-            }}
-          >
-            Import history & see your map →
-          </button>
-        </div>
-      </div>
-
-      <footer style={{
-        textAlign: 'center',
-        padding: '24px',
-        color: '#444',
-        fontSize: '0.8rem',
-        borderTop: '1px solid rgba(255,255,255,0.05)',
-        marginTop: '40px'
-      }}>
-        <a href="/privacy" style={{ color: '#666', textDecoration: 'none' }}>Privacy Policy</a>
-        {' · '}
-        <a href="/terms" style={{ color: '#666', textDecoration: 'none' }}>Terms of Service</a>
-        {' · '}
-        © 2026 Mind World
-      </footer>
-    </div>
-  )
+  return <MarketingHome chromeStoreUrl={CHROME_STORE_URL} onImport={() => setView('upload')} />
 }

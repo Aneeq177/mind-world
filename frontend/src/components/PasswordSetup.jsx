@@ -59,8 +59,7 @@ export default function PasswordSetup() {
       justifyContent: 'center',
       padding: '32px 24px',
       boxSizing: 'border-box',
-      background: '#000008',
-      backgroundImage: 'radial-gradient(ellipse at center, #0a0a1a 0%, #000008 100%)',
+      background: '#0b1120',
       color: 'white'
     }}>
       <form
@@ -135,7 +134,7 @@ export default function PasswordSetup() {
           disabled={loading}
           style={{
             width: '100%', padding: '14px',
-            background: 'linear-gradient(135deg, #7c3aed, #5b21b6)',
+            background: '#3b82f6',
             border: 'none', borderRadius: '10px',
             color: 'white', fontWeight: 600, cursor: loading ? 'wait' : 'pointer',
             marginBottom: '12px'

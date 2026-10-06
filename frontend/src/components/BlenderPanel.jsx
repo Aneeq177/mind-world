@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { engineerPrompt } from '../api'
 
 const BORDER = 'rgba(255,255,255,0.08)'
-const ACCENT = 'rgba(124,58,237,0.25)'
-const ACCENT_BORDER = 'rgba(124,58,237,0.4)'
+const ACCENT = 'rgba(59,130,246,0.25)'
+const ACCENT_BORDER = 'rgba(59,130,246,0.4)'
 
 export default function BlenderPanel({ blendIds, conversations, email, onRemove, onClear }) {
   const [prompt, setPrompt] = useState('')
@@ -125,7 +125,7 @@ export default function BlenderPanel({ blendIds, conversations, email, onRemove,
             style={{
               width: '100%',
               padding: '11px',
-              background: loading ? 'rgba(255,255,255,0.05)' : 'linear-gradient(135deg, #7c3aed, #5b21b6)',
+              background: loading ? 'rgba(255,255,255,0.05)' : '#3b82f6',
               border: 'none',
               borderRadius: '8px',
               color: loading ? '#555' : 'white',
@@ -136,7 +136,7 @@ export default function BlenderPanel({ blendIds, conversations, email, onRemove,
               flexShrink: 0,
             }}
           >
-            {loading ? 'Engineering…' : '⚡ Blend Conversations'}
+            {loading ? 'Engineering…' : 'Blend Conversations'}
           </button>
         </>
       )}
@@ -170,7 +170,7 @@ export default function BlenderPanel({ blendIds, conversations, email, onRemove,
           <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
             <button
               onClick={() => window.open(`https://claude.ai/new?q=${encodeURIComponent(result)}`, '_blank')}
-              style={{ flex: 1, padding: '9px', background: '#7c3aed', border: 'none', borderRadius: '7px', color: 'white', fontSize: '0.78rem', fontWeight: '600', cursor: 'pointer' }}
+              style={{ flex: 1, padding: '9px', background: '#3b82f6', border: 'none', borderRadius: '7px', color: 'white', fontSize: '0.78rem', fontWeight: '600', cursor: 'pointer' }}
             >
               🟣 Claude
             </button>

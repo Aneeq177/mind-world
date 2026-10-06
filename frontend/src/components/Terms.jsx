@@ -15,10 +15,10 @@ const S = {
   },
   h1: { fontSize: '2rem', fontWeight: '700', marginBottom: '8px' },
   updated: { color: '#555', fontSize: '0.85rem', marginBottom: '48px' },
-  h2: { fontSize: '1.1rem', fontWeight: '600', color: '#a78bfa', marginTop: '40px', marginBottom: '12px' },
+  h2: { fontSize: '1.1rem', fontWeight: '600', color: '#60a5fa', marginTop: '40px', marginBottom: '12px' },
   p: { color: '#aaa', fontSize: '0.95rem', lineHeight: '1.75', marginBottom: '12px' },
   ul: { color: '#aaa', fontSize: '0.95rem', lineHeight: '1.75', paddingLeft: '20px', marginBottom: '12px' },
-  a: { color: '#a78bfa' },
+  a: { color: '#60a5fa' },
 }
 
 export default function Terms() {

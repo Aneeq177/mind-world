@@ -68,13 +68,17 @@ export default function AuthCallback() {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      background: '#000008',
+      background: '#0b1120',
       color: 'white',
       padding: '24px',
       textAlign: 'center'
     }}>
       <div>
-        <div style={{ fontSize: '2.5rem', marginBottom: '16px' }}>🌍</div>
+        <div style={{
+          width: 44, height: 44, borderRadius: 11, background: 'var(--accent)', color: '#fff',
+          display: 'grid', placeItems: 'center', fontSize: '1.2rem', fontWeight: 800,
+          margin: '0 auto 16px'
+        }}>M</div>
         <p style={{ color: '#aaa', lineHeight: 1.6, maxWidth: '360px' }}>{message}</p>
       </div>
     </div>

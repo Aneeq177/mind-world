@@ -6,14 +6,14 @@ export default function DetailPanel({ conversation: c, isBlended, onClose, onTog
   const badgeStyle = {
     fontSize: '0.68rem',
     padding: '3px 10px',
-    background: isClaude ? 'rgba(124,58,237,0.18)' : 'rgba(16,185,129,0.18)',
-    border: `1px solid ${isClaude ? 'rgba(124,58,237,0.4)' : 'rgba(16,185,129,0.4)'}`,
+    background: isClaude ? 'rgba(217,119,87,0.18)' : 'rgba(16,185,129,0.18)',
+    border: `1px solid ${isClaude ? 'rgba(217,119,87,0.4)' : 'rgba(16,185,129,0.4)'}`,
     borderRadius: '10px',
-    color: isClaude ? '#a78bfa' : '#34d399',
+    color: isClaude ? '#e8a082' : '#34d399',
     fontWeight: '600',
   }
 
-  const badgeText = isClaude ? '🟣 Claude' : '🟢 ChatGPT'
+  const badgeText = isClaude ? 'Claude' : 'ChatGPT'
 
   const metaItems = [
     { label: 'Messages', value: c.num_messages || 0 },
@@ -77,10 +77,10 @@ export default function DetailPanel({ conversation: c, isBlended, onClose, onTog
             style={{
               display: 'block',
               padding: '9px',
-              background: 'rgba(124,58,237,0.1)',
-              border: '1px solid rgba(124,58,237,0.3)',
+              background: 'rgba(59,130,246,0.1)',
+              border: '1px solid rgba(59,130,246,0.3)',
               borderRadius: '7px',
-              color: '#a78bfa',
+              color: '#60a5fa',
               fontSize: '0.78rem',
               fontWeight: '600',
               textDecoration: 'none',
@@ -115,10 +115,10 @@ export default function DetailPanel({ conversation: c, isBlended, onClose, onTog
           onClick={onToggleBlend}
           style={{
             padding: '9px',
-            background: isBlended ? 'rgba(124,58,237,0.22)' : 'rgba(255,255,255,0.05)',
-            border: `1px solid ${isBlended ? 'rgba(124,58,237,0.5)' : 'rgba(255,255,255,0.1)'}`,
+            background: isBlended ? 'rgba(59,130,246,0.22)' : 'rgba(255,255,255,0.05)',
+            border: `1px solid ${isBlended ? 'rgba(59,130,246,0.5)' : 'rgba(255,255,255,0.1)'}`,
             borderRadius: '7px',
-            color: isBlended ? '#a78bfa' : '#888',
+            color: isBlended ? '#60a5fa' : '#888',
             fontSize: '0.78rem',
             fontWeight: '600',
             cursor: 'pointer',

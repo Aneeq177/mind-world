@@ -5,8 +5,8 @@ import { useState } from 'react'
 function HL({ children }) {
   return (
     <mark style={{
-      background: 'rgba(124,58,237,0.28)',
-      color: '#e9d8ff',
+      background: 'rgba(59,130,246,0.22)',
+      color: '#dbeafe',
       padding: '0 4px',
       borderRadius: '4px',
       fontStyle: 'normal'
@@ -24,20 +24,20 @@ function MemClause({ children }) {
       display: 'block',
       marginTop: '8px',
       paddingLeft: '10px',
-      borderLeft: '2px solid #7c3aed',
-      color: '#c4b5fd'
+      borderLeft: '2px solid var(--accent)',
+      color: 'var(--text-muted)'
     }}>
       <span style={{
         display: 'inline-block',
         fontSize: '0.68rem',
-        color: '#a78bfa',
-        background: 'rgba(124,58,237,0.15)',
+        color: 'var(--accent-text)',
+        background: 'var(--accent-soft)',
         borderRadius: '4px',
         padding: '1px 6px',
         marginBottom: '4px',
         letterSpacing: '0.3px'
       }}>
-        🧠 PULLED FROM MEMORY
+        FROM MEMORY
       </span>
       <br />
       {children}
@@ -48,7 +48,7 @@ function MemClause({ children }) {
 const EXAMPLES = [
   {
     id: 'student',
-    tab: '🎓 Writing a school paper',
+    tab: 'Writing a school paper',
     topic: 'Getting help with a school essay',
     basicPrompt: 'can you help me write my essay on the causes of world war 1',
     basicAnswer: "Sure! Here's a possible outline: I. Introduction with thesis II. Militarism III. The alliance system IV. Imperialism V. Nationalism VI. The assassination of Archduke Franz Ferdinand VII. Conclusion. Let me know if you'd like help expanding any section.",
@@ -74,7 +74,7 @@ const EXAMPLES = [
   },
   {
     id: 'teacher',
-    tab: '📚 Planning a lesson',
+    tab: 'Planning a lesson',
     topic: 'Planning a class lesson',
     basicPrompt: 'create a lesson plan about the water cycle for 4th grade',
     basicAnswer: "Sure! Here's a basic lesson plan. Objective: Students will understand the stages of the water cycle. Materials: diagram, worksheet. Warm-up (10 min): class discussion. Direct instruction (15 min): explain evaporation, condensation, precipitation. Activity (15 min): worksheet. Wrap-up (5 min): review. Let me know if you'd like more detail on any part.",
@@ -100,7 +100,7 @@ const EXAMPLES = [
   },
   {
     id: 'admin',
-    tab: '🗂️ Writing a work email',
+    tab: 'Writing a work email',
     topic: 'Drafting a school or office announcement',
     basicPrompt: 'write an email to parents about the upcoming field trip',
     basicAnswer: 'Dear Parents and Guardians, We are excited to announce our upcoming field trip! This will be a wonderful opportunity for students to learn outside the classroom. Please review the attached permission slip and return it by the deadline. We will need a few parent volunteers to serve as chaperones. If you have any questions, please don\'t hesitate to reach out. Thank you for your continued support. Best regards,',
@@ -125,13 +125,13 @@ const EXAMPLES = [
   },
   {
     id: 'debug',
-    tab: '🐛 Fixing a bug',
+    tab: 'Fixing a bug',
     topic: 'Debugging a production error',
     basicPrompt: 'my express api keeps throwing a 500 error on the stripe webhook route, can you help?',
     basicAnswer: 'A 500 error means something is failing on the server. Common causes include unhandled exceptions, missing environment variables, bad JSON parsing, or a crashed dependency. Can you share your error logs and the relevant route code so I can pinpoint the issue?',
     improvedPrompt: (
       <>
-        Getting a 500 on my Express <code style={{ color: '#c4b5fd' }}>/webhook/stripe</code> route right after adding the new order handler.
+        Getting a 500 on my Express <code style={{ color: 'var(--accent-text)' }}>/webhook/stripe</code> route right after adding the new order handler.
         <MemClause>
           This is the same app where we fixed the JWT middleware ordering bug last week in <code>middleware/auth.js</code> — moved the auth check to run after body parsing.
         </MemClause>
@@ -151,7 +151,7 @@ const EXAMPLES = [
   },
   {
     id: 'write',
-    tab: '✍️ Writing new code',
+    tab: 'Writing new code',
     topic: 'Writing a new function',
     basicPrompt: 'write a function to validate an email address in javascript',
     basicAnswer: (
@@ -199,7 +199,7 @@ const EXAMPLES = [
   },
   {
     id: 'decide',
-    tab: '🏗️ Making a decision',
+    tab: 'Making a decision',
     topic: 'A tricky architecture decision',
     basicPrompt: 'should i use redux or react context for my app',
     basicAnswer: 'Both work. Redux is better for large apps with complex state and time-travel debugging, but adds boilerplate. Context API is built into React and simpler for smaller apps, but can cause performance issues with frequent updates. For most apps, Context or a lighter library like Zustand is a good middle ground.',
@@ -231,40 +231,33 @@ export default function CompareDemo() {
 
   return (
     <div style={{
-      maxWidth: '1040px', margin: '0 auto 120px',
-      padding: '0 24px'
+      maxWidth: '1120px', margin: '0 auto',
+      padding: '0 32px'
     }}>
       <div style={{
         textAlign: 'center',
-        fontSize: '0.75rem', color: '#555',
-        fontWeight: '600', letterSpacing: '0.8px',
-        marginBottom: '16px'
+        fontSize: '0.78rem', color: 'var(--accent-text)',
+        fontWeight: '600', letterSpacing: '0.08em',
+        textTransform: 'uppercase', marginBottom: '12px'
       }}>
-        SEE THE DIFFERENCE
+        See the difference
       </div>
 
       <h2 style={{
         textAlign: 'center',
-        fontSize: 'clamp(1.6rem, 3.5vw, 2.2rem)',
-        fontWeight: '800',
+        fontSize: 'clamp(1.6rem, 3vw, 2.2rem)',
+        fontWeight: '750',
         marginBottom: '14px',
-        letterSpacing: '-0.01em'
+        letterSpacing: '-0.02em'
       }}>
-        Same question.{' '}
-        <span style={{
-          background: 'linear-gradient(135deg, #a78bfa, #7c3aed)',
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent'
-        }}>
-          Completely different answer.
-        </span>
+        Same question, a much more useful answer
       </h2>
       <p style={{
-        textAlign: 'center', color: '#777', fontSize: '0.95rem',
-        maxWidth: '600px', margin: '0 auto 40px', lineHeight: '1.6'
+        textAlign: 'center', color: 'var(--text-muted)', fontSize: '1rem',
+        maxWidth: '620px', margin: '0 auto 40px', lineHeight: '1.65'
       }}>
-        One prompt gets a generic, textbook reply. The other silently pulls in what you told AI last time — and gets a real answer.
-        Whether you're a student, teacher, office admin, or engineer.
+        A typical prompt gets a generic, textbook reply. The improved prompt includes the relevant details
+        you already gave AI in earlier conversations, so the answer fits your situation.
       </p>
 
       {/* Tabs */}
@@ -279,9 +272,9 @@ export default function CompareDemo() {
             style={{
               padding: '10px 18px',
               borderRadius: '20px',
-              border: active === i ? '1px solid rgba(124,58,237,0.5)' : '1px solid rgba(255,255,255,0.1)',
-              background: active === i ? 'rgba(124,58,237,0.15)' : 'rgba(255,255,255,0.03)',
-              color: active === i ? '#e9d8ff' : '#888',
+              border: active === i ? '1px solid var(--accent-border)' : '1px solid var(--border-strong)',
+              background: active === i ? 'var(--accent-soft)' : 'transparent',
+              color: active === i ? 'var(--text)' : 'var(--text-muted)',
               fontSize: '0.85rem', fontWeight: '600', cursor: 'pointer',
               transition: 'all 0.15s'
             }}
@@ -292,7 +285,7 @@ export default function CompareDemo() {
       </div>
 
       <div style={{
-        textAlign: 'center', color: '#555', fontSize: '0.8rem',
+        textAlign: 'center', color: 'var(--text-subtle)', fontSize: '0.8rem',
         marginBottom: '20px', fontWeight: '500'
       }}>
         {ex.topic}
@@ -313,28 +306,28 @@ export default function CompareDemo() {
           <div style={{
             display: 'inline-block', padding: '4px 12px',
             borderRadius: '14px', background: 'rgba(255,255,255,0.06)',
-            color: '#888', fontSize: '0.75rem', fontWeight: '600',
+            color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: '600',
             marginBottom: '16px', letterSpacing: '0.3px'
           }}>
             WITHOUT MIND WORLD
           </div>
 
-          <div style={{ fontSize: '0.7rem', color: '#555', fontWeight: '600', marginBottom: '8px', letterSpacing: '0.4px' }}>
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-subtle)', fontWeight: '600', marginBottom: '8px', letterSpacing: '0.4px' }}>
             PROMPT
           </div>
           <div style={{
             background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.06)',
             borderRadius: '10px', padding: '14px', fontSize: '0.85rem',
-            color: '#aaa', lineHeight: '1.6', marginBottom: '18px'
+            color: 'var(--text-muted)', lineHeight: '1.6', marginBottom: '18px'
           }}>
             {ex.basicPrompt}
           </div>
 
-          <div style={{ fontSize: '0.7rem', color: '#555', fontWeight: '600', marginBottom: '8px', letterSpacing: '0.4px' }}>
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-subtle)', fontWeight: '600', marginBottom: '8px', letterSpacing: '0.4px' }}>
             ANSWER
           </div>
           <div style={{
-            fontSize: '0.85rem', color: '#888', lineHeight: '1.7'
+            fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: '1.7'
           }}>
             {ex.basicAnswer}
           </div>
@@ -342,49 +335,49 @@ export default function CompareDemo() {
 
         {/* Improved column */}
         <div style={{
-          background: 'rgba(124,58,237,0.06)',
-          border: '1px solid rgba(124,58,237,0.3)',
+          background: 'var(--surface)',
+          border: '1px solid var(--accent-border)',
           borderRadius: '16px', padding: '24px'
         }}>
           <div style={{
             display: 'inline-block', padding: '4px 12px',
             borderRadius: '14px',
-            background: 'linear-gradient(135deg, #7c3aed, #5b21b6)',
+            background: 'var(--accent)',
             color: 'white', fontSize: '0.75rem', fontWeight: '700',
             marginBottom: '16px', letterSpacing: '0.3px'
           }}>
-            ⚡ WITH MIND WORLD
+            WITH MIND WORLD
           </div>
 
-          <div style={{ fontSize: '0.7rem', color: '#a78bfa', fontWeight: '600', marginBottom: '8px', letterSpacing: '0.4px' }}>
+          <div style={{ fontSize: '0.7rem', color: 'var(--accent-text)', fontWeight: '600', marginBottom: '8px', letterSpacing: '0.4px' }}>
             PROMPT (AUTO-IMPROVED)
           </div>
           <div style={{
-            background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(124,58,237,0.25)',
+            background: 'rgba(0,0,0,0.25)', border: '1px solid var(--accent-border)',
             borderRadius: '10px', padding: '14px', fontSize: '0.85rem',
-            color: '#ddd', lineHeight: '1.6', marginBottom: '18px'
+            color: 'var(--text)', lineHeight: '1.6', marginBottom: '18px'
           }}>
             {ex.improvedPrompt}
           </div>
 
-          <div style={{ fontSize: '0.7rem', color: '#a78bfa', fontWeight: '600', marginBottom: '8px', letterSpacing: '0.4px' }}>
+          <div style={{ fontSize: '0.7rem', color: 'var(--accent-text)', fontWeight: '600', marginBottom: '8px', letterSpacing: '0.4px' }}>
             ANSWER
           </div>
           <div style={{
-            fontSize: '0.85rem', color: '#ddd', lineHeight: '1.7', marginBottom: '20px'
+            fontSize: '0.85rem', color: 'var(--text)', lineHeight: '1.7', marginBottom: '20px'
           }}>
             {ex.improvedAnswer}
           </div>
 
           <div style={{
-            background: 'rgba(124,58,237,0.1)',
-            border: '1px solid rgba(124,58,237,0.25)',
+            background: 'var(--accent-soft)',
+            border: '1px solid var(--accent-border)',
             borderRadius: '10px', padding: '14px 16px'
           }}>
-            <div style={{ fontSize: '0.72rem', color: '#a78bfa', fontWeight: '700', marginBottom: '8px', letterSpacing: '0.3px' }}>
+            <div style={{ fontSize: '0.72rem', color: 'var(--accent-text)', fontWeight: '700', marginBottom: '8px', letterSpacing: '0.3px' }}>
               WHY THIS ANSWER IS BETTER
             </div>
-            <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '0.8rem', color: '#c4b5fd', lineHeight: '1.7' }}>
+            <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '0.8rem', color: 'var(--text)', lineHeight: '1.7' }}>
               {ex.whyBetter.map((point, i) => (
                 <li key={i}>{point}</li>
               ))}

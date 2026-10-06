@@ -58,14 +58,14 @@ export default function ConvoList({ conversations, selectedId, blendIds, sortBy,
                 padding: '9px 11px',
                 marginBottom: '4px',
                 background: isSelected
-                  ? 'rgba(124,58,237,0.18)'
+                  ? 'rgba(59,130,246,0.18)'
                   : isBlend
-                    ? 'rgba(124,58,237,0.08)'
+                    ? 'rgba(59,130,246,0.08)'
                     : 'rgba(255,255,255,0.03)',
                 border: `1px solid ${isSelected
-                  ? 'rgba(124,58,237,0.5)'
+                  ? 'rgba(59,130,246,0.5)'
                   : isBlend
-                    ? 'rgba(124,58,237,0.25)'
+                    ? 'rgba(59,130,246,0.25)'
                     : 'rgba(255,255,255,0.06)'}`,
                 borderRadius: '8px',
                 cursor: 'pointer',
